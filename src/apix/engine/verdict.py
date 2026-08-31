@@ -21,7 +21,7 @@ members is a property the evaluation harness asserts, not one the engine assumes
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
 

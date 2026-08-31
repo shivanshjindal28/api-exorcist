@@ -38,14 +38,12 @@ from __future__ import annotations
 
 import csv
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from inventory.correlator import InventoryRecord  # noqa: E402
-from simulated_env.estate import by_id  # noqa: E402
+from apix.config import load as load_settings
+from apix.inventory.correlator import InventoryRecord
+from apix.simulated_env.estate import by_id
 
 # Feature order is fixed and explicit. Stability matters because the
 # explainability layer (week 8) reports feature importances by name.
@@ -141,7 +139,7 @@ def class_balance(rows: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def write_csv(rows: list[dict[str, Any]], path: Path) -> None:
-    cols = ["endpoint_id", "service"] + FEATURE_NAMES + ["label"]
+    cols = ["endpoint_id", "service", *FEATURE_NAMES, "label"]
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=cols)
@@ -150,12 +148,12 @@ def write_csv(rows: list[dict[str, Any]], path: Path) -> None:
 
 
 def main() -> None:
-    from pipeline import run_discovery
+    from apix.pipeline import run_discovery
 
     records = run_discovery(verbose=False)
     rows = build(records)
 
-    out_dir = Path(__file__).resolve().parent.parent / "data"
+    out_dir = load_settings().ensure_data_dir()
     write_csv(rows, out_dir / "dataset.csv")
     (out_dir / "dataset.json").write_text(json.dumps(rows, indent=2))
 

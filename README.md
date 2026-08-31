@@ -46,38 +46,51 @@ of them are unauthenticated.
 
 ## Quick start
 
-No infrastructure required. Runs on the Python standard library. Python 3.10+.
+Python 3.10+. The pipeline, classifier and evaluation run on the standard
+library alone — no infrastructure, no services, no network.
 
 ```bash
-python pipeline.py                  # discover, classify, explain
+pip install -e .
 ```
 
 ```bash
-python -m evaluation.benchmark      # the comparative before/after study
+apix scan
 ```
 
-Other entry points:
+That's the whole demo: six sources collected, correlated, classified and
+explained.
+
+### Commands
+
+| Command | What it does |
+|---|---|
+| `apix scan` | Discover, classify and explain |
+| `apix scan --coverage` | Per-source coverage table only |
+| `apix scan --classify-only` | Verdicts and explanations, no coverage table |
+| `apix scan --explain-all` | Explain every endpoint, not only risky ones |
+| `apix scan --findings` | Raw discovery flags, before classification |
+| `apix scan --json` | Machine-readable inventory |
+| `apix benchmark` | The comparative before/after study |
+| `apix dataset` | Build the labelled dataset for the ML engine |
+| `apix version` | Version and resolved configuration |
+
+`apix scan` **exits 1 when zombies are found** and 0 when clean, so it drops
+into a CI pipeline as a gate.
+
+### Development
 
 ```bash
-python pipeline.py --coverage       # per-source coverage table
-python pipeline.py --classify       # classification + explanations only
-python pipeline.py --explain-all    # explain every endpoint, not just risky ones
-python pipeline.py --findings       # raw discovery flags, pre-classification
-python pipeline.py --json           # machine-readable inventory
-python dataset/build.py             # build the labelled ML dataset
-```
-
-Tests:
-
-```bash
-python tests/test_discovery.py      # 11 discovery tests
+pip install -e ".[dev]" && pre-commit install
 ```
 
 ```bash
-python tests/test_engine.py         # 20 engine, explanation and metrics tests
+pytest && ruff check . && mypy
 ```
 
-Outputs land in `data/`: `inventory.json`, `verdicts.json` (audit-shaped),
+32 tests, ruff clean, mypy `--strict` clean. Optional extras: `.[stream]` for
+Kafka and Elasticsearch, `.[ml]` for the Phase 3 model layer and SHAP.
+
+Outputs land in `./data/`: `inventory.json`, `verdicts.json` (audit-shaped),
 `benchmark.json` (paper-ready figures), `dataset.csv`.
 
 For the production transport path:
@@ -126,17 +139,34 @@ is the concrete reason the project is not "run a scanner and read the output."
 ## Layout
 
 ```
-simulated_env/estate.py    Ground-truth API estate (the environment + answer key)
-connectors/                Six discovery connectors
-  base.py                  Shared DiscoverySignal contract
-  gateway.py               Gateway registry + OpenAPI spec (authoritative sources)
-  discovery.py             Traffic, code, DNS, CI/CD (find what authorities miss)
-ingestion/bus.py           Transport: LocalBus (default) / KafkaBus / ElasticSink
-inventory/correlator.py    Multi-source correlation -> unified inventory + flags
-dataset/build.py           Feature extraction + labelled dataset for the ML engine
-pipeline.py                Orchestrates the full discovery run
-tests/test_discovery.py    11 tests, including the ground-truth leakage guard
+src/apix/
+  cli.py                   The `apix` command-line entry point
+  config.py                Settings from environment; defaults need no infra
+  pipeline.py              Orchestrates discovery and classification
+  connectors/
+    base.py                Shared DiscoverySignal contract
+    gateway.py             Gateway registry + OpenAPI spec (authoritative)
+    discovery.py           Traffic, code, DNS, CI/CD (find what authorities miss)
+  ingestion/bus.py         Transport: LocalBus (default) / Kafka / Elasticsearch
+  inventory/correlator.py  Multi-source correlation -> inventory + 15 flags
+  engine/
+    verdict.py             Classification, Verdict, Reason
+    rules.py               14 evidence rules with signed per-class weights
+    explain.py             Natural-language explanations + audit-log shape
+  evaluation/
+    metrics.py             Precision, recall, F1, confusion matrix
+    benchmark.py           The comparative before/after study
+  dataset/build.py         Feature extraction + labelled dataset
+  simulated_env/estate.py  The estate and its ground truth (the answer key)
+
+tests/                     32 tests, including three ground-truth leakage guards
+docs/                      Literature review, design document, source papers
 ```
+
+**Dependency direction is one-way.** Connectors know nothing of ingestion, and
+the engine never reaches back to a data source. That is what makes the simulated
+estate swappable for live sources without touching anything downstream — and it
+is enforced by tests, not convention.
 
 ---
 

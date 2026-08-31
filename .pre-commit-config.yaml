@@ -1,0 +1,40 @@
+# Install once with:  pre-commit install
+# Run over everything: pre-commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=2000]
+      # Source papers are copyrighted and must not enter git history, where
+      # removing them later is painful. .gitignore covers them; this is the
+      # backstop for a `git add -f`.
+      - id: check-added-large-files
+        name: block PDFs in docs/papers
+        files: ^docs/papers/.*\.pdf$
+        args: [--maxkb=0]
+      # Windows PowerShell's Get-Content/Set-Content round-trip silently
+      # double-encodes UTF-8 and adds a BOM. It has already happened once in
+      # this repo; this hook stops it reaching a commit.
+      - id: fix-byte-order-marker
+      - id: check-ast
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        additional_dependencies: []
+        args: [--strict]
+        files: ^src/apix/

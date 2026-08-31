@@ -34,28 +34,25 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from connectors.gateway import GatewayConnector, OpenAPIConnector  # noqa: E402
-from connectors.discovery import (  # noqa: E402
+from apix.config import load as load_settings
+from apix.connectors.base import Connector
+from apix.connectors.discovery import (
     CICDConnector,
     CodeConnector,
     DNSConnector,
     TrafficConnector,
 )
-from engine.rules import RuleClassifier  # noqa: E402
-from engine.verdict import Classification  # noqa: E402
-from evaluation.metrics import evaluate, format_report  # noqa: E402
-from pipeline import run_discovery  # noqa: E402
-from simulated_env.estate import by_id  # noqa: E402
+from apix.connectors.gateway import GatewayConnector, OpenAPIConnector
+from apix.engine.rules import RuleClassifier
+from apix.engine.verdict import Classification
+from apix.evaluation.metrics import evaluate, format_report
+from apix.inventory.correlator import InventoryRecord
+from apix.pipeline import run_discovery
+from apix.simulated_env.estate import by_id
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-
-CONFIGURATIONS: list[tuple[str, str, list]] = [
+CONFIGURATIONS: list[tuple[str, str, list[type[Connector]]]] = [
     (
         "gateway-only",
         "Gateway registry only",
@@ -86,7 +83,7 @@ CONFIGURATIONS: list[tuple[str, str, list]] = [
 ]
 
 
-def run_configuration(connectors: list) -> dict[str, Any]:
+def run_configuration(connectors: list[type[Connector]]) -> dict[str, Any]:
     """Run one configuration end to end and score it against ground truth."""
     truth = by_id()
     total_in_estate = len(truth)
@@ -144,7 +141,7 @@ def run_configuration(connectors: list) -> dict[str, Any]:
     }
 
 
-def _flags_of(records: list, endpoint_id: str) -> list[str]:
+def _flags_of(records: list[InventoryRecord], endpoint_id: str) -> list[str]:
     for r in records:
         if r.endpoint_id == endpoint_id:
             return r.flags
@@ -254,8 +251,7 @@ def main() -> None:
 
     print_benchmark(results)
 
-    DATA_DIR.mkdir(exist_ok=True)
-    out = DATA_DIR / "benchmark.json"
+    out = load_settings().ensure_data_dir() / "benchmark.json"
     clean = {
         k: {kk: vv for kk, vv in v.items() if not kk.startswith("_")}
         for k, v in results.items()

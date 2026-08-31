@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same branch rather than queueing them.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: lint, types, tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.10 is the floor declared in pyproject; 3.12 is what the team runs.
+        # Testing both stops us from accidentally depending on newer syntax.
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: python -m pip install --upgrade pip && pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Types (mypy strict)
+        run: mypy
+
+      - name: Tests
+        run: pytest --cov=apix --cov-report=term-missing
+
+  evaluation:
+    name: reproduce published results
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip && pip install -e .
+
+      # The figures in the paper and the design document must stay reproducible.
+      # If a change moves zombie recall off 100%, or lets a live endpoint be
+      # marked for removal, CI fails rather than the team finding out in a viva.
+      - name: Run comparative benchmark
+        run: apix benchmark
+
+      - name: Assert published figures still hold
+        run: |
+          python - <<'PY'
+          import json, sys
+
+          r = json.load(open("data/benchmark.json"))
+          full, conv = r["api-exorcist"], r["conventional"]
+
+          failures = []
+          if full["zombie_recall_pct"] != 100.0:
+              failures.append(f"zombie recall regressed to {full['zombie_recall_pct']}%")
+          if full["coverage_pct"] != 100.0:
+              failures.append(f"estate coverage regressed to {full['coverage_pct']}%")
+          if full["zombies_caught"] <= conv["zombies_caught"]:
+              failures.append("correlation no longer beats a conventional inventory")
+          acc = full["classification"]["accuracy"]
+          if acc < 0.95:
+              failures.append(f"classification accuracy dropped to {acc}")
+
+          # A false ZOMBIE on a live endpoint is an outage, and the one failure
+          # mode with no acceptable rate above zero.
+          for e in full["classification"]["errors"]:
+              if e["predicted"] == "ZOMBIE":
+                  failures.append(f"live endpoint marked for removal: {e['endpoint_id']}")
+
+          if failures:
+              print("PUBLISHED RESULTS REGRESSED:")
+              for f in failures:
+                  print(f"  - {f}")
+              sys.exit(1)
+          print("All published figures reproduced.")
+          PY
+
+      - name: Upload figures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: data/benchmark.json

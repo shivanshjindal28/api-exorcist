@@ -19,30 +19,30 @@ Usage:
 
 from __future__ import annotations
 
-import argparse
 import json
-import os
-import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+from apix.config import load as load_settings
+from apix.connectors.base import Connector, DiscoverySignal
 
-from connectors.base import DiscoverySignal  # noqa: E402
-from connectors.gateway import GatewayConnector, OpenAPIConnector  # noqa: E402
-from connectors.discovery import (  # noqa: E402
+if TYPE_CHECKING:
+    from apix.engine.verdict import Verdict
+    from apix.ingestion.bus import MessageBus
+from apix.connectors.discovery import (
     CICDConnector,
     CodeConnector,
     DNSConnector,
     TrafficConnector,
 )
-from ingestion.bus import (  # noqa: E402
+from apix.connectors.gateway import GatewayConnector, OpenAPIConnector
+from apix.ingestion.bus import (
     TOPIC_INVENTORY,
     TOPIC_RAW_SIGNALS,
     ElasticSink,
-    LocalBus,
     get_bus,
 )
-from inventory.correlator import Correlator, InventoryRecord  # noqa: E402
+from apix.inventory.correlator import Correlator, InventoryRecord
 
 CONNECTORS = [
     GatewayConnector,
@@ -53,12 +53,11 @@ CONNECTORS = [
     CICDConnector,
 ]
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
 def run_discovery(
     verbose: bool = True,
-    connectors: list | None = None,
+    connectors: list[type[Connector]] | None = None,
     persist: bool = True,
 ) -> list[InventoryRecord]:
     """Execute the discovery pipeline and return the inventory.
@@ -105,18 +104,19 @@ def run_discovery(
     bus.flush()
 
     # Persist for the dashboard / downstream weeks
-    out = DATA_DIR / "inventory.json"
+    out = load_settings().data_dir / "inventory.json"
     indexed = 0
     sink = ElasticSink()
     if persist:
-        DATA_DIR.mkdir(exist_ok=True)
+        out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps([r.to_dict() for r in records], indent=2))
         indexed = sink.index_records(r.to_dict() for r in records)
 
     if verbose:
         print("Stage 2 — correlation")
         print(f"  unified endpoints : {len(records)}")
-        print(f"  written to        : {out.relative_to(Path.cwd()) if out.is_relative_to(Path.cwd()) else out}")
+        if persist:
+            print(f"  written to        : {_display_path(out)}")
         if sink.available:
             print(f"  indexed to ES     : {indexed}")
         else:
@@ -126,11 +126,19 @@ def run_discovery(
     return records
 
 
-def _rehydrate(bus) -> list[DiscoverySignal]:
+def _display_path(p: Path) -> str:
+    """Show a path relative to the user's location when that is shorter."""
+    try:
+        return str(p.relative_to(Path.cwd()))
+    except ValueError:
+        return str(p)
+
+
+def _rehydrate(bus: MessageBus) -> list[DiscoverySignal]:
     """Rebuild DiscoverySignal objects from bus messages."""
     from datetime import datetime
 
-    from connectors.base import Source
+    from apix.connectors.base import Source
 
     out: list[DiscoverySignal] = []
     for msg in bus.consume(TOPIC_RAW_SIGNALS):
@@ -204,23 +212,25 @@ def _risk(r: InventoryRecord) -> int:
     return min(score, 5)
 
 
-def run_classification(records: list[InventoryRecord]) -> list:
+def run_classification(records: list[InventoryRecord]) -> list[Verdict]:
     """Classify the inventory and persist the explained verdicts."""
-    from engine.explain import audit_entry
-    from engine.rules import RuleClassifier
+    from apix.engine.explain import audit_entry
+    from apix.engine.rules import RuleClassifier
 
     verdicts = RuleClassifier().classify_all(records)
 
-    DATA_DIR.mkdir(exist_ok=True)
-    (DATA_DIR / "verdicts.json").write_text(
+    data_dir = load_settings().ensure_data_dir()
+    (data_dir / "verdicts.json").write_text(
         json.dumps([audit_entry(v) for v in verdicts], indent=2)
     )
     return verdicts
 
 
-def print_classification(verdicts: list, explain_all: bool = False) -> None:
+def print_classification(
+    verdicts: list[Verdict], explain_all: bool = False
+) -> None:
     """Print the classification summary and per-verdict explanations."""
-    from engine.explain import explain, summarise
+    from apix.engine.explain import explain, summarise
 
     print(summarise(verdicts))
     print()
@@ -240,41 +250,10 @@ def print_classification(verdicts: list, explain_all: bool = False) -> None:
         print()
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description="API Exorcist pipeline")
-    ap.add_argument("--json", action="store_true", help="emit inventory as JSON")
-    ap.add_argument("--coverage", action="store_true", help="per-source coverage only")
-    ap.add_argument("--findings", action="store_true", help="raw discovery flags")
-    ap.add_argument(
-        "--classify", action="store_true", help="classify and explain findings"
-    )
-    ap.add_argument(
-        "--explain-all",
-        action="store_true",
-        help="explain every endpoint, including healthy ones",
-    )
-    args = ap.parse_args()
-
-    quiet = args.json
-    records = run_discovery(verbose=not quiet)
-
-    if args.json:
-        print(json.dumps([r.to_dict() for r in records], indent=2))
-        return
-    if args.coverage:
-        print_coverage(records)
-        return
-    if args.findings:
-        print_findings(records)
-        return
-    if args.classify or args.explain_all:
-        print_classification(run_classification(records), explain_all=args.explain_all)
-        return
-
-    # Default: the full story — what exists, then what it means.
-    print_coverage(records)
-    print_classification(run_classification(records))
-
-
+# Argument parsing lives in apix.cli, which is the single entry point. This
+# module stays importable as a library so the benchmark, the tests and any future
+# API server can drive the pipeline without going through a command line.
 if __name__ == "__main__":
-    main()
+    from apix.cli import main
+
+    raise SystemExit(main(["scan", *__import__("sys").argv[1:]]))

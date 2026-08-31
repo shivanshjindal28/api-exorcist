@@ -26,10 +26,9 @@ Why a synthetic estate at all?
         registry and the OpenAPI spec (true shadow APIs)
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from enum import Enum
-from typing import Optional
 
 
 class Label(str, Enum):
@@ -81,11 +80,11 @@ class Endpoint:
     deployed_on: date             # when it first appeared
     in_openapi_spec: bool         # is it in the published spec?
     in_gateway_registry: bool     # is the gateway aware of it?
-    owner_team: Optional[str]     # None => nobody owns it
+    owner_team: str | None     # None => nobody owns it
     dns_record: bool              # still resolvable via DNS
     daily_calls: int              # typical calls/day at present (0 = silent)
     last_meaningful_use_days_ago: int  # days since a real (non-probe) call
-    internal_callers: tuple = ()  # other services that call it
+    internal_callers: tuple[str, ...] = ()  # other services that call it
     # OpenAPI `deprecated: true` vendor flag. This is a genuine OBSERVABLE the
     # spec carries, declared independently of `true_label` so no connector ever
     # reads ground truth. It is imperfect on purpose: a team can mark something

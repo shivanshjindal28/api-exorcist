@@ -35,7 +35,8 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Iterable, Iterator, Protocol
+from collections.abc import Iterable, Iterator
+from typing import Any, Protocol
 
 
 class MessageBus(Protocol):
@@ -87,7 +88,7 @@ class KafkaBus:
             "KAFKA_BOOTSTRAP", "localhost:9092"
         )
         try:
-            from kafka import KafkaProducer  # type: ignore
+            from kafka import KafkaProducer
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError(
                 "KafkaBus requires kafka-python. Install it, or use LocalBus "
@@ -106,7 +107,7 @@ class KafkaBus:
         self._producer.send(topic, message)
 
     def consume(self, topic: str) -> Iterator[dict[str, Any]]:  # pragma: no cover
-        from kafka import KafkaConsumer  # type: ignore
+        from kafka import KafkaConsumer
 
         consumer = KafkaConsumer(
             topic,
@@ -134,7 +135,7 @@ class ElasticSink:
         self.index = index
         self._client = None
         try:
-            from elasticsearch import Elasticsearch  # type: ignore
+            from elasticsearch import Elasticsearch
 
             self._client = Elasticsearch(self.url)
         except Exception:

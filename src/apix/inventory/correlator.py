@@ -28,10 +28,11 @@ weeks that follow.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field, asdict
-from typing import Any, Iterable
+from collections.abc import Iterable
+from dataclasses import asdict, dataclass, field
+from typing import Any
 
-from connectors.base import DiscoverySignal, Source
+from apix.connectors.base import DiscoverySignal, Source
 
 # Below this many calls/day an endpoint is "effectively silent" even if
 # traffic technically witnessed it. Catches endpoints kept alive only by

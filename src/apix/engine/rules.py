@@ -43,11 +43,11 @@ nothing. Whatever the evaluation reports is what these semantics yield.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
-from inventory.correlator import InventoryRecord
-from engine.verdict import CLASS_ORDER, Classification, Reason, Verdict
+from apix.engine.verdict import CLASS_ORDER, Classification, Reason, Verdict
+from apix.inventory.correlator import InventoryRecord
 
 #: Calls/day below which an endpoint is not in *meaningful* use. Matches the
 #: correlator's EFFECTIVELY_SILENT_THRESHOLD: health checks, crawlers and stray
@@ -63,7 +63,7 @@ _TEMPERATURE = 3.0
 
 A = Classification.ACTIVE
 D = Classification.DEPRECATED
-O = Classification.ORPHANED
+ORPH = Classification.ORPHANED
 Z = Classification.ZOMBIE
 
 
@@ -99,14 +99,14 @@ RULES: list[EvidenceRule] = [
         predicate=lambda r: not _has_meaningful_traffic(r),
         # The primary discriminator. ORPHANED requires real use by definition,
         # so silence argues against it as strongly as it argues against ACTIVE.
-        weights={Z: 3.5, D: 0.5, A: -3.0, O: -2.5},
+        weights={Z: 3.5, D: 0.5, A: -3.0, ORPH: -2.5},
     ),
     EvidenceRule(
         key="MEANINGFUL_TRAFFIC",
         statement="serving real traffic above the significance threshold",
         evidence_source="TRAFFIC",
         predicate=_has_meaningful_traffic,
-        weights={A: 2.0, O: 1.5, D: 1.0, Z: -3.5},
+        weights={A: 2.0, ORPH: 1.5, D: 1.0, Z: -3.5},
     ),
     EvidenceRule(
         key="SHADOW",
@@ -144,14 +144,14 @@ RULES: list[EvidenceRule] = [
         statement="no owning team could be determined from spec or CI/CD metadata",
         evidence_source="OPENAPI+CICD",
         predicate=lambda r: r.owner_team is None,
-        weights={O: 3.0, Z: 0.8, A: -2.0},
+        weights={ORPH: 3.0, Z: 0.8, A: -2.0},
     ),
     EvidenceRule(
         key="HAS_OWNER",
         statement="an owning team is recorded",
         evidence_source="OPENAPI+CICD",
         predicate=lambda r: r.owner_team is not None,
-        weights={A: 1.2, D: 0.5, O: -3.0},
+        weights={A: 1.2, D: 0.5, ORPH: -3.0},
     ),
     EvidenceRule(
         key="STALE_6M",
@@ -160,7 +160,7 @@ RULES: list[EvidenceRule] = [
         predicate=lambda r: (
             r.last_seen_days_ago is None or r.last_seen_days_ago > 180
         ),
-        weights={Z: 2.0, A: -2.0, O: -1.5},
+        weights={Z: 2.0, A: -2.0, ORPH: -1.5},
     ),
     EvidenceRule(
         key="RECENTLY_USED",
@@ -169,7 +169,7 @@ RULES: list[EvidenceRule] = [
         predicate=lambda r: (
             r.last_seen_days_ago is not None and r.last_seen_days_ago <= 30
         ),
-        weights={A: 1.5, O: 1.0, Z: -2.0},
+        weights={A: 1.5, ORPH: 1.0, Z: -2.0},
     ),
     EvidenceRule(
         key="REACHABLE_BUT_UNUSED",
@@ -200,7 +200,7 @@ RULES: list[EvidenceRule] = [
         statement="other services were observed calling this endpoint",
         evidence_source="TRAFFIC",
         predicate=lambda r: r.distinct_callers > 0,
-        weights={A: 1.2, O: 1.0, Z: -1.5},
+        weights={A: 1.2, ORPH: 1.0, Z: -1.5},
     ),
 ]
 

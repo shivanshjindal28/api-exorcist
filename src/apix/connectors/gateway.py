@@ -18,10 +18,10 @@ simulated estate, honouring the `in_gateway_registry` and
 
 from __future__ import annotations
 
-from typing import Iterator
+from collections.abc import Iterator
 
-from connectors.base import Connector, DiscoverySignal, Source
-from simulated_env.estate import ESTATE
+from apix.connectors.base import Connector, DiscoverySignal, Source
+from apix.simulated_env.estate import ESTATE
 
 
 class GatewayConnector(Connector):

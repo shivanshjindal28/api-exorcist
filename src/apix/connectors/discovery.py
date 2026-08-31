@@ -27,10 +27,10 @@ negligible volume. That disagreement pattern is the detection signal.
 from __future__ import annotations
 
 import hashlib
-from typing import Iterator
+from collections.abc import Iterator
 
-from connectors.base import Connector, DiscoverySignal, Source
-from simulated_env.estate import ESTATE
+from apix.connectors.base import Connector, DiscoverySignal, Source
+from apix.simulated_env.estate import ESTATE, Endpoint
 
 # Capture window for the passive sensor, in days. An endpoint that
 # received no calls in this window simply does not appear in traffic.
@@ -220,7 +220,7 @@ class CICDConnector(Connector):
             )
 
 
-def _days_since_commit(e) -> int:
+def _days_since_commit(e: Endpoint) -> int:
     """Approximate code staleness.
 
     Endpoints still in genuine use tend to be touched occasionally;
@@ -234,7 +234,7 @@ def _days_since_commit(e) -> int:
         return 90
     # Silent endpoints: code has been untouched roughly as long as
     # it has been unused.
-    return max(180, e.last_meaningful_use_days_ago)
+    return max(180, int(e.last_meaningful_use_days_ago))
 
 
 ALL_CONNECTORS = [

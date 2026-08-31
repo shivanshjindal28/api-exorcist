@@ -13,63 +13,139 @@ extends the same protection to the engine.
 from __future__ import annotations
 
 import ast
+import contextlib
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from engine.explain import audit_entry, explain, one_line, summarise  # noqa: E402
-from engine.rules import RULES, MEANINGFUL_TRAFFIC_THRESHOLD, RuleClassifier  # noqa: E402
-from engine.verdict import CLASS_ORDER, Classification, Verdict  # noqa: E402
-from evaluation.metrics import evaluate  # noqa: E402
-from inventory.correlator import InventoryRecord  # noqa: E402
-from pipeline import run_discovery  # noqa: E402
-from simulated_env.estate import Label, by_id  # noqa: E402
+from apix.engine.explain import audit_entry, explain, one_line, summarise  # noqa: E402
+from apix.engine.rules import (  # noqa: E402
+    MEANINGFUL_TRAFFIC_THRESHOLD,
+    RULES,
+    RuleClassifier,
+)
+from apix.engine.verdict import CLASS_ORDER, Classification  # noqa: E402
+from apix.evaluation.metrics import evaluate  # noqa: E402
+from apix.inventory.correlator import InventoryRecord  # noqa: E402
+from apix.pipeline import run_discovery  # noqa: E402
+from apix.simulated_env.estate import Label, by_id  # noqa: E402
 
 _PASS = 0
 _FAIL = 0
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
+    """Record a check, and raise if it failed.
+
+    Raising matters: these functions are named `test_*`, so pytest collects them.
+    A helper that only *recorded* failures would let pytest report the whole file
+    green while checks inside it were failing — a silently passing test suite is
+    worse than no suite. The script runner in `main()` catches the exception so
+    it can still report every check rather than stopping at the first failure.
+    """
     global _PASS, _FAIL
     if condition:
         _PASS += 1
         print(f"  PASS  {name}")
-    else:
-        _FAIL += 1
-        print(f"  FAIL  {name}" + (f"\n          {detail}" if detail else ""))
+        return
+    _FAIL += 1
+    print(f"  FAIL  {name}" + (f"\n          {detail}" if detail else ""))
+    raise AssertionError(f"{name}: {detail}" if detail else name)
 
 
 # ---------------------------------------------------------------------------
 # Boundary: the engine must never see the answer key
 # ---------------------------------------------------------------------------
+#: Any import path that would reach the answer key. Both spellings are checked
+#: because the package migration changed `simulated_env` to `apix.simulated_env`,
+#: and a guard that only knows the old name passes silently while protecting
+#: nothing — which is worse than having no guard at all.
+_GROUND_TRUTH_MODULES = ("simulated_env", "apix.simulated_env")
+
+#: Two different guarantees are needed, because the packages differ in what they
+#: legitimately need.
+#:
+#: STRUCTURAL isolation — must not import the estate at all. These packages
+#: reason over the correlated inventory and have no business knowing that a
+#: simulated environment even exists. Enforced at the AST level.
+_STRUCTURALLY_ISOLATED = ("engine", "inventory")
+#:
+#: TOKEN isolation — may import the estate, because in simulation mode it IS
+#: their data source, but must never read the answer-key fields. Connectors read
+#: observable attributes; dataset/build.py attaches labels only after feature
+#: extraction has finished. Enforced by token scan (and again in
+#: tests/test_discovery.py against the imported modules).
+_TOKEN_ISOLATED = ("connectors", "dataset")
+
+_ANSWER_KEY_FIELDS = ("true_label", "decay_story")
+
+
+def _reaches_ground_truth(name: str | None) -> bool:
+    return bool(name) and name.startswith(_GROUND_TRUTH_MODULES)  # type: ignore[union-attr]
+
+
 def test_engine_never_imports_ground_truth() -> None:
-    """No module under engine/ may import from simulated_env, at any depth."""
+    """`engine` and `inventory` must not import the estate at any depth."""
     offenders: list[str] = []
-    for path in (ROOT / "engine").rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name.startswith("simulated_env"):
-                        offenders.append(f"{path.name}: import {alias.name}")
-            elif isinstance(node, ast.ImportFrom):
-                if (node.module or "").startswith("simulated_env"):
-                    offenders.append(f"{path.name}: from {node.module}")
+    scanned = 0
+    for pkg in _STRUCTURALLY_ISOLATED:
+        for path in (ROOT / "src" / "apix" / pkg).rglob("*.py"):
+            scanned += 1
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if _reaches_ground_truth(alias.name):
+                            offenders.append(f"{pkg}/{path.name}: import {alias.name}")
+                elif isinstance(node, ast.ImportFrom) and _reaches_ground_truth(
+                    node.module
+                ):
+                    offenders.append(f"{pkg}/{path.name}: from {node.module}")
+
     check(
         "test_engine_never_imports_ground_truth",
-        not offenders,
-        f"ground-truth leakage: {offenders}",
+        not offenders and scanned > 0,
+        f"leakage: {offenders}" if offenders else "guard scanned zero files",
+    )
+
+
+def test_detection_code_never_reads_answer_key_fields() -> None:
+    """No module that may import the estate is allowed to read its labels."""
+    offenders: list[str] = []
+    scanned = 0
+    for pkg in (*_STRUCTURALLY_ISOLATED, *_TOKEN_ISOLATED):
+        for path in (ROOT / "src" / "apix" / pkg).rglob("*.py"):
+            scanned += 1
+            src = path.read_text(encoding="utf-8")
+            # Strip docstrings, where these terms legitimately appear in prose
+            # explaining why they must not be read.
+            body = "".join(
+                seg for i, seg in enumerate(src.split('"""')) if i % 2 == 0
+            )
+            for field in _ANSWER_KEY_FIELDS:
+                if field in body:
+                    offenders.append(f"{pkg}/{path.name}: reads {field}")
+
+    # dataset/build.py attaches the label AFTER extract_features() has run; the
+    # separation is asserted by test_discovery.test_no_ground_truth_leakage,
+    # which scans extract_features itself.
+    offenders = [o for o in offenders if not o.startswith("dataset/build.py")]
+
+    check(
+        "test_detection_code_never_reads_answer_key_fields",
+        not offenders and scanned > 0,
+        f"leakage: {offenders}" if offenders else "guard scanned zero files",
     )
 
 
 def test_no_rule_references_true_label() -> None:
     """No rule predicate may mention true_label or decay_story."""
-    src = (ROOT / "engine" / "rules.py").read_text(encoding="utf-8")
+    src = (ROOT / "src" / "apix" / "engine" / "rules.py").read_text(encoding="utf-8")
     # Strip the module docstring, where these terms appear in prose.
     body = src.split('"""', 2)[-1]
-    banned = [t for t in ("true_label", "decay_story") if t in body]
+    banned = [t for t in _ANSWER_KEY_FIELDS if t in body]
     check("test_no_rule_references_true_label", not banned, f"found {banned}")
 
 
@@ -329,7 +405,7 @@ def test_correlation_beats_single_source() -> None:
     If a single authoritative source ever matched the correlated pipeline on
     zombie recall, the entire thesis would be wrong and this must fail loudly.
     """
-    from evaluation.benchmark import run_benchmark
+    from apix.evaluation.benchmark import run_benchmark
 
     r = run_benchmark()
     full = r["api-exorcist"]["zombies_caught"]
@@ -345,6 +421,7 @@ def main() -> None:
     print("Engine tests\n")
     for fn in [
         test_engine_never_imports_ground_truth,
+        test_detection_code_never_reads_answer_key_fields,
         test_no_rule_references_true_label,
         test_healthy_endpoint_is_active,
         test_silent_shadow_endpoint_is_zombie,
@@ -365,7 +442,10 @@ def main() -> None:
         test_engine_and_estate_taxonomies_agree,
         test_correlation_beats_single_source,
     ]:
-        fn()
+        # Already reported by check(); suppressed so that one failure does not
+        # hide the state of every test after it.
+        with contextlib.suppress(AssertionError):
+            fn()
 
     print(f"\n{_PASS} passed, {_FAIL} failed")
     sys.exit(1 if _FAIL else 0)

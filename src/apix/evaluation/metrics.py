@@ -26,7 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from engine.verdict import CLASS_ORDER, Classification
+from apix.engine.verdict import CLASS_ORDER
 
 
 @dataclass

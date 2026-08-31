@@ -16,13 +16,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import connectors.discovery as discovery_mod  # noqa: E402
-import connectors.gateway as gateway_mod  # noqa: E402
-import inventory.correlator as correlator_mod  # noqa: E402
-from dataset.build import FEATURE_NAMES, build, extract_features  # noqa: E402
-from pipeline import run_discovery  # noqa: E402
-from simulated_env.estate import ESTATE, Label, by_id  # noqa: E402
-
+import apix.connectors.discovery as discovery_mod
+import apix.connectors.gateway as gateway_mod
+import apix.inventory.correlator as correlator_mod
+from apix.dataset.build import FEATURE_NAMES, build, extract_features
+from apix.pipeline import run_discovery
+from apix.simulated_env.estate import ESTATE, Label, by_id
 
 # --------------------------------------------------------------------
 # Integrity

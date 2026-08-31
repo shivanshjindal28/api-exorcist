@@ -18,7 +18,9 @@ model. An explanation that is a readout of the decision itself cannot.
 
 from __future__ import annotations
 
-from engine.verdict import Classification, Verdict
+from typing import Any
+
+from apix.engine.verdict import Classification, Verdict
 
 #: What each label means, in one line, for an operator who is not the architect.
 LABEL_MEANING: dict[Classification, str] = {
@@ -88,7 +90,7 @@ def one_line(v: Verdict) -> str:
     return f"{v.label.value:<11} {v.confidence:>4.0%}  {v.endpoint_id}  — {why}"
 
 
-def audit_entry(v: Verdict) -> dict:
+def audit_entry(v: Verdict) -> dict[str, Any]:
     """The verdict in the shape the audit log stores.
 
     Every field an auditor needs to reconstruct the decision without access to

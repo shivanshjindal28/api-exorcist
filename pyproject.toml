@@ -1,0 +1,119 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "apix"
+version = "0.5.0"
+description = "Autonomous discovery and safe elimination of zombie, shadow and orphaned APIs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Shivansh Jindal" }]
+keywords = ["api-security", "shadow-api", "zombie-api", "attack-surface", "discovery"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+# The discovery pipeline, classifier and evaluation run on the standard library
+# alone. That is a deliberate property: the demo and the test suite need no
+# infrastructure, and CI stays fast. Everything optional lives in extras below.
+dependencies = []
+
+[project.optional-dependencies]
+# Production transport. The pipeline code is identical either way.
+stream = [
+    "kafka-python>=2.0",
+    "elasticsearch>=8.0",
+]
+# Phase 3: the trained model layer and SHAP attribution.
+ml = [
+    "scikit-learn>=1.4",
+    "pandas>=2.0",
+    "shap>=0.45",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pre-commit>=3.7",
+]
+
+[project.scripts]
+apix = "apix.cli:main"
+
+[project.urls]
+Documentation = "https://github.com/OWNER/api-exorcist/tree/main/docs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/apix"]
+
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q --strict-markers"
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+source = ["apix"]
+branch = true
+
+[tool.coverage.report]
+# The simulated estate is data, not logic; excluding it stops a large literal
+# table from flattering the coverage figure.
+omit = ["*/simulated_env/*"]
+exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:"]
+
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 90
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import sorting
+    "B",        # bugbear
+    "UP",       # pyupgrade
+    "SIM",      # simplify
+    "RUF",      # ruff-specific
+]
+ignore = [
+    "E501",     # line length is handled by the formatter
+    "B008",     # function call in default arg - intentional for factories
+    # En dashes and similar typography in prose are deliberate. Rewriting
+    # documentation to hyphens to satisfy a linter makes the docs worse, and
+    # these files are read by examiners as much as by interpreters.
+    "RUF002",   # ambiguous unicode in docstring
+    "RUF003",   # ambiguous unicode in comment
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The estate is a hand-written data table; its long literals are the point.
+"src/apix/simulated_env/estate.py" = ["E501"]
+# Tests use single-letter helpers and assert-style checks freely.
+"tests/*" = ["E741"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apix"]
+
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+files = ["src/apix"]
+strict = true
+warn_unreachable = true
+# Optional dependencies are absent in the default install; their absence is
+# handled at runtime and must not fail type checking.
+[[tool.mypy.overrides]]
+module = ["kafka.*", "elasticsearch.*", "shap.*", "sklearn.*", "pandas.*"]
+ignore_missing_imports = true

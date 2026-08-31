@@ -21,10 +21,11 @@ They never read ground truth and never classify.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from collections.abc import Iterator
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Iterator
+from typing import Any
 
 
 class Source(str, Enum):
