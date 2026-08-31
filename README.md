@@ -32,15 +32,17 @@ The system runs a complete vertical slice of its core loop:
 
 **Comparative evaluation** — identical pipeline code, only the evidence sources differ:
 
-| Configuration | Coverage | Zombie recall |
-|---|---|---|
-| Gateway registry only | 76.0% | 25.0% |
-| OpenAPI specification only | 68.0% | 0.0% |
-| Gateway + spec (conventional) | 76.0% | 25.0% |
-| **All six, correlated** | **100%** | **100%** |
+| Configuration | Coverage | Rules usable | Zombie recall |
+|---|---|---|---|
+| Gateway registry only | 76.0% | 0 / 14 | 0.0% |
+| OpenAPI specification only | 68.0% | 3 / 14 | 0.0% |
+| Gateway + spec (conventional) | 76.0% | 5 / 14 | 0.0% |
+| **All six, correlated** | **100%** | **14 / 14** | **100%** |
 
-A conventional API inventory finds 2 of 8 zombies. Correlation finds all 8 — and four
-of them are unauthenticated.
+A conventional API inventory finds **none** of the 8 zombies. Correlation finds all
+8 — and four of them are unauthenticated. A gateway registry on its own cannot
+evaluate a single classification rule: it enumerates endpoints without being able to
+say anything about them.
 
 ---
 
@@ -62,9 +64,33 @@ explained.
 
 ### Commands
 
+### Scanning a real repository
+
+```bash
+pip install -e ".[live]"
+```
+
+```bash
+apix scan --github fastapi/full-stack-fastapi-template
+```
+
+This clones the repository, extracts route declarations with **Semgrep** (AST
+matching, so a route written in a comment or a string literal is not counted),
+reads per-file staleness from the real commit history, takes ownership from
+CODEOWNERS, and parses any committed OpenAPI specification.
+
+**A repository scan is deliberately partial.** It has no gateway registry, no
+traffic capture and no DNS. Rules depending on those abstain rather than firing,
+so nothing found this way is ever a removal candidate — you cannot conclude an
+endpoint is unused when usage was never measured. The scan says so explicitly.
+
+### Commands
+
 | Command | What it does |
 |---|---|
-| `apix scan` | Discover, classify and explain |
+| `apix scan` | Discover, classify and explain (simulated estate) |
+| `apix scan --github OWNER/REPO` | Scan a real GitHub repository |
+| `apix scan --local PATH` | Scan an already-cloned repository |
 | `apix scan --coverage` | Per-source coverage table only |
 | `apix scan --classify-only` | Verdicts and explanations, no coverage table |
 | `apix scan --explain-all` | Explain every endpoint, not only risky ones |

@@ -1,0 +1,178 @@
+# Semgrep rules for extracting HTTP route declarations from source.
+#
+# Why Semgrep and not a regular expression
+# ----------------------------------------
+# These patterns match the *abstract syntax tree*, not the text. A route
+# declaration inside a comment, a docstring, or a string literal does not match,
+# because structurally it is not a decorator applied to a function. A regex over
+# source cannot make that distinction, and in a real repository the difference is
+# hundreds of false endpoints — which for this project would be hundreds of
+# fabricated "shadow APIs".
+#
+# Metavariable transport
+# ----------------------
+# The Semgrep OSS JSON output does not expose a `metavars` field, but it *does*
+# interpolate metavariables into the rule `message`. The messages below are
+# therefore a deliberate wire format: `APIX|path=$PATH|func=$FUNC`, parsed back
+# in semgrep_extractor.py. The HTTP method comes from the rule id, so each method
+# gets its own rule rather than being captured as a metavariable.
+
+rules:
+  # ------------------------------------------------------- Mount prefixes
+  # Routes are declared relative to the router they hang off, and that router
+  # is mounted under a prefix somewhere else entirely. Without these, a scan
+  # reports `/me` as an endpoint when the real path is `/api/v1/users/me` —
+  # wrong, and wrong in the direction that invents endpoints nobody serves.
+  - id: apix-py-router-prefix
+    languages: [python]
+    severity: INFO
+    message: "APIXPREFIX|var=$VAR|prefix=$PREFIX"
+    pattern: $VAR = APIRouter(..., prefix=$PREFIX, ...)
+
+  - id: apix-py-include-router
+    languages: [python]
+    severity: INFO
+    message: "APIXMOUNT|prefix=$PREFIX"
+    pattern-either:
+      - pattern: $APP.include_router(..., prefix=$PREFIX, ...)
+      - pattern: $APP.include_router($ROUTER, prefix=$PREFIX)
+
+  # ---------------------------------------------------------------- FastAPI
+  - id: apix-py-fastapi-get
+    languages: [python]
+    severity: INFO
+    message: "APIX|path=$PATH|func=$FUNC"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @$APP.get($PATH, ...)
+              def $FUNC(...): ...
+          - pattern: |
+              @$APP.get($PATH, ...)
+              async def $FUNC(...): ...
+
+  - id: apix-py-fastapi-post
+    languages: [python]
+    severity: INFO
+    message: "APIX|path=$PATH|func=$FUNC"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @$APP.post($PATH, ...)
+              def $FUNC(...): ...
+          - pattern: |
+              @$APP.post($PATH, ...)
+              async def $FUNC(...): ...
+
+  - id: apix-py-fastapi-put
+    languages: [python]
+    severity: INFO
+    message: "APIX|path=$PATH|func=$FUNC"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @$APP.put($PATH, ...)
+              def $FUNC(...): ...
+          - pattern: |
+              @$APP.put($PATH, ...)
+              async def $FUNC(...): ...
+
+  - id: apix-py-fastapi-patch
+    languages: [python]
+    severity: INFO
+    message: "APIX|path=$PATH|func=$FUNC"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @$APP.patch($PATH, ...)
+              def $FUNC(...): ...
+          - pattern: |
+              @$APP.patch($PATH, ...)
+              async def $FUNC(...): ...
+
+  - id: apix-py-fastapi-delete
+    languages: [python]
+    severity: INFO
+    message: "APIX|path=$PATH|func=$FUNC"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @$APP.delete($PATH, ...)
+              def $FUNC(...): ...
+          - pattern: |
+              @$APP.delete($PATH, ...)
+              async def $FUNC(...): ...
+
+  # ------------------------------------------------------------------ Flask
+  # Flask's method defaults to GET and is otherwise passed as an argument, so
+  # the extractor reads it from the matched line rather than the rule id.
+  - id: apix-py-flask-route
+    languages: [python]
+    severity: INFO
+    message: "APIX|path=$PATH|func=$FUNC"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @$APP.route($PATH, ...)
+              def $FUNC(...): ...
+          - pattern: |
+              @$APP.route($PATH, ...)
+              async def $FUNC(...): ...
+
+  # ---------------------------------------------------------------- Express
+  - id: apix-js-express-get
+    languages: [javascript, typescript]
+    severity: INFO
+    message: "APIX|path=$PATH|func=anonymous"
+    pattern: $APP.get($PATH, ...)
+
+  - id: apix-js-express-post
+    languages: [javascript, typescript]
+    severity: INFO
+    message: "APIX|path=$PATH|func=anonymous"
+    pattern: $APP.post($PATH, ...)
+
+  - id: apix-js-express-put
+    languages: [javascript, typescript]
+    severity: INFO
+    message: "APIX|path=$PATH|func=anonymous"
+    pattern: $APP.put($PATH, ...)
+
+  - id: apix-js-express-delete
+    languages: [javascript, typescript]
+    severity: INFO
+    message: "APIX|path=$PATH|func=anonymous"
+    pattern: $APP.delete($PATH, ...)
+
+  # ------------------------------------------------------------- Spring MVC
+  - id: apix-java-spring-get
+    languages: [java]
+    severity: INFO
+    message: "APIX|path=$PATH|func=$FUNC"
+    pattern: |
+      @GetMapping($PATH)
+      $RET $FUNC(...) { ... }
+
+  - id: apix-java-spring-post
+    languages: [java]
+    severity: INFO
+    message: "APIX|path=$PATH|func=$FUNC"
+    pattern: |
+      @PostMapping($PATH)
+      $RET $FUNC(...) { ... }
+
+  - id: apix-java-spring-put
+    languages: [java]
+    severity: INFO
+    message: "APIX|path=$PATH|func=$FUNC"
+    pattern: |
+      @PutMapping($PATH)
+      $RET $FUNC(...) { ... }
+
+  - id: apix-java-spring-delete
+    languages: [java]
+    severity: INFO
+    message: "APIX|path=$PATH|func=$FUNC"
+    pattern: |
+      @DeleteMapping($PATH)
+      $RET $FUNC(...) { ... }

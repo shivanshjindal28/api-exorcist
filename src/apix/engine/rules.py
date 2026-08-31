@@ -46,6 +46,7 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from apix.connectors.base import Source
 from apix.engine.verdict import CLASS_ORDER, Classification, Reason, Verdict
 from apix.inventory.correlator import InventoryRecord
 
@@ -76,6 +77,27 @@ class EvidenceRule:
     evidence_source: str
     predicate: Callable[[InventoryRecord], bool]
     weights: dict[Classification, float]
+    #: Sources whose data this rule's predicate reads. **All** must have been
+    #: consulted for the rule to be evaluated at all.
+    #:
+    #: This is the distinction between "the source said no" and "nobody asked".
+    #: A scan of a source repository has no traffic capture, so every endpoint
+    #: has `observed_on_wire == False` — not because they are silent, but
+    #: because silence was never measured. Without this field the classifier
+    #: would read that as overwhelming evidence and label a healthy production
+    #: API a zombie, with high confidence. Absence of evidence is not evidence
+    #: of absence, and the engine has to encode that rather than assume it.
+    requires: frozenset[Source] = frozenset()
+    #: Sources of which **at least one** must have been consulted. Used where a
+    #: fact is derivable from several places: ownership comes from the OpenAPI
+    #: spec, from CI/CD metadata, or from a repository CODEOWNERS file, and any
+    #: one of them is enough to make "no owner recorded" a real observation.
+    requires_any: frozenset[Source] = frozenset()
+
+    def evaluable_with(self, consulted: frozenset[Source]) -> bool:
+        if not self.requires <= consulted:
+            return False
+        return not self.requires_any or bool(self.requires_any & consulted)
 
 
 def _has_meaningful_traffic(r: InventoryRecord) -> bool:
@@ -100,6 +122,7 @@ RULES: list[EvidenceRule] = [
         # The primary discriminator. ORPHANED requires real use by definition,
         # so silence argues against it as strongly as it argues against ACTIVE.
         weights={Z: 3.5, D: 0.5, A: -3.0, ORPH: -2.5},
+        requires=frozenset({Source.TRAFFIC}),
     ),
     EvidenceRule(
         key="MEANINGFUL_TRAFFIC",
@@ -107,6 +130,7 @@ RULES: list[EvidenceRule] = [
         evidence_source="TRAFFIC",
         predicate=_has_meaningful_traffic,
         weights={A: 2.0, ORPH: 1.5, D: 1.0, Z: -3.5},
+        requires=frozenset({Source.TRAFFIC}),
     ),
     EvidenceRule(
         key="SHADOW",
@@ -114,6 +138,7 @@ RULES: list[EvidenceRule] = [
         evidence_source="OPENAPI+GATEWAY",
         predicate=lambda r: not r.in_openapi_spec and not r.in_gateway_registry,
         weights={Z: 2.5, A: -2.0, D: -1.5},
+        requires=frozenset({Source.OPENAPI, Source.GATEWAY}),
     ),
     EvidenceRule(
         key="UNDOCUMENTED",
@@ -121,6 +146,7 @@ RULES: list[EvidenceRule] = [
         evidence_source="CODE+OPENAPI",
         predicate=lambda r: r.handler_exists_in_code and not r.in_openapi_spec,
         weights={Z: 1.0, A: -1.0, D: -1.0},
+        requires=frozenset({Source.CODE, Source.OPENAPI}),
     ),
     EvidenceRule(
         key="DOCUMENTED_AND_REGISTERED",
@@ -128,6 +154,7 @@ RULES: list[EvidenceRule] = [
         evidence_source="OPENAPI+GATEWAY",
         predicate=lambda r: r.in_openapi_spec and r.in_gateway_registry,
         weights={A: 1.5, Z: -1.5},
+        requires=frozenset({Source.OPENAPI, Source.GATEWAY}),
     ),
     EvidenceRule(
         key="MARKED_DEPRECATED",
@@ -138,6 +165,7 @@ RULES: list[EvidenceRule] = [
         # not an inference. Note the converse does NOT hold - absence of the flag
         # is not evidence against deprecation, because teams forget to set it.
         weights={D: 5.5, A: -2.5, Z: -0.5},
+        requires=frozenset({Source.OPENAPI}),
     ),
     EvidenceRule(
         key="NO_OWNER",
@@ -145,6 +173,7 @@ RULES: list[EvidenceRule] = [
         evidence_source="OPENAPI+CICD",
         predicate=lambda r: r.owner_team is None,
         weights={ORPH: 3.0, Z: 0.8, A: -2.0},
+        requires_any=frozenset({Source.OPENAPI, Source.CICD, Source.CODE}),
     ),
     EvidenceRule(
         key="HAS_OWNER",
@@ -152,6 +181,7 @@ RULES: list[EvidenceRule] = [
         evidence_source="OPENAPI+CICD",
         predicate=lambda r: r.owner_team is not None,
         weights={A: 1.2, D: 0.5, ORPH: -3.0},
+        requires_any=frozenset({Source.OPENAPI, Source.CICD, Source.CODE}),
     ),
     EvidenceRule(
         key="STALE_6M",
@@ -161,6 +191,7 @@ RULES: list[EvidenceRule] = [
             r.last_seen_days_ago is None or r.last_seen_days_ago > 180
         ),
         weights={Z: 2.0, A: -2.0, ORPH: -1.5},
+        requires=frozenset({Source.TRAFFIC}),
     ),
     EvidenceRule(
         key="RECENTLY_USED",
@@ -170,6 +201,7 @@ RULES: list[EvidenceRule] = [
             r.last_seen_days_ago is not None and r.last_seen_days_ago <= 30
         ),
         weights={A: 1.5, ORPH: 1.0, Z: -2.0},
+        requires=frozenset({Source.TRAFFIC}),
     ),
     EvidenceRule(
         key="REACHABLE_BUT_UNUSED",
@@ -178,6 +210,7 @@ RULES: list[EvidenceRule] = [
         predicate=lambda r: r.dns_resolvable and not r.observed_on_wire,
         # The dangerous combination: nobody uses it, but anybody can reach it.
         weights={Z: 1.5},
+        requires=frozenset({Source.DNS, Source.TRAFFIC}),
     ),
     EvidenceRule(
         key="CODE_UNTOUCHED_1Y",
@@ -185,6 +218,7 @@ RULES: list[EvidenceRule] = [
         evidence_source="CODE",
         predicate=lambda r: (r.days_since_last_commit or 0) > 365,
         weights={Z: 1.0, D: 0.5, A: -0.8},
+        requires=frozenset({Source.CODE}),
     ),
     EvidenceRule(
         key="NO_PIPELINE_RECORD",
@@ -194,6 +228,7 @@ RULES: list[EvidenceRule] = [
             r.handler_exists_in_code and not r.deployed_via_pipeline
         ),
         weights={Z: 1.2, A: -0.8},
+        requires=frozenset({Source.CODE, Source.CICD}),
     ),
     EvidenceRule(
         key="HAS_INTERNAL_CALLERS",
@@ -201,24 +236,45 @@ RULES: list[EvidenceRule] = [
         evidence_source="TRAFFIC",
         predicate=lambda r: r.distinct_callers > 0,
         weights={A: 1.2, ORPH: 1.0, Z: -1.5},
+        requires=frozenset({Source.TRAFFIC}),
     ),
 ]
 
 
+#: Every source. The default when a caller does not say what was consulted —
+#: which is the case for the simulated estate, where all six connectors run.
+ALL_SOURCES: frozenset[Source] = frozenset(Source)
+
+
 class RuleClassifier:
-    """Deterministic, fully auditable classification from observable evidence."""
+    """Deterministic, fully auditable classification from observable evidence.
+
+    `consulted` names the sources that actually ran in the scan being classified.
+    Rules depending on a source that was never consulted abstain rather than
+    firing, so a repository-only scan does not mistake "we have no traffic data"
+    for "this endpoint receives no traffic".
+    """
 
     name = "rules"
 
-    def __init__(self, rules: list[EvidenceRule] | None = None) -> None:
+    def __init__(
+        self,
+        rules: list[EvidenceRule] | None = None,
+        consulted: frozenset[Source] | None = None,
+    ) -> None:
         self.rules = rules if rules is not None else RULES
+        self.consulted = ALL_SOURCES if consulted is None else consulted
 
     # ------------------------------------------------------------------
     def classify(self, rec: InventoryRecord) -> Verdict:
         scores: dict[Classification, float] = {c: 0.0 for c in CLASS_ORDER}
         fired: list[EvidenceRule] = []
+        abstained: list[str] = []
 
         for rule in self.rules:
+            if not rule.evaluable_with(self.consulted):
+                abstained.append(rule.key)
+                continue
             if rule.predicate(rec):
                 fired.append(rule)
                 for cls, w in rule.weights.items():
@@ -248,6 +304,9 @@ class RuleClassifier:
             scores={c.value: scores[c] for c in CLASS_ORDER},
             decided_by=self.name,
             risk_score=_risk_score(rec, label),
+            sources_consulted=frozenset(s.value for s in self.consulted),
+            abstained=abstained,
+            rules_fired=len(fired),
         )
 
     def classify_all(self, records: list[InventoryRecord]) -> list[Verdict]:

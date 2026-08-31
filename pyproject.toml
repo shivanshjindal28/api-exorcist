@@ -26,6 +26,13 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
+# Scanning real repositories. Semgrep gives AST-level route extraction across
+# languages; PyYAML parses committed OpenAPI documents. Kept optional so the
+# simulated pipeline, the tests and CI stay standard-library only.
+live = [
+    "semgrep>=1.100",
+    "pyyaml>=6.0",
+]
 # Production transport. The pipeline code is identical either way.
 stream = [
     "kafka-python>=2.0",
@@ -43,6 +50,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "pre-commit>=3.7",
+    "types-PyYAML>=6.0",
 ]
 
 [project.scripts]

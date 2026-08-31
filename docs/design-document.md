@@ -688,12 +688,30 @@ registry, as a bank would today.
 
 Produced by `python -m evaluation.benchmark`, which writes `data/benchmark.json`.
 
-| Configuration | Estate coverage | Zombies caught | Zombie recall |
-|---|---|---|---|
-| Gateway registry only | 19 / 25 (76.0%) | 2 / 8 | 25.0% |
-| OpenAPI specification only | 17 / 25 (68.0%) | 0 / 8 | 0.0% |
-| Gateway + specification (conventional) | 19 / 25 (76.0%) | 2 / 8 | 25.0% |
-| **API Exorcist — six sources, correlated** | **25 / 25 (100%)** | **8 / 8** | **100.0%** |
+| Configuration | Estate coverage | Rules usable | Zombies caught | Zombie recall |
+|---|---|---|---|---|
+| Gateway registry only | 19 / 25 (76.0%) | **0 / 14** | 0 / 8 | 0.0% |
+| OpenAPI specification only | 17 / 25 (68.0%) | 3 / 14 | 0 / 8 | 0.0% |
+| Gateway + specification (conventional) | 19 / 25 (76.0%) | 5 / 14 | 0 / 8 | 0.0% |
+| **API Exorcist — six sources, correlated** | **25 / 25 (100%)** | **14 / 14** | **8 / 8** | **100.0%** |
+
+**A note on how these numbers changed.** An earlier version of this table showed
+the gateway-only and conventional configurations catching 2 of 8 zombies. That was
+an artefact: those configurations have no traffic connector, so every endpoint
+had `observed_on_wire == False`, and the classifier read that as evidence of
+silence rather than as an absence of measurement. They were being credited with a
+signal they cannot observe.
+
+Rules now declare which sources they depend on and abstain when a source was
+never consulted (`EvidenceRule.requires`). The corrected figures are lower for
+every baseline, and the "rules usable" column shows why: **a gateway registry
+alone can evaluate none of the fourteen rules.** It can enumerate endpoints; it
+cannot classify a single one. Verdicts in that configuration are marked
+indeterminate rather than being reported as healthy, because with every rule
+abstaining all four classes score zero and the label is a tie-break artefact.
+
+The correction favours our own system, which is precisely why it is documented
+here rather than quietly adopted.
 
 **End-to-end zombie recall is the headline metric**, not raw discovery coverage. It
 counts an endpoint only if the configuration both *discovered* and *correctly

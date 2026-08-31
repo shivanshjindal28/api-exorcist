@@ -50,15 +50,55 @@ LABEL_ACTION: dict[Classification, str] = {
 _BAR_WIDTH = 5
 
 
+#: What each label means when the evidence behind it is incomplete. The
+#: full-evidence wording asserts things a partial scan cannot know — telling an
+#: operator an endpoint "carries real traffic" when no traffic was ever measured
+#: is exactly the kind of confident fabrication this system exists to avoid.
+PARTIAL_MEANING: dict[Classification, str] = {
+    Classification.ACTIVE: "nothing in the available evidence suggests decay",
+    Classification.DEPRECATED: "declared obsolete in the specification",
+    Classification.ORPHANED: "no owning team could be identified",
+    Classification.ZOMBIE: "undocumented and unmaintained on the evidence available",
+}
+
+PARTIAL_ACTION: dict[Classification, str] = {
+    Classification.ACTIVE: "No action on this evidence.",
+    Classification.DEPRECATED: (
+        "Confirm the retirement plan has a date. Deprecated endpoints that "
+        "never get removed are how zombies are created."
+    ),
+    Classification.ORPHANED: (
+        "Identify an owner. Whether it is still in use is unknown from this "
+        "scan."
+    ),
+    Classification.ZOMBIE: (
+        "Investigate. NOT a removal candidate on this evidence — usage was "
+        "never measured, and a repository cannot show what a service serves."
+    ),
+}
+
+
 def explain(v: Verdict, *, indent: str = "") -> str:
     """Render one verdict as a human-readable explanation block."""
     lines: list[str] = []
     bar = "#" * v.risk_score + "." * (_BAR_WIDTH - v.risk_score)
+    partial = v.is_partial
 
     lines.append(f"{indent}[{bar}] {v.endpoint_id}")
+
+    if not v.is_determinate:
+        lines.append(
+            f"{indent}        verdict : UNDETERMINED — no evidence was available; "
+            "this endpoint was enumerated, not assessed"
+        )
+        lines.append(f"{indent}        action  : Connect more sources.")
+        return "\n".join(lines)
+
+    meaning = (PARTIAL_MEANING if partial else LABEL_MEANING)[v.label]
+    qualifier = " on partial evidence" if partial else ""
     lines.append(
         f"{indent}        verdict : {v.label.value} "
-        f"({v.confidence:.0%} confidence) — {LABEL_MEANING[v.label]}"
+        f"({v.confidence:.0%} confidence{qualifier}) — {meaning}"
     )
 
     support = v.supporting_reasons
@@ -79,8 +119,25 @@ def explain(v: Verdict, *, indent: str = "") -> str:
                 f"[{r.evidence_source}, {r.contribution:.1f}]"
             )
 
-    lines.append(f"{indent}        action  : {LABEL_ACTION[v.label]}")
+    if partial:
+        unseen = ", ".join(sorted(_UNSEEN_SOURCES - v.sources_consulted))
+        if unseen:
+            lines.append(
+                f"{indent}        unknown : {unseen} not consulted — "
+                f"{len(v.abstained)} rule(s) abstained"
+            )
+
+    lines.append(
+        f"{indent}        action  : "
+        f"{(PARTIAL_ACTION if partial else LABEL_ACTION)[v.label]}"
+    )
     return "\n".join(lines)
+
+
+#: Every source a verdict might have been denied. Used to name what was missing.
+_UNSEEN_SOURCES = frozenset(
+    {"GATEWAY", "OPENAPI", "TRAFFIC", "CODE", "DNS", "CICD"}
+)
 
 
 def one_line(v: Verdict) -> str:

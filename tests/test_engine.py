@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from apix.connectors.base import Source  # noqa: E402
 from apix.engine.explain import audit_entry, explain, one_line, summarise  # noqa: E402
 from apix.engine.rules import (  # noqa: E402
     MEANINGFUL_TRAFFIC_THRESHOLD,
@@ -263,6 +264,91 @@ def test_classifier_is_deterministic() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Source availability: "nobody asked" is not "the answer was no"
+# ---------------------------------------------------------------------------
+def test_traffic_rules_abstain_without_traffic_source() -> None:
+    """A repository scan has no traffic capture; silence must not be inferred."""
+    repo_only = frozenset({Source.CODE, Source.OPENAPI, Source.CICD})
+    v = RuleClassifier(consulted=repo_only).classify(
+        _record(observed_on_wire=False, daily_calls=0, last_seen_days_ago=None)
+    )
+    traffic_rules = {"NO_MEANINGFUL_TRAFFIC", "STALE_6M", "RECENTLY_USED"}
+    check(
+        "test_traffic_rules_abstain_without_traffic_source",
+        traffic_rules <= set(v.abstained),
+        f"abstained={v.abstained}",
+    )
+
+
+def test_repo_only_scan_does_not_label_healthy_endpoint_zombie() -> None:
+    """The bug this whole mechanism exists to prevent.
+
+    A documented, owned, recently-committed endpoint with no traffic data must
+    not be called a zombie just because a repository cannot see traffic.
+    """
+    repo_only = frozenset({Source.CODE, Source.OPENAPI, Source.CICD})
+    v = RuleClassifier(consulted=repo_only).classify(
+        _record(observed_on_wire=False, daily_calls=0, last_seen_days_ago=None)
+    )
+    check(
+        "test_repo_only_scan_does_not_label_healthy_endpoint_zombie",
+        v.label is not Classification.ZOMBIE,
+        f"got {v.label} — traffic absence was treated as evidence",
+    )
+
+
+def test_zombie_without_traffic_evidence_is_not_actionable() -> None:
+    """Never queue a removal when usage was never measured."""
+    repo_only = frozenset({Source.CODE, Source.OPENAPI, Source.CICD})
+    v = RuleClassifier(consulted=repo_only).classify(
+        _record(
+            in_openapi_spec=False,
+            owner_team=None,
+            deployed_via_pipeline=False,
+            days_since_last_commit=900,
+            observed_on_wire=False,
+            daily_calls=0,
+        )
+    )
+    ok = (not v.is_actionable) and (
+        v.label is not Classification.ZOMBIE or v.blocked_reason is not None
+    )
+    check(
+        "test_zombie_without_traffic_evidence_is_not_actionable",
+        ok,
+        f"label={v.label} actionable={v.is_actionable} blocked={v.blocked_reason}",
+    )
+
+
+def test_no_evidence_means_indeterminate_not_active() -> None:
+    """A gateway registry alone can enumerate endpoints but classify none.
+
+    Every rule abstains, all four classes score zero, and max() returns ACTIVE
+    by tie-break. Reporting that as 'healthy' would be the most dangerous thing
+    this system could do, so the verdict is marked indeterminate.
+    """
+    v = RuleClassifier(consulted=frozenset({Source.GATEWAY})).classify(_record())
+    check(
+        "test_no_evidence_means_indeterminate_not_active",
+        v.rules_fired == 0
+        and not v.is_determinate
+        and not v.is_actionable
+        and abs(v.confidence - 0.25) < 1e-9,
+        f"fired={v.rules_fired} determinate={v.is_determinate} conf={v.confidence}",
+    )
+
+
+def test_full_scan_evaluates_every_rule() -> None:
+    """With all six sources nothing abstains — the simulated path is unchanged."""
+    v = RuleClassifier().classify(_record())
+    check(
+        "test_full_scan_evaluates_every_rule",
+        not v.abstained,
+        f"unexpectedly abstained: {v.abstained}",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Explainability — jury concern #2
 # ---------------------------------------------------------------------------
 def test_every_verdict_carries_reasons() -> None:
@@ -430,6 +516,11 @@ def main() -> None:
         test_deprecation_flag_is_near_decisive,
         test_effectively_silent_counts_as_no_meaningful_traffic,
         test_classifier_is_deterministic,
+        test_traffic_rules_abstain_without_traffic_source,
+        test_repo_only_scan_does_not_label_healthy_endpoint_zombie,
+        test_zombie_without_traffic_evidence_is_not_actionable,
+        test_no_evidence_means_indeterminate_not_active,
+        test_full_scan_evaluates_every_rule,
         test_every_verdict_carries_reasons,
         test_verdict_scores_every_class,
         test_reasons_reference_real_evidence_keys,

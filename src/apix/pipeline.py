@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from apix.config import load as load_settings
-from apix.connectors.base import Connector, DiscoverySignal
+from apix.connectors.base import Connector, DiscoverySignal, Source
 
 if TYPE_CHECKING:
     from apix.engine.verdict import Verdict
@@ -212,12 +212,24 @@ def _risk(r: InventoryRecord) -> int:
     return min(score, 5)
 
 
-def run_classification(records: list[InventoryRecord]) -> list[Verdict]:
-    """Classify the inventory and persist the explained verdicts."""
+def sources_of(connectors: list[type[Connector]] | None = None) -> frozenset[Source]:
+    """Which discovery sources a given connector set actually consults."""
+    return frozenset(c.source for c in (connectors or CONNECTORS))
+
+
+def run_classification(
+    records: list[InventoryRecord],
+    consulted: frozenset[Source] | None = None,
+) -> list[Verdict]:
+    """Classify the inventory and persist the explained verdicts.
+
+    `consulted` must name the sources that actually ran. Passing None means all
+    six, which is only true for a full scan of the simulated estate.
+    """
     from apix.engine.explain import audit_entry
     from apix.engine.rules import RuleClassifier
 
-    verdicts = RuleClassifier().classify_all(records)
+    verdicts = RuleClassifier(consulted=consulted).classify_all(records)
 
     data_dir = load_settings().ensure_data_dir()
     (data_dir / "verdicts.json").write_text(

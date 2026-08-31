@@ -34,6 +34,9 @@ EXIT_ERROR = 2
 
 
 def _cmd_scan(args: argparse.Namespace) -> int:
+    if args.github or args.local:
+        return _scan_repository(args)
+
     from apix.pipeline import (
         print_classification,
         print_coverage,
@@ -61,6 +64,102 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     print_classification(verdicts, explain_all=args.explain_all)
 
     return EXIT_FINDINGS if any(v.is_actionable for v in verdicts) else EXIT_OK
+
+
+def _scan_repository(args: argparse.Namespace) -> int:
+    """Scan a real GitHub repository, or a local checkout."""
+    from apix.engine.explain import audit_entry, explain
+    from apix.live import RepoError, scan_repository
+
+    target = args.github or str(args.local)
+    try:
+        result = scan_repository(
+            target, local_path=args.local, verbose=not args.json
+        )
+    except RepoError as exc:
+        print(f"apix: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    if args.json:
+        print(json.dumps(
+            {
+                "repository": result.slug,
+                "commit": result.head_commit,
+                "sources_consulted": sorted(s.value for s in result.consulted),
+                "sources_unavailable": sorted(s.value for s in result.unavailable),
+                "routes_found": result.routes_found,
+                "verdicts": [audit_entry(v) for v in result.verdicts],
+            },
+            indent=2,
+        ))
+        return EXIT_FINDINGS if result.actionable else EXIT_OK
+
+    print()
+    print("=" * 74)
+    print(f"REAL SCAN — {result.slug} @ {result.head_commit}")
+    print("=" * 74)
+    print()
+    print(f"  route declarations found : {result.routes_found}")
+    print(f"  unified endpoints        : {len(result.records)}")
+    print(f"  OpenAPI specs parsed     : {len(result.spec_files)}"
+          + (f"  {result.spec_files}" if result.spec_files else ""))
+    print(f"  CI/CD workflows          : {result.workflow_count}")
+    print(f"  CODEOWNERS rules         : {result.codeowners_rules}")
+    print(f"  commits walked           : {result.total_commits}")
+    print(f"  extractor                : {result.extractor}")
+    if result.extractor_error:
+        print(f"  extractor error          : {result.extractor_error}")
+    print()
+
+    # Path composition is the part most likely to be subtly wrong, so say what
+    # was and was not resolved rather than presenting every path as absolute.
+    if result.mount_prefixes:
+        print(f"  mount prefix applied     : {', '.join(result.mount_prefixes)}")
+    else:
+        print("  mount prefix             : none found as a literal")
+        print("    -> paths are relative to the API root. A project that mounts")
+        print("       with a variable (prefix=settings.API_V1_STR) needs")
+        print("       cross-module constant resolution, which is not implemented.")
+    print()
+
+    # State plainly what this scan could not see. A repository has no traffic
+    # sensor and no gateway; pretending otherwise is how a tool invents zombies.
+    print("  sources consulted   : "
+          + ", ".join(sorted(s.value for s in result.consulted)))
+    print("  sources UNAVAILABLE : "
+          + ", ".join(sorted(s.value for s in result.unavailable)))
+    print("    -> rules depending on those abstain. Nothing here is a removal")
+    print("       candidate, because real usage was never measured.")
+    print()
+
+    if not result.records:
+        print("  No HTTP routes found. This repository may not serve an API,")
+        print("  or may use a framework the extractor does not yet cover.")
+        print()
+        return EXIT_OK
+
+    from collections import Counter
+
+    counts = Counter(v.label.value for v in result.verdicts)
+    print("  Classification (on partial evidence):")
+    for label, n in counts.most_common():
+        print(f"    {label:<11} {n:>4}")
+    print()
+
+    flagged = sorted(
+        (v for v in result.verdicts if v.risk_score > 0),
+        key=lambda v: (-v.risk_score, v.endpoint_id),
+    )[: args.limit]
+    if flagged:
+        print(f"  Endpoints worth review (showing {len(flagged)}):")
+        print()
+        for v in flagged:
+            print(explain(v, indent="  "))
+            if v.blocked_reason:
+                print(f"          note    : {v.blocked_reason}")
+            print()
+
+    return EXIT_FINDINGS if result.actionable else EXIT_OK
 
 
 def _cmd_benchmark(args: argparse.Namespace) -> int:
@@ -120,6 +219,22 @@ def build_parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="command", metavar="<command>")
 
     scan = sub.add_parser("scan", help="discover, classify and explain")
+    scan.add_argument(
+        "--github",
+        metavar="OWNER/REPO",
+        help="scan a real GitHub repository instead of the simulated estate",
+    )
+    scan.add_argument(
+        "--local",
+        metavar="PATH",
+        help="scan an already-cloned repository on disk",
+    )
+    scan.add_argument(
+        "--limit",
+        type=int,
+        default=15,
+        help="how many flagged endpoints to explain (default 15)",
+    )
     scan.add_argument("--json", action="store_true", help="emit inventory as JSON")
     scan.add_argument("--coverage", action="store_true", help="per-source coverage only")
     scan.add_argument(

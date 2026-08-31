@@ -45,11 +45,11 @@ from apix.connectors.discovery import (
     TrafficConnector,
 )
 from apix.connectors.gateway import GatewayConnector, OpenAPIConnector
-from apix.engine.rules import RuleClassifier
+from apix.engine.rules import RULES, RuleClassifier
 from apix.engine.verdict import Classification
 from apix.evaluation.metrics import evaluate, format_report
 from apix.inventory.correlator import InventoryRecord
-from apix.pipeline import run_discovery
+from apix.pipeline import run_discovery, sources_of
 from apix.simulated_env.estate import by_id
 
 CONFIGURATIONS: list[tuple[str, str, list[type[Connector]]]] = [
@@ -94,7 +94,11 @@ def run_configuration(connectors: list[type[Connector]]) -> dict[str, Any]:
     records = run_discovery(verbose=False, connectors=connectors, persist=False)
     discovered = {r.endpoint_id for r in records}
 
-    classifier = RuleClassifier()
+    # Each configuration is told which sources it actually ran, so a baseline
+    # cannot use "no traffic data" as though it were "no traffic". Without this
+    # the gateway-only configuration would score free zombie evidence it has no
+    # way to observe, and the comparison would be measuring the wrong thing.
+    classifier = RuleClassifier(consulted=sources_of(connectors))
     verdicts = classifier.classify_all(records)
 
     # Classification quality, measured only on what this configuration found.
@@ -121,7 +125,13 @@ def run_configuration(connectors: list[type[Connector]]) -> dict[str, Any]:
         if v.is_actionable and "UNAUTHENTICATED" in _flags_of(records, v.endpoint_id)
     )
 
+    evaluable = [r.key for r in RULES if r.evaluable_with(sources_of(connectors))]
+    indeterminate = sum(1 for v in verdicts if not v.is_determinate)
+
     return {
+        "rules_evaluable": len(evaluable),
+        "rules_total": len(RULES),
+        "indeterminate_verdicts": indeterminate,
         "endpoints_discovered": len(discovered),
         "estate_size": total_in_estate,
         "coverage_pct": round(100.0 * len(discovered) / total_in_estate, 1),
@@ -205,6 +215,32 @@ def print_benchmark(results: dict[str, Any]) -> None:
         print(
             f"  {r['title']:<44}{r['zombies_caught']:>9}"
             f"{r['zombies_in_estate']:>4}{r['zombie_recall_pct']:>10.1f}%  {bar}"
+        )
+    print()
+
+    # ---- what each configuration is even able to reason with ----
+    print("-" * 78)
+    print("Why — evidence available to each configuration")
+    print("-" * 78)
+    print()
+    print(
+        "  A source that was never consulted is not evidence of absence. Rules"
+    )
+    print(
+        "  depending on it abstain. A configuration with no evaluable rules has"
+    )
+    print("  not classified anything — it has merely failed to.")
+    print()
+    print(f"  {'configuration':<44}{'rules usable':>14}{'undetermined':>14}")
+    print("  " + "-" * 71)
+    for key, _t, _c in CONFIGURATIONS:
+        r = results[key]
+        note = ""
+        if r["rules_evaluable"] == 0:
+            note = "  <- cannot classify at all"
+        print(
+            f"  {r['title']:<44}{r['rules_evaluable']:>7}/{r['rules_total']:<6}"
+            f"{r['indeterminate_verdicts']:>8}/{r['endpoints_discovered']:<5}{note}"
         )
     print()
 
