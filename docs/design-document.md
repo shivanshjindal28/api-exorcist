@@ -92,9 +92,9 @@ flowchart TB
     classDef done fill:#dff0e8,stroke:#2F6B63,color:#123
     classDef wip  fill:#fdf0dc,stroke:#A9631B,color:#123
     classDef todo fill:#eeeeee,stroke:#999,color:#333,stroke-dasharray:4 3
-    class GW,SPEC,TRAF,CODE,DNS,CICD,CONN,BUS,SINK,CORR,FEAT,CLI done
+    class GW,SPEC,TRAF,CODE,DNS,CICD,CONN,BUS,SINK,CORR,FEAT,CLI,GRAPH,BLAST done
     class RULES,ML,XAI wip
-    class GRAPH,BLAST,GATE,KILL,AUDIT,ENF,API,UI todo
+    class GATE,KILL,AUDIT,ENF,API,UI todo
 ```
 
 **Layer boundaries are enforced by dependency direction.** Layer 1 knows nothing of
@@ -468,6 +468,44 @@ genuinely does not distinguish the two cases. No amount of model sophistication
 resolves this; only a new signal would, such as `CODEOWNERS`, a changelog, or a pull
 request referencing the migration. **That is a finding about the limits of
 observation, and it belongs in the paper as one.**
+
+### 3.3.2 The removal gate ✅
+
+The dependency graph is implemented (`apix/graph/`), and it is what turns a
+ZOMBIE verdict from a conclusion into a hypothesis that can be falsified.
+
+**Both signals are required before removal.** The classifier must say ZOMBIE
+*with a usage source consulted*, and the graph must show nothing depends on the
+endpoint. Neither alone is sufficient: the classifier can be wrong about usage,
+and an endpoint nobody calls is not thereby dead — it may be new, or called only
+by clients outside the observed estate.
+
+Measured against the estate: all **8 zombies are isolated** (zero observed
+callers) and clear the gate; all **3 deprecated endpoints retain live callers**
+and would be blocked even if the classifier misjudged them. That layering is the
+design, not a coincidence.
+
+Blast radius alternates `CALLS` and `OWNS` edges, because a single-hop traversal
+badly understates the truth: killing an endpoint breaks the services that call
+it, those services then fail to serve their own endpoints, and whatever called
+*those* is affected in turn. `GET /v2/accounts/{id}` reaches **9 services across
+5 hops** from 3 direct callers.
+
+**Backend selection mirrors the message bus.** In-process by default so the
+demo and the test suite need nothing running; `APIX_GRAPH=neo4j` switches to
+Neo4j with no change to calling code. The Cypher is the design decision made
+literal:
+
+```cypher
+MATCH (e:Endpoint {id: $id})
+MATCH path = (dep)-[:CALLS|OWNS*1..8]->(e)
+RETURN DISTINCT labels(dep)[0], coalesce(dep.name, dep.id), min(length(path))
+```
+
+**Stated limitation.** Isolation means no dependency was *observed*, not that
+none exists. A caller that was silent during the capture window is invisible to
+the graph. This is precisely why the graph is a gate and not a proof, and why
+the approval step and canary rollout in §3.4 remain mandatory.
 
 ### 3.4 State machine — Safe Kill Simulation ⬜
 

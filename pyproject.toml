@@ -33,6 +33,12 @@ live = [
     "semgrep>=1.100",
     "pyyaml>=6.0",
 ]
+# Neo4j-backed dependency graph. Optional for the same reason the bus is: the
+# in-process graph runs the same traversal, so a demo never depends on a
+# database being up.
+graph = [
+    "neo4j>=5.0",
+]
 # Production transport. The pipeline code is identical either way.
 stream = [
     "kafka-python>=2.0",
@@ -128,5 +134,7 @@ warn_unreachable = true
 # Optional dependencies are absent in the default install; their absence is
 # handled at runtime and must not fail type checking.
 [[tool.mypy.overrides]]
-module = ["kafka.*", "elasticsearch.*", "shap.*", "sklearn.*", "pandas.*"]
+module = [
+    "kafka.*", "elasticsearch.*", "shap.*", "sklearn.*", "pandas.*", "neo4j.*",
+]
 ignore_missing_imports = true

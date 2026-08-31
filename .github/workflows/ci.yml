@@ -95,6 +95,41 @@ jobs:
           print("All published figures reproduced.")
           PY
 
+      # The removal gate is the mechanism that stops this product causing an
+      # outage. It must be checked end to end, not only in unit tests.
+      - name: Assert the removal gate holds
+        run: |
+          python - <<'PY'
+          import json, subprocess, sys
+
+          out = subprocess.run(
+              ["apix", "impact", "--json"], capture_output=True, text=True, check=True
+          ).stdout
+          data = json.loads(out)
+
+          failures = []
+          if data["graph"]["call_edges"] == 0:
+              failures.append("dependency graph has no edges - it is not being built")
+
+          for a in data["assessments"]:
+              if a["may_proceed"] and not a["blast_radius"]["isolated"]:
+                  failures.append(
+                      f"cleared for removal despite dependents: {a['endpoint_id']}"
+                  )
+              if a["may_proceed"] and a["label"] != "ZOMBIE":
+                  failures.append(
+                      f"non-zombie cleared for removal: {a['endpoint_id']}"
+                  )
+
+          if failures:
+              print("REMOVAL GATE FAILED:")
+              for f in failures:
+                  print(f"  - {f}")
+              sys.exit(1)
+          cleared = sum(1 for a in data["assessments"] if a["may_proceed"])
+          print(f"Removal gate holds. {cleared} endpoint(s) cleared, all isolated.")
+          PY
+
       - name: Upload figures
         if: always()
         uses: actions/upload-artifact@v4

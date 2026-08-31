@@ -16,13 +16,15 @@ The system runs a complete vertical slice of its core loop:
 |---|---|
 | Six-source discovery with deliberate blind spots | ✅ |
 | Multi-source correlation into a unified inventory (15 flags) | ✅ |
+| Real GitHub repository scanning (Semgrep AST, git history, CODEOWNERS) | ✅ |
+| Dependency graph + blast radius, with a Neo4j backend | ✅ |
 | Four-class rule classifier, deterministic and auditable | ✅ |
 | Per-verdict explanations with signed evidence contributions | ✅ |
 | Evaluation harness — per-class P/R/F1, confusion matrix | ✅ |
 | Comparative before/after benchmark | ✅ |
 | Labelled dataset for the ML engine | ✅ |
 | 31 tests, including two ground-truth leakage guards | ✅ |
-| Dependency graph (Neo4j), SHAP over a trained model | ⬜ |
+| SHAP over a trained model | ⬜ |
 | Safe Kill Simulation, CI/CD enforcement, dashboard | ⬜ |
 
 ### Headline results
@@ -96,6 +98,8 @@ endpoint is unused when usage was never measured. The scan says so explicitly.
 | `apix scan --explain-all` | Explain every endpoint, not only risky ones |
 | `apix scan --findings` | Raw discovery flags, before classification |
 | `apix scan --json` | Machine-readable inventory |
+| `apix impact` | Dependency graph and the removal gate |
+| `apix impact "GET /v2/accounts/{id}"` | Blast radius for one endpoint |
 | `apix benchmark` | The comparative before/after study |
 | `apix dataset` | Build the labelled dataset for the ML engine |
 | `apix version` | Version and resolved configuration |
@@ -262,6 +266,50 @@ production bank data."*
    Kill Simulation's approval gate rather than by discovery.
 
 ---
+
+## The removal gate
+
+A ZOMBIE verdict is a *hypothesis* that an endpoint is unused. The dependency
+graph is the first thing that can falsify it, and **both signals are required**
+before anything may be removed:
+
+```
+apix impact
+```
+
+```
+  endpoints          : 25      services : 13
+  observed call edges: 30      isolated : 8
+
+  CLEARED FOR SAFE KILL — 8      BLOCKED — 0
+```
+
+All 8 zombies are isolated; nothing observed calls them. That is *why* they are
+safe, and it is the precondition Safe Kill checks.
+
+Blast radius is a transitive walk alternating `CALLS` and `OWNS` edges — killing
+an endpoint breaks its callers, whose own endpoints then degrade, and so on
+outward:
+
+```
+apix impact "GET /v2/accounts/{id}"
+```
+
+```
+  severity      : severe        depth reached : 5 hop(s)
+  direct callers: lending-service, mobile-bff, payments-service
+  reached onward: cards-service, kyc-service, marketing-batch,
+                  merchant-gateway, notifications-service, partner-psp-adapter
+```
+
+Three direct callers, nine services affected, five hops deep. **That unbounded
+traversal is the argument for a graph store**: in SQL it is a recursive CTE whose
+cost grows per hop; in Cypher it is `(dep)-[:CALLS|OWNS*1..N]->(e)`. Runs
+in-process by default; `APIX_GRAPH=neo4j` switches backends with no code change.
+
+**A caveat the tool states itself:** isolation means no dependency was *observed*,
+not that none exists. A caller silent during the capture window is invisible —
+which is why the approval gate and canary rollout still exist downstream.
 
 ## The one misclassification, and why it is not a bug
 

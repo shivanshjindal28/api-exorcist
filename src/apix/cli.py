@@ -201,6 +201,92 @@ def _cmd_benchmark(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_impact(args: argparse.Namespace) -> int:
+    """Dependency graph and blast-radius analysis."""
+    from apix.graph import assess_removals, build_graph
+    from apix.pipeline import run_classification, run_discovery, sources_of
+
+    records = run_discovery(verbose=False)
+    verdicts = run_classification(records, consulted=sources_of())
+    graph = build_graph(records)
+    stats = graph.stats()
+
+    try:
+        if args.endpoint:
+            radius = graph.blast_radius(args.endpoint, args.depth)
+            if args.json:
+                print(json.dumps(radius.to_dict(), indent=2))
+                return EXIT_OK
+            _print_radius(radius)
+            return EXIT_OK
+
+        assessments = assess_removals(verdicts, graph, args.depth)
+        if args.json:
+            print(json.dumps(
+                {
+                    "graph": stats,
+                    "assessments": [a.to_dict() for a in assessments],
+                },
+                indent=2,
+            ))
+            return EXIT_OK
+
+        print()
+        print("=" * 74)
+        print("DEPENDENCY GRAPH — what would break")
+        print("=" * 74)
+        print()
+        print(f"  backend            : {graph.name}")
+        print(f"  endpoints          : {stats['endpoints']}")
+        print(f"  services           : {stats['services']}")
+        print(f"  observed call edges: {stats['call_edges']}")
+        print(f"  isolated endpoints : {stats['isolated_endpoints']}")
+        print()
+        print("  An endpoint nothing calls is a removal candidate. One that")
+        print("  something still calls is blocked, however dead it looks.")
+        print()
+
+        clear = [a for a in assessments if a.may_proceed]
+        blocked = [a for a in assessments if not a.may_proceed]
+
+        print(f"  CLEARED FOR SAFE KILL — {len(clear)}")
+        for a in clear:
+            print(f"    [ok]      {a.verdict.endpoint_id}")
+            print("              nothing observed depends on it")
+        print()
+        print(f"  BLOCKED — {len(blocked)}")
+        for a in blocked:
+            print(f"    [blocked] {a.verdict.endpoint_id}")
+            print(f"              {a.blocked_by}")
+        print()
+        return EXIT_OK
+    finally:
+        graph.close()
+
+
+def _print_radius(radius: object) -> None:
+    r = radius  # typed loosely; BlastRadius is a frozen dataclass
+    print()
+    print(f"Blast radius — {r.endpoint_id}")  # type: ignore[attr-defined]
+    print("-" * 74)
+    if r.is_isolated:  # type: ignore[attr-defined]
+        print("  isolated: nothing observed calls this endpoint.")
+        print("  Note: a caller silent during the capture window is invisible")
+        print("  here, which is why approval and canary rollout still apply.")
+        print()
+        return
+    print(f"  severity         : {r.severity}")            # type: ignore[attr-defined]
+    print(f"  depth reached    : {r.depth_reached} hop(s)")  # type: ignore[attr-defined]
+    print(f"  direct callers   : {', '.join(r.direct_services) or 'none'}")  # type: ignore[attr-defined]
+    if r.indirect_services:  # type: ignore[attr-defined]
+        print(f"  reached onward   : {', '.join(r.indirect_services)}")  # type: ignore[attr-defined]
+    if r.affected_endpoints:  # type: ignore[attr-defined]
+        print("  endpoints degraded:")
+        for ep, hop in r.affected_endpoints[:12]:  # type: ignore[attr-defined]
+            print(f"      hop {hop}  {ep}")
+    print()
+
+
 def _cmd_dataset(args: argparse.Namespace) -> int:
     from apix.dataset.build import main as build_main
 
@@ -270,6 +356,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bench.add_argument("--json", action="store_true", help="emit results as JSON")
     bench.set_defaults(func=_cmd_benchmark)
+
+    imp = sub.add_parser(
+        "impact", help="dependency graph and blast-radius analysis"
+    )
+    imp.add_argument(
+        "endpoint",
+        nargs="?",
+        help='a single endpoint, e.g. "GET /v2/accounts/{id}"',
+    )
+    imp.add_argument(
+        "--depth", type=int, default=4, help="max traversal hops (default 4)"
+    )
+    imp.add_argument("--json", action="store_true", help="emit as JSON")
+    imp.set_defaults(func=_cmd_impact)
 
     ds = sub.add_parser("dataset", help="build the labelled ML dataset")
     ds.set_defaults(func=_cmd_dataset)
