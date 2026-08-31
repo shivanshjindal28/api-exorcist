@@ -1,0 +1,18 @@
+# Core discovery pipeline has NO hard external dependencies -
+# it runs on the Python standard library alone. This is deliberate:
+# the demo and CI must work without infrastructure.
+
+# --- optional: production transport / storage ---
+kafka-python>=2.0.2          # KafkaBus  (APIX_BUS=kafka)
+elasticsearch>=8.11.0        # ElasticSink
+
+# --- weeks 7-8: classification + explainability ---
+scikit-learn>=1.4.0
+pandas>=2.0.0
+shap>=0.44.0                 # explainable AI (jury ask #3)
+
+# --- week 6: dependency graph ---
+neo4j>=5.15.0
+
+# --- dev ---
+pytest>=8.0.0

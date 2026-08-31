@@ -1,0 +1,42 @@
+# Infrastructure for the production path.
+#
+# NOT required to run the discovery pipeline - `python pipeline.py`
+# works with zero infrastructure via the local in-process bus. Bring
+# this up only when demonstrating the real Kafka/Neo4j/Elasticsearch
+# deployment, or from week 6 onward when the graph is needed.
+#
+#   docker compose up -d
+#   APIX_BUS=kafka python pipeline.py
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on: [zookeeper]
+    ports: ["9092:9092"]
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    ports: ["9200:9200"]
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+
+  neo4j:
+    # Week 6: dependency graph
+    image: neo4j:5.15
+    ports: ["7474:7474", "7687:7687"]
+    environment:
+      NEO4J_AUTH: neo4j/apiexorcist
+      NEO4J_server_memory_heap_max__size: 1G

@@ -1,0 +1,16 @@
+# Normalise line endings so the repo is identical across the team's machines.
+* text=auto eol=lf
+
+# Windows-native tooling expects CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never touch binaries
+*.png binary
+*.jpg binary
+*.pdf binary
+*.pptx binary
+*.docx binary
+*.pkl binary
+*.joblib binary
