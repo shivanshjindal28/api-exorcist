@@ -45,6 +45,9 @@ docs/papers/*.pdf
 # of truth and they diff properly.
 docs/*.docx
 
+# Repositories cloned for the demo. Fetched by demo/prepare.ps1, never committed.
+demo/repos/
+
 # Editor / OS
 .vscode/
 .idea/

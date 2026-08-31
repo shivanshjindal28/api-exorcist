@@ -33,6 +33,15 @@ from apix.extractors.base import (
 
 RULES_FILE = Path(__file__).resolve().parent / "rules" / "routes.yaml"
 
+#: Excluded from scanning. Dependencies, build output and test fixtures are not
+#: a deployed API surface, and a route matched inside them is a false endpoint.
+EXCLUDE_DIRS = (
+    "node_modules", "venv", ".venv", "env", "__pycache__", "site-packages",
+    "dist", "build", ".tox", ".mypy_cache", ".pytest_cache", ".git",
+    "vendor", "third_party", "test", "tests", "spec", "__tests__",
+    "migrations", "alembic",
+)
+
 #: rule id -> (HTTP method, framework)
 _RULE_MAP = {
     "apix-py-fastapi-get": ("GET", "fastapi"),
@@ -89,8 +98,14 @@ class SemgrepExtractor:
             "--json", "--quiet",
             "--metrics=off",          # do not phone home about a customer's code
             "--no-git-ignore",        # vendored code is still deployed code
-            str(repo_root),
         ]
+        # Directories that never contain a deployed API surface. Excluding them
+        # is not only a speed measure: a route matched inside node_modules or a
+        # test fixture is a false endpoint, and false endpoints in this system
+        # become fabricated shadow APIs.
+        for pattern in EXCLUDE_DIRS:
+            cmd += ["--exclude", pattern]
+        cmd.append(str(repo_root))
         try:
             proc = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=self.timeout

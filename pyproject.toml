@@ -90,6 +90,9 @@ exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:"]
 line-length = 90
 target-version = "py310"
 src = ["src", "tests"]
+# Repositories cloned for the demo are someone else's code; linting them is
+# meaningless and would fail the build on their style, not ours.
+extend-exclude = ["demo/repos"]
 
 [tool.ruff.lint]
 select = [
