@@ -102,6 +102,11 @@ ignore = [
 "src/apix/simulated_env/estate.py" = ["E501"]
 # Tests use single-letter helpers and assert-style checks freely.
 "tests/*" = ["E741"]
+# String literals here are document text, not code: an en dash is the correct
+# typography for a year range like 2026-2027 on a title page. Scoped to this one
+# file rather than ignored globally, because RUF001 also catches homoglyph
+# lookalikes in source strings and that is worth keeping in a security project.
+"docs/build_docx.py" = ["RUF001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["apix"]
