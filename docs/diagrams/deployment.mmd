@@ -1,0 +1,41 @@
+flowchart TB
+    subgraph CUST["Customer environment — read-only access"]
+        direction LR
+        C1["Kong Admin API"]
+        C2["GitHub org<br/>repos + Actions"]
+        C3["Zeek sensor<br/>span port"]
+        C4["CoreDNS / mesh"]
+    end
+
+    subgraph HOST["API Exorcist — self-hosted, single tenant"]
+        direction TB
+        subgraph POD1["Scanner workload"]
+            W1["Connector workers"]
+            W2["Correlator"]
+        end
+        subgraph POD2["Analysis workload"]
+            W3["Classifier + XAI"]
+            W4["Safe Kill controller"]
+        end
+        subgraph DATA["Stateful services"]
+            PG[("PostgreSQL<br/>inventory, scans, audit")]
+            NEO[("Neo4j<br/>dependency graph")]
+            ES[("Elasticsearch<br/>search")]
+            KAF[["Kafka<br/>signal bus"]]
+        end
+        SRV["FastAPI server"]
+        WEB["React dashboard"]
+    end
+
+    OP(["Security operator"])
+
+    C1 & C2 & C3 & C4 -.->|"scoped read tokens<br/>TLS"| W1
+    W1 --> KAF --> W2
+    W2 --> PG & ES & NEO
+    PG & NEO --> W3 --> W4
+    W4 -.->|"canary control<br/>write-scoped"| C1
+    PG & NEO & ES --> SRV --> WEB --> OP
+
+    classDef ext fill:#eef2f6,stroke:#5A7184,color:#123
+    classDef int fill:#dff0e8,stroke:#2F6B63,color:#123
+    class C1,C2,C3,C4 ext

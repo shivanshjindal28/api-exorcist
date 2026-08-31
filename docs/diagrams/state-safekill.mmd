@@ -1,0 +1,41 @@
+stateDiagram-v2
+    [*] --> Nominated : classifier returns ZOMBIE
+
+    Nominated --> BlastRadius : enqueue for removal
+    BlastRadius --> Blocked : dependents found in graph
+    BlastRadius --> Simulated : no dependents
+
+    Blocked --> [*] : reported, not actioned
+
+    Simulated --> Rejected : simulation shows impact
+    Simulated --> AwaitingApproval : simulation clean
+
+    Rejected --> [*] : logged with reasons
+
+    AwaitingApproval --> Denied : operator declines
+    AwaitingApproval --> Canary5 : operator approves
+
+    Denied --> [*] : logged with approver identity
+
+    Canary5 --> RolledBack : error rate breach
+    Canary5 --> Canary25 : clean for observation window
+    Canary25 --> RolledBack : error rate breach
+    Canary25 --> Canary100 : clean
+    Canary100 --> RolledBack : error rate breach
+    Canary100 --> Retired : clean through soak period
+
+    RolledBack --> [*] : endpoint restored, incident logged
+    Retired --> [*] : removed, audit entry sealed
+
+    note right of Canary5
+        Progressive 410 Gone
+        on 5% → 25% → 100%
+        of requests.
+        Reversible at every step.
+    end note
+
+    note right of RolledBack
+        Automatic, not manual.
+        Triggered by error-rate
+        breach, no human in loop.
+    end note

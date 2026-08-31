@@ -1,0 +1,60 @@
+flowchart TB
+    subgraph L1["Layer 1 · Data Sources"]
+        direction LR
+        GW["API Gateway<br/>Kong / Apigee"]
+        SPEC["OpenAPI<br/>Specification"]
+        TRAF["Network Traffic<br/>Zeek"]
+        CODE["Source Repos<br/>Semgrep"]
+        DNS["DNS / Service Mesh"]
+        CICD["CI/CD<br/>GitHub Actions"]
+    end
+
+    subgraph L2["Layer 2 · Ingestion and Streaming"]
+        CONN["Connector Framework<br/>uniform DiscoverySignal contract"]
+        BUS["Event Bus<br/>LocalBus / Kafka"]
+        SINK["Search Index<br/>Elasticsearch"]
+    end
+
+    subgraph L3["Layer 3 · Analysis and Intelligence"]
+        CORR["Correlation Engine<br/>unified inventory + 15 flags"]
+        FEAT["Feature Extraction<br/>16 observable features"]
+        RULES["Rule Classifier<br/>deterministic, auditable"]
+        ML["ML Classifier<br/>gradient boosting"]
+        XAI["Explanation Layer<br/>rules + SHAP"]
+        GRAPH["Dependency Graph<br/>Neo4j"]
+    end
+
+    subgraph L4["Layer 4 · Decision and Enforcement"]
+        BLAST["Blast Radius<br/>graph traversal"]
+        GATE["Policy Decision Gate<br/>human approval"]
+        KILL["Safe Kill Simulation<br/>canary + rollback"]
+        AUDIT["Audit Log<br/>hash-chained, append-only"]
+        ENF["CI/CD Enforcement<br/>GitHub Action"]
+    end
+
+    subgraph L5["Layer 5 · Presentation"]
+        API["REST API<br/>FastAPI"]
+        UI["Dashboard<br/>React + TypeScript"]
+        CLI["CLI<br/>apix"]
+    end
+
+    GW & SPEC & TRAF & CODE & DNS & CICD --> CONN
+    CONN --> BUS --> CORR
+    CORR --> SINK
+    CORR --> FEAT --> RULES --> XAI
+    FEAT --> ML --> XAI
+    CORR --> GRAPH --> BLAST
+    XAI --> GATE
+    BLAST --> GATE
+    GATE --> KILL --> AUDIT
+    XAI --> ENF
+    XAI & BLAST & AUDIT --> API
+    API --> UI
+    CORR --> CLI
+
+    classDef done fill:#dff0e8,stroke:#2F6B63,color:#123
+    classDef wip  fill:#fdf0dc,stroke:#A9631B,color:#123
+    classDef todo fill:#eeeeee,stroke:#999,color:#333,stroke-dasharray:4 3
+    class GW,SPEC,TRAF,CODE,DNS,CICD,CONN,BUS,SINK,CORR,FEAT,CLI done
+    class RULES,ML,XAI wip
+    class GRAPH,BLAST,GATE,KILL,AUDIT,ENF,API,UI todo

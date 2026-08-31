@@ -1,0 +1,33 @@
+flowchart LR
+    subgraph EXT[" "]
+        E1(["Customer<br/>environment"])
+        E2(["Security<br/>operator"])
+    end
+
+    P1["1.0<br/>Collect<br/>signals"]
+    P2["2.0<br/>Correlate<br/>into inventory"]
+    P3["3.0<br/>Extract<br/>features"]
+    P4["4.0<br/>Classify<br/>and explain"]
+    P5["5.0<br/>Decide and<br/>enforce"]
+
+    D1[("D1 · Raw signals")]
+    D2[("D2 · Inventory")]
+    D3[("D3 · Feature store")]
+    D4[("D4 · Verdicts")]
+    D5[("D5 · Audit log")]
+
+    E1 -->|"observations"| P1
+    P1 -->|"DiscoverySignal"| D1
+    D1 --> P2
+    P2 -->|"InventoryRecord<br/>+ flags"| D2
+    D2 --> P3
+    P3 -->|"16 features"| D3
+    D3 --> P4
+    D2 --> P4
+    P4 -->|"Verdict + Reasons"| D4
+    D4 --> P5
+    P5 -->|"kill / block / defer"| D5
+    P5 -->|"canary control"| E1
+    D4 -->|"ranked findings"| E2
+    E2 -->|"approve / deny"| P5
+    D5 -->|"audit trail"| E2

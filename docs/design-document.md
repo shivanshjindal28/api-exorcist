@@ -615,10 +615,11 @@ A customer may onboard by connecting a repository or by supplying a URL. The URL
 is deliberately tiered, for the reasons established in [10].
 
 ```mermaid
-flowchart TD
+flowchart TB
     U(["Customer supplies<br/>https://api.example.com"]) --> T1
 
     subgraph T1["Tier 1 — any URL, zero probing"]
+        direction LR
         A1["Fetch published<br/>OpenAPI / Swagger"]
         A2["Mine Certificate<br/>Transparency logs"]
         A3["Passive DNS<br/>enumeration"]
@@ -632,6 +633,7 @@ flowchart TD
     Q -->|"Yes — DNS TXT<br/>record verified"| T2
 
     subgraph T2["Tier 2 — authorised active scanning"]
+        direction LR
         B1["Active endpoint probing"]
         B2["Auth posture checks"]
         B3["Response fingerprinting"]

@@ -1,0 +1,28 @@
+stateDiagram-v2
+    [*] --> ACTIVE : deployed, documented, in use
+
+    ACTIVE --> DEPRECATED : team marks obsolete<br/>(spec_deprecated = true)
+    ACTIVE --> ORPHANED : owning team dissolves<br/>(NO_OWNER, traffic continues)
+    ACTIVE --> ZOMBIE : traffic ceases silently<br/>(no one notices)
+
+    DEPRECATED --> ZOMBIE : traffic ceases,<br/>removal never happens
+    DEPRECATED --> RETIRED : planned removal executed
+    ORPHANED --> ZOMBIE : traffic ceases
+
+    ZOMBIE --> CANDIDATE : flagged for removal
+    CANDIDATE --> ZOMBIE : approval denied<br/>or rollback triggered
+    CANDIDATE --> RETIRED : Safe Kill completes
+
+    RETIRED --> [*]
+
+    note right of ZOMBIE
+        The dangerous state.
+        Reachable, unmonitored,
+        unowned, undocumented.
+    end note
+
+    note right of ORPHANED
+        Distinct from ZOMBIE:
+        still carries traffic.
+        Must NOT be killed.
+    end note

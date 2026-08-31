@@ -1,0 +1,120 @@
+classDiagram
+    class Source {
+        <<enumeration>>
+        GATEWAY
+        OPENAPI
+        TRAFFIC
+        CODE
+        DNS
+        CICD
+    }
+
+    class DiscoverySignal {
+        +Source source
+        +str endpoint_id
+        +str service
+        +str method
+        +str path
+        +str version
+        +datetime observed_at
+        +dict attributes
+        +to_dict() dict
+    }
+
+    class Connector {
+        <<abstract>>
+        +Source source
+        +str name
+        +collect() Iterator~DiscoverySignal~
+        +run() list~DiscoverySignal~
+    }
+
+    class GatewayConnector
+    class OpenAPIConnector
+    class TrafficConnector
+    class CodeConnector
+    class DNSConnector
+    class CICDConnector
+
+    class InventoryRecord {
+        +str endpoint_id
+        +set~str~ seen_by
+        +dict evidence
+        +bool in_openapi_spec
+        +bool in_gateway_registry
+        +bool observed_on_wire
+        +bool handler_exists_in_code
+        +bool dns_resolvable
+        +bool deployed_via_pipeline
+        +int daily_calls
+        +int last_seen_days_ago
+        +str owner_team
+        +str auth_scheme
+        +bool spec_deprecated
+        +list~str~ flags
+    }
+
+    class Correlator {
+        -dict _records
+        +ingest(signals)
+        +finalise() list~InventoryRecord~
+        -_reconcile(rec)
+        -_derive_flags(rec)
+        +coverage_report(records)$ dict
+    }
+
+    class Classification {
+        <<enumeration>>
+        ACTIVE
+        DEPRECATED
+        ORPHANED
+        ZOMBIE
+    }
+
+    class Verdict {
+        +str endpoint_id
+        +Classification label
+        +float confidence
+        +list~Reason~ reasons
+        +str decided_by
+        +to_dict() dict
+    }
+
+    class Reason {
+        +str flag
+        +str statement
+        +float weight
+        +str evidence_source
+    }
+
+    class Classifier {
+        <<abstract>>
+        +classify(rec) Verdict
+    }
+
+    class RuleClassifier {
+        +classify(rec) Verdict
+        -_score(rec) dict
+    }
+
+    class MLClassifier {
+        +classify(rec) Verdict
+        -_explain_shap(features) list~Reason~
+    }
+
+    Connector <|-- GatewayConnector
+    Connector <|-- OpenAPIConnector
+    Connector <|-- TrafficConnector
+    Connector <|-- CodeConnector
+    Connector <|-- DNSConnector
+    Connector <|-- CICDConnector
+    Connector ..> DiscoverySignal : emits
+    Connector ..> Source : tagged with
+    Correlator ..> DiscoverySignal : ingests
+    Correlator --> InventoryRecord : produces
+    Classifier ..> InventoryRecord : consumes
+    Classifier --> Verdict : produces
+    Classifier <|-- RuleClassifier
+    Classifier <|-- MLClassifier
+    Verdict --> Classification
+    Verdict o-- Reason

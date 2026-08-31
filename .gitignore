@@ -39,6 +39,12 @@ models/*.joblib
 # is not something a capstone should be doing. docs/papers/README.md tracks them.
 docs/papers/*.pdf
 
+# Generated Word documents. Regenerate with `python docs/build_docx.py`.
+# Word files are opaque binaries that change wholesale on every rebuild, so
+# committing them churns history for no benefit — the .md files are the source
+# of truth and they diff properly.
+docs/*.docx
+
 # Editor / OS
 .vscode/
 .idea/

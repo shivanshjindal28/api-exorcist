@@ -1,0 +1,20 @@
+{
+  "theme": "neutral",
+  "themeVariables": {
+    "fontFamily": "Georgia, 'Times New Roman', serif",
+    "fontSize": "20px",
+    "primaryColor": "#EFEDE7",
+    "primaryTextColor": "#1C1F26",
+    "primaryBorderColor": "#8A8477",
+    "lineColor": "#5A5E66",
+    "secondaryColor": "#DFE8EC",
+    "tertiaryColor": "#F7F6F3"
+  },
+  "flowchart": {
+    "curve": "basis",
+    "padding": 14
+  },
+  "sequence": {
+    "actorMargin": 40
+  }
+}

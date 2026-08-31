@@ -1,0 +1,32 @@
+flowchart TD
+    START([InventoryRecord]) --> Q1{"Traffic observed<br/>in window?"}
+
+    Q1 -->|"Yes, above<br/>threshold"| Q2{"spec_deprecated<br/>set?"}
+    Q1 -->|"No, or<br/>effectively silent"| Q3{"Documented<br/>or registered?"}
+
+    Q2 -->|Yes| DEP["DEPRECATED<br/>declared obsolete,<br/>still serving"]
+    Q2 -->|No| Q4{"Has an<br/>owner?"}
+
+    Q4 -->|Yes| ACT["ACTIVE<br/>healthy"]
+    Q4 -->|No| ORP["ORPHANED<br/>in use, unowned"]
+
+    Q3 -->|Yes| Q5{"Marked<br/>deprecated?"}
+    Q3 -->|"No — invisible<br/>to both authorities"| ZOM["ZOMBIE<br/>shadow + silent"]
+
+    Q5 -->|Yes| DEP
+    Q5 -->|No| Q6{"Reachable<br/>via DNS?"}
+
+    Q6 -->|Yes| ZOM
+    Q6 -->|No| Q7{"Handler still<br/>in code?"}
+
+    Q7 -->|Yes| ORP
+    Q7 -->|No| RET["RETIRED<br/>already gone"]
+
+    ZOM --> RISK["Risk score:<br/>+ UNAUTHENTICATED<br/>+ SENSITIVE_DATA<br/>+ REACHABLE_BUT_UNUSED"]
+
+    classDef zom fill:#f4e4e0,stroke:#9B3B2E,color:#123
+    classDef act fill:#dff0e8,stroke:#2F6B63,color:#123
+    classDef mid fill:#fdf0dc,stroke:#A9631B,color:#123
+    class ZOM,RISK zom
+    class ACT act
+    class DEP,ORP mid
