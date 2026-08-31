@@ -53,16 +53,48 @@ The intuition behind a "zombie API" — code that still runs but no longer serve
 purpose — has a rigorous analogue in software engineering research on dead methods.
 
 **Caivano, Cassieri, Romano and Scanniello [1]** conducted an exploratory study of
-dead methods in open-source Java desktop applications, analysing commit histories
-across 23 GitHub-hosted projects to quantify how dead code spreads and evolves over
-time. Their contribution matters to us in two ways. First, it establishes that unused
-code is not an occasional defect but a persistent, measurable property of real
-codebases that accumulates across a project's history — which is the premise our
-entire project depends on. Second, and more usefully, their method is
-*commit-level*: dead methods are identified by tracking the repository over time
-rather than by inspecting a single snapshot. That temporal framing directly informed
-our decision to treat `CODE_UNTOUCHED_1Y` as an evidence signal rather than
-inspecting only the current state of a repository.
+dead methods in open-source Java desktop applications, quantitatively analysing the
+commit histories of **23 GitHub-hosted projects across 1,587 commits**. Their
+contribution matters to us in two ways. First, it establishes that unused code is not
+an occasional defect but a persistent, measurable property of real codebases — which
+is the premise our entire project depends on. Second, their method is *commit-level*:
+dead methods are identified by tracking the repository over time rather than by
+inspecting a single snapshot. That temporal framing directly informed our decision to
+treat `CODE_UNTOUCHED_1Y` as an evidence signal rather than inspecting only the
+current state of a repository.
+
+Three of their five reported findings bear directly on our design, and one of them
+supports the part of this project that is hardest to justify.
+
+**"Dead methods generally survive for a long time before being buried or revived."**
+Decay is slow and silent. An inventory refreshed on a scan cadence of days or weeks
+loses nothing, which is why our pipeline is a periodic batch rather than a real-time
+stream — and, as §6 explains, that choice is also what makes exact SHAP attribution
+affordable for us where it is not for an intrusion detection system.
+
+**"Dead methods are rarely revived."** This is the empirical result that underwrites
+Safe Kill. The central risk of automated remediation is removing something that turns
+out to still be needed; [1] provides published evidence that, in practice, code which
+has gone dead overwhelmingly stays dead. That does not make removal safe on its own —
+which is why the blast-radius check, the approval gate and the automatic rollback all
+exist — but it establishes that the base rate favours removal rather than indefinite
+retention. Without it, "leave everything running forever" would be the defensible
+policy and this project would have no thesis.
+
+**"Most dead methods are stillborn, rather than becoming dead later."** Most dead code
+was never used at all, from the moment it was written. This maps precisely onto the
+decay mechanisms in our simulated estate: the debug replay route added during an
+incident, the concluded A/B experiment, the PIN endpoint abandoned in security review.
+These were never live; they were born dead and never removed. Our estate models that
+pattern because the literature says it is the dominant one, not because it was
+convenient to simulate.
+
+The authors also survey prior quantifications of the problem: Eder et al. found **25%
+of methods dead** in a commercial .NET web application, Boomsma et al. found
+developers removing **30% of a PHP subsystem's files** as dead, and Eder et al.
+further reported that 7.6% of maintenance modifications touched dead methods, of which
+**48% were unnecessary work**. That last figure is the maintenance-cost argument for
+remediation, stated in the literature rather than asserted by us.
 
 Their study also establishes the limitation we inherit. Static reachability analysis
 determines that a method is *unreferenced within the analysed codebase*. It cannot
@@ -204,12 +236,24 @@ for SHAP specifically within security decision-making rather than in general mac
 learning. Their work supports our claim that per-decision attribution is both
 achievable and meaningful for a security classifier.
 
-Their reported limitation is one we design around rather than inherit: SHAP is
-computationally expensive, which constrains its use in real-time, high-throughput
-detection. **Our workload is not real-time.** Classification runs per scan — hourly or
-daily — over an inventory numbering in the thousands, not per packet at line rate. The
-cost that constrains an IDS is irrelevant to an asset-lifecycle classifier, which is
-why we can afford exact attribution where an IDS cannot.
+Their reported limitation is one we design around rather than inherit. They state that
+generating explanations with LIME and SHAP "can be computationally expensive,
+especially for large-scale IDS deployments with high data throughput," and report from
+their own experiments that **SHAP was considerably more expensive than LIME on
+identical workloads** — enough that computational load becomes a factor in choosing
+between the two.
+
+**Our workload is not real-time.** Classification runs per scan — hourly or daily —
+over an inventory numbering in the thousands, not per packet at line rate. The cost
+that forces an IDS to choose LIME over SHAP is simply not a constraint for an
+asset-lifecycle classifier, which is why we can afford the method with the stronger
+completeness guarantee where an IDS cannot. The same batch cadence is independently
+justified by [1]'s finding that decay is slow.
+
+Their study also reports a result relevant to deployment rather than architecture: a
+majority of participants said that being able to validate the explanations *increased
+their trust* in the method. For a system asking a human to approve disabling a
+production endpoint, that is the outcome the explanation layer exists to produce.
 
 This asymmetry justifies our **hybrid rules-plus-model design**. The rule layer is
 inherently transparent — an `if-then` chain is its own explanation and produces
@@ -268,7 +312,7 @@ design decision it justifies and to the module that implements it.
 
 | # | Source | Finding used | Design decision it justifies | Implemented in |
 |---|---|---|---|---|
-| [1] | Caivano et al., EMSE 2023 | Dead code accumulates persistently and is detected at commit level, not from a snapshot | Temporal signals are first-class evidence; static analysis alone is insufficient for endpoints with external callers | `connectors/discovery.py` (`CODE_UNTOUCHED_1Y`), six-source architecture |
+| [1] | Caivano et al., EMSE 2023 | Dead code is detected at commit level, not from a snapshot; decay is slow; **dead methods are rarely revived**; most are stillborn | Temporal signals are first-class evidence; periodic batch scanning rather than real-time; the base rate favouring removal is what makes Safe Kill defensible | `connectors/discovery.py` (`CODE_UNTOUCHED_1Y`), six-source architecture, Phase 4 |
 | [2] | Cassieri et al., PROFES 2023 | Deprecation markers are applied inconsistently by real teams | `DEPRECATED` is a class distinct from `ZOMBIE`; the `spec_deprecated` flag is deliberately imperfect (2 of 3) | `simulated_env/estate.py`, `connectors/gateway.py` |
 | [3] | Bushong et al., ASE 2021 | Real architecture must be recovered from source; extraction, call analysis and matching are separable phases | Semgrep AST matching over regex; connectors extract while the correlator matches | `connectors/discovery.py` (`CodeConnector`), `inventory/correlator.py` |
 | [4] | Ma et al., FGCS 2019 | Graph traversal enables dependency analysis that flat inventories cannot support | Neo4j over a relational store for the dependency layer | Phase 2 — `graph/` (planned) |
@@ -286,8 +330,9 @@ design decision it justifies and to the module that implements it.
 The literature supports each of the following statements individually. No published
 work combines them.
 
-1. Unused code persists and accumulates in real systems, and is detectable — but the
-   techniques are single-source and cannot see external callers **[1]**.
+1. Unused code persists in real systems and is detectable — but the techniques are
+   single-source and cannot see external callers. Crucially, dead code is **rarely
+   revived**, so the base rate favours removal over indefinite retention **[1]**.
 2. Deprecation is declared inconsistently, so declared state is an unreliable indicator
    of real state **[2]**.
 3. True architecture must be recovered from artefacts because documentation drifts
@@ -315,19 +360,37 @@ resulting action auditable in a regulated environment.**
 
 ## 10. Verification checklist before submission
 
-Every citation below is confirmed real — exact title, author list, venue, year and DOI
-were validated against DBLP. The following claims are attributed at the level of each
-paper's stated contribution and abstract. **Before submission, read the full text of
-[1], [2], [3] and [9] and attach page-level citations to the specific figures**, and
-replace any statement here that the full text does not support.
+Every citation is confirmed real — exact title, author list, venue, year and DOI
+validated against DBLP.
 
-- [1] — the count of 23 analysed applications, and any percentage of methods found dead
-- [2] — the specific consistency rate of deprecation replacement messages
-- [3] — the reported recall of static endpoint extraction
-- [9] — the quantified computational overhead attributed to SHAP
+### Verified against full text ✔
 
-This is not optional diligence. A jury that checks one number and finds it
-unsupported will discount the entire review.
+- **[1] Caivano et al.** — 23 open-source Java desktop applications and 1,587 commits
+  confirmed from the abstract. All five take-away findings quoted in §2 are the
+  authors' own wording. The 25% / 30% / 48% figures are prior work *surveyed by* [1]
+  (Eder et al.; Boomsma et al.) and are cited here as such, not as [1]'s own results —
+  if you quote them in the paper, attribute them the same way.
+- **[9] Gaspar et al.** — the computational-cost limitation is confirmed, but it is
+  **qualitative, not quantified**. The paper states SHAP "can be computationally
+  expensive" for high-throughput IDS deployments and that SHAP was "considerably more
+  expensive than LIME" in their experiments. It reports no overhead figure, so §6
+  claims no number. Do not add one.
+
+### Still to verify ⚠
+
+Both papers are pending library access. The statements about them in §2 and §3 are
+attributed at the level of each paper's stated contribution and abstract, which those
+support — but confirm before submission and correct anything the full text does not
+bear out.
+
+- **[2] Cassieri et al.** — §2 says deprecation markers are "inconsistently applied
+  and inconsistently acted upon." Confirm the specific consistency rate of replacement
+  messages, and cite it.
+- **[3] Bushong et al.** — §3 says static analysis recovers endpoints that
+  documentation omits. Confirm the reported recall of static endpoint extraction.
+
+This is not optional diligence. A jury that checks one number and finds it unsupported
+will discount the entire review.
 
 ---
 
