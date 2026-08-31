@@ -34,6 +34,11 @@ data/*.csv
 models/*.pkl
 models/*.joblib
 
+# Source papers — publisher-copyrighted. Kept locally for the team's reference,
+# never committed: this repo may become public, and redistributing paywalled PDFs
+# is not something a capstone should be doing. docs/papers/README.md tracks them.
+docs/papers/*.pdf
+
 # Editor / OS
 .vscode/
 .idea/
