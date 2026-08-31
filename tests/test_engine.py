@@ -1,0 +1,375 @@
+"""
+Tests for the classification and explanation engine.
+
+Run:  python tests/test_engine.py
+
+The most important test in this file is `test_engine_never_imports_ground_truth`.
+An earlier version of the OpenAPI connector derived a feature from `true_label`,
+which would have silently inflated accuracy and invalidated every number in the
+paper. The guard in tests/test_discovery.py covers the discovery layer; this one
+extends the same protection to the engine.
+"""
+
+from __future__ import annotations
+
+import ast
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from engine.explain import audit_entry, explain, one_line, summarise  # noqa: E402
+from engine.rules import RULES, MEANINGFUL_TRAFFIC_THRESHOLD, RuleClassifier  # noqa: E402
+from engine.verdict import CLASS_ORDER, Classification, Verdict  # noqa: E402
+from evaluation.metrics import evaluate  # noqa: E402
+from inventory.correlator import InventoryRecord  # noqa: E402
+from pipeline import run_discovery  # noqa: E402
+from simulated_env.estate import Label, by_id  # noqa: E402
+
+_PASS = 0
+_FAIL = 0
+
+
+def check(name: str, condition: bool, detail: str = "") -> None:
+    global _PASS, _FAIL
+    if condition:
+        _PASS += 1
+        print(f"  PASS  {name}")
+    else:
+        _FAIL += 1
+        print(f"  FAIL  {name}" + (f"\n          {detail}" if detail else ""))
+
+
+# ---------------------------------------------------------------------------
+# Boundary: the engine must never see the answer key
+# ---------------------------------------------------------------------------
+def test_engine_never_imports_ground_truth() -> None:
+    """No module under engine/ may import from simulated_env, at any depth."""
+    offenders: list[str] = []
+    for path in (ROOT / "engine").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("simulated_env"):
+                        offenders.append(f"{path.name}: import {alias.name}")
+            elif isinstance(node, ast.ImportFrom):
+                if (node.module or "").startswith("simulated_env"):
+                    offenders.append(f"{path.name}: from {node.module}")
+    check(
+        "test_engine_never_imports_ground_truth",
+        not offenders,
+        f"ground-truth leakage: {offenders}",
+    )
+
+
+def test_no_rule_references_true_label() -> None:
+    """No rule predicate may mention true_label or decay_story."""
+    src = (ROOT / "engine" / "rules.py").read_text(encoding="utf-8")
+    # Strip the module docstring, where these terms appear in prose.
+    body = src.split('"""', 2)[-1]
+    banned = [t for t in ("true_label", "decay_story") if t in body]
+    check("test_no_rule_references_true_label", not banned, f"found {banned}")
+
+
+# ---------------------------------------------------------------------------
+# Classifier behaviour
+# ---------------------------------------------------------------------------
+def _record(**kw) -> InventoryRecord:
+    """An inventory record with healthy-ACTIVE defaults, overridable."""
+    base = dict(
+        endpoint_id="GET /v1/test",
+        service="test-service",
+        method="GET",
+        path="/test",
+        version="v1",
+        in_openapi_spec=True,
+        in_gateway_registry=True,
+        observed_on_wire=True,
+        handler_exists_in_code=True,
+        dns_resolvable=True,
+        deployed_via_pipeline=True,
+        daily_calls=5000,
+        last_seen_days_ago=1,
+        distinct_callers=3,
+        owner_team="platform",
+        days_since_last_commit=20,
+    )
+    base.update(kw)
+    return InventoryRecord(**base)  # type: ignore[arg-type]
+
+
+def test_healthy_endpoint_is_active() -> None:
+    v = RuleClassifier().classify(_record())
+    check(
+        "test_healthy_endpoint_is_active",
+        v.label is Classification.ACTIVE,
+        f"got {v.label}",
+    )
+
+
+def test_silent_shadow_endpoint_is_zombie() -> None:
+    v = RuleClassifier().classify(
+        _record(
+            in_openapi_spec=False,
+            in_gateway_registry=False,
+            observed_on_wire=False,
+            daily_calls=0,
+            last_seen_days_ago=400,
+            distinct_callers=0,
+            owner_team=None,
+            deployed_via_pipeline=False,
+            days_since_last_commit=800,
+        )
+    )
+    check(
+        "test_silent_shadow_endpoint_is_zombie",
+        v.label is Classification.ZOMBIE,
+        f"got {v.label}",
+    )
+
+
+def test_used_but_unowned_is_orphaned_not_zombie() -> None:
+    """The distinction that stops this product causing outages."""
+    v = RuleClassifier().classify(_record(owner_team=None))
+    check(
+        "test_used_but_unowned_is_orphaned_not_zombie",
+        v.label is Classification.ORPHANED,
+        f"got {v.label}",
+    )
+
+
+def test_orphaned_is_never_actionable() -> None:
+    """ORPHANED endpoints carry real traffic and must never be kill candidates."""
+    v = RuleClassifier().classify(_record(owner_team=None))
+    check(
+        "test_orphaned_is_never_actionable",
+        v.label is Classification.ORPHANED and not v.is_actionable,
+    )
+
+
+def test_deprecation_flag_is_near_decisive() -> None:
+    v = RuleClassifier().classify(_record(spec_deprecated=True))
+    check(
+        "test_deprecation_flag_is_near_decisive",
+        v.label is Classification.DEPRECATED,
+        f"got {v.label}",
+    )
+
+
+def test_effectively_silent_counts_as_no_meaningful_traffic() -> None:
+    """A handful of calls a day is not use — it is health checks and crawlers."""
+    v = RuleClassifier().classify(
+        _record(
+            daily_calls=MEANINGFUL_TRAFFIC_THRESHOLD - 1,
+            in_openapi_spec=False,
+            in_gateway_registry=False,
+            owner_team=None,
+            last_seen_days_ago=200,
+        )
+    )
+    check(
+        "test_effectively_silent_counts_as_no_meaningful_traffic",
+        v.label is Classification.ZOMBIE,
+        f"got {v.label}",
+    )
+
+
+def test_classifier_is_deterministic() -> None:
+    rec = _record(owner_team=None, daily_calls=0, observed_on_wire=False)
+    a = RuleClassifier().classify(rec)
+    b = RuleClassifier().classify(rec)
+    check(
+        "test_classifier_is_deterministic",
+        a.label == b.label and abs(a.confidence - b.confidence) < 1e-12,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Explainability — jury concern #2
+# ---------------------------------------------------------------------------
+def test_every_verdict_carries_reasons() -> None:
+    records = run_discovery(verbose=False, persist=False)
+    verdicts = RuleClassifier().classify_all(records)
+    bare = [v.endpoint_id for v in verdicts if not v.reasons]
+    check("test_every_verdict_carries_reasons", not bare, f"no reasons: {bare}")
+
+
+def test_verdict_scores_every_class() -> None:
+    v = RuleClassifier().classify(_record())
+    check(
+        "test_verdict_scores_every_class",
+        set(v.scores) == {c.value for c in CLASS_ORDER},
+        f"got {sorted(v.scores)}",
+    )
+
+
+def test_reasons_reference_real_evidence_keys() -> None:
+    """Explanations must cite rules that exist, not invented text."""
+    valid = {r.key for r in RULES}
+    records = run_discovery(verbose=False, persist=False)
+    bad: list[str] = []
+    for v in RuleClassifier().classify_all(records):
+        bad += [r.key for r in v.reasons if r.key not in valid]
+    check("test_reasons_reference_real_evidence_keys", not bad, f"unknown: {set(bad)}")
+
+
+def test_audit_entry_is_complete() -> None:
+    """An auditor must be able to reconstruct the decision from the log alone."""
+    v = RuleClassifier().classify(_record(owner_team=None))
+    entry = audit_entry(v)
+    required = {
+        "endpoint_id", "label", "confidence", "decided_by", "risk_score",
+        "all_class_scores", "evidence", "recommended_action", "actionable",
+    }
+    check(
+        "test_audit_entry_is_complete",
+        required <= set(entry),
+        f"missing {required - set(entry)}",
+    )
+
+
+def test_explanations_render_without_error() -> None:
+    records = run_discovery(verbose=False, persist=False)
+    verdicts = RuleClassifier().classify_all(records)
+    try:
+        for v in verdicts:
+            assert explain(v)
+            assert one_line(v)
+        assert summarise(verdicts)
+        ok, detail = True, ""
+    except Exception as exc:  # pragma: no cover
+        ok, detail = False, repr(exc)
+    check("test_explanations_render_without_error", ok, detail)
+
+
+# ---------------------------------------------------------------------------
+# Metrics arithmetic
+# ---------------------------------------------------------------------------
+def test_metrics_on_known_pairs() -> None:
+    """Hand-computed case: 2 ACTIVE correct, 1 ZOMBIE called ACTIVE.
+
+    ACTIVE: tp=2 fp=1 fn=0 -> precision 2/3, recall 1.0
+    ZOMBIE: tp=0 fp=0 fn=1 -> precision 0,   recall 0
+    """
+    res = evaluate(
+        [
+            ("a", "ACTIVE", "ACTIVE"),
+            ("b", "ACTIVE", "ACTIVE"),
+            ("c", "ACTIVE", "ZOMBIE"),
+        ]
+    )
+    a = res.per_class["ACTIVE"]
+    z = res.per_class["ZOMBIE"]
+    ok = (
+        abs(a.precision - 2 / 3) < 1e-9
+        and a.recall == 1.0
+        and z.recall == 0.0
+        and res.correct == 2
+        and abs(res.accuracy - 2 / 3) < 1e-9
+    )
+    check(
+        "test_metrics_on_known_pairs",
+        ok,
+        f"ACTIVE p={a.precision} r={a.recall}, acc={res.accuracy}",
+    )
+
+
+def test_confusion_matrix_totals_match() -> None:
+    res = evaluate(
+        [("a", "ACTIVE", "ACTIVE"), ("b", "ZOMBIE", "ACTIVE"), ("c", "ZOMBIE", "ZOMBIE")]
+    )
+    total = sum(sum(row.values()) for row in res.confusion.values())
+    check("test_confusion_matrix_totals_match", total == res.total == 3)
+
+
+# ---------------------------------------------------------------------------
+# End-to-end against ground truth
+# ---------------------------------------------------------------------------
+def test_all_true_zombies_are_caught() -> None:
+    """Zombie recall must be total: a missed zombie is an unremediated exposure."""
+    truth = by_id()
+    records = run_discovery(verbose=False, persist=False)
+    verdicts = {v.endpoint_id: v for v in RuleClassifier().classify_all(records)}
+
+    missed = [
+        eid
+        for eid, ep in truth.items()
+        if ep.true_label is Label.ZOMBIE
+        and (eid not in verdicts or verdicts[eid].label is not Classification.ZOMBIE)
+    ]
+    check("test_all_true_zombies_are_caught", not missed, f"missed: {missed}")
+
+
+def test_no_active_endpoint_is_marked_for_death() -> None:
+    """A false ZOMBIE on a live endpoint would cause an outage. Zero tolerance."""
+    truth = by_id()
+    records = run_discovery(verbose=False, persist=False)
+    fatal = [
+        v.endpoint_id
+        for v in RuleClassifier().classify_all(records)
+        if v.is_actionable
+        and truth[v.endpoint_id].true_label in (Label.ACTIVE, Label.ORPHANED)
+    ]
+    check("test_no_active_endpoint_is_marked_for_death", not fatal, f"would kill: {fatal}")
+
+
+def test_engine_and_estate_taxonomies_agree() -> None:
+    """The engine defines its own enum; it must still line up with ground truth."""
+    check(
+        "test_engine_and_estate_taxonomies_agree",
+        {c.value for c in Classification} == {l.value for l in Label},
+    )
+
+
+def test_correlation_beats_single_source() -> None:
+    """The project's central claim, asserted as a test.
+
+    If a single authoritative source ever matched the correlated pipeline on
+    zombie recall, the entire thesis would be wrong and this must fail loudly.
+    """
+    from evaluation.benchmark import run_benchmark
+
+    r = run_benchmark()
+    full = r["api-exorcist"]["zombies_caught"]
+    conv = r["conventional"]["zombies_caught"]
+    check(
+        "test_correlation_beats_single_source",
+        full > conv,
+        f"correlated={full}, conventional={conv}",
+    )
+
+
+def main() -> None:
+    print("Engine tests\n")
+    for fn in [
+        test_engine_never_imports_ground_truth,
+        test_no_rule_references_true_label,
+        test_healthy_endpoint_is_active,
+        test_silent_shadow_endpoint_is_zombie,
+        test_used_but_unowned_is_orphaned_not_zombie,
+        test_orphaned_is_never_actionable,
+        test_deprecation_flag_is_near_decisive,
+        test_effectively_silent_counts_as_no_meaningful_traffic,
+        test_classifier_is_deterministic,
+        test_every_verdict_carries_reasons,
+        test_verdict_scores_every_class,
+        test_reasons_reference_real_evidence_keys,
+        test_audit_entry_is_complete,
+        test_explanations_render_without_error,
+        test_metrics_on_known_pairs,
+        test_confusion_matrix_totals_match,
+        test_all_true_zombies_are_caught,
+        test_no_active_endpoint_is_marked_for_death,
+        test_engine_and_estate_taxonomies_agree,
+        test_correlation_beats_single_source,
+    ]:
+        fn()
+
+    print(f"\n{_PASS} passed, {_FAIL} failed")
+    sys.exit(1 if _FAIL else 0)
+
+
+if __name__ == "__main__":
+    main()

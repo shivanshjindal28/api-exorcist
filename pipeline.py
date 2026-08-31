@@ -56,14 +56,28 @@ CONNECTORS = [
 DATA_DIR = Path(__file__).resolve().parent / "data"
 
 
-def run_discovery(verbose: bool = True) -> list[InventoryRecord]:
-    """Execute the full discovery pipeline and return the inventory."""
+def run_discovery(
+    verbose: bool = True,
+    connectors: list | None = None,
+    persist: bool = True,
+) -> list[InventoryRecord]:
+    """Execute the discovery pipeline and return the inventory.
+
+    `connectors` defaults to all six. Passing a subset is how the comparative
+    benchmark reproduces a conventional single-source approach: it runs the
+    identical code path with fewer witnesses, so any difference in the result is
+    attributable to the sources rather than to a different algorithm.
+
+    `persist` is disabled by benchmark runs so a baseline configuration cannot
+    overwrite the full pipeline's inventory on disk.
+    """
     bus = get_bus()
+    active_connectors = connectors if connectors is not None else CONNECTORS
 
     # ---- stage 1: collect from every source -------------------------
     total_signals = 0
     per_connector: dict[str, int] = {}
-    for cls in CONNECTORS:
+    for cls in active_connectors:
         conn = cls()
         signals: list[DiscoverySignal] = conn.run()
         per_connector[conn.name] = len(signals)
@@ -91,12 +105,13 @@ def run_discovery(verbose: bool = True) -> list[InventoryRecord]:
     bus.flush()
 
     # Persist for the dashboard / downstream weeks
-    DATA_DIR.mkdir(exist_ok=True)
     out = DATA_DIR / "inventory.json"
-    out.write_text(json.dumps([r.to_dict() for r in records], indent=2))
-
+    indexed = 0
     sink = ElasticSink()
-    indexed = sink.index_records(r.to_dict() for r in records)
+    if persist:
+        DATA_DIR.mkdir(exist_ok=True)
+        out.write_text(json.dumps([r.to_dict() for r in records], indent=2))
+        indexed = sink.index_records(r.to_dict() for r in records)
 
     if verbose:
         print("Stage 2 — correlation")
@@ -189,11 +204,55 @@ def _risk(r: InventoryRecord) -> int:
     return min(score, 5)
 
 
+def run_classification(records: list[InventoryRecord]) -> list:
+    """Classify the inventory and persist the explained verdicts."""
+    from engine.explain import audit_entry
+    from engine.rules import RuleClassifier
+
+    verdicts = RuleClassifier().classify_all(records)
+
+    DATA_DIR.mkdir(exist_ok=True)
+    (DATA_DIR / "verdicts.json").write_text(
+        json.dumps([audit_entry(v) for v in verdicts], indent=2)
+    )
+    return verdicts
+
+
+def print_classification(verdicts: list, explain_all: bool = False) -> None:
+    """Print the classification summary and per-verdict explanations."""
+    from engine.explain import explain, summarise
+
+    print(summarise(verdicts))
+    print()
+
+    shown = verdicts if explain_all else [v for v in verdicts if v.risk_score > 0]
+    shown = sorted(shown, key=lambda v: (-v.risk_score, -v.confidence, v.endpoint_id))
+
+    heading = (
+        "Every endpoint, explained"
+        if explain_all
+        else f"Endpoints requiring attention ({len(shown)})"
+    )
+    print(heading)
+    print()
+    for v in shown:
+        print(explain(v))
+        print()
+
+
 def main() -> None:
-    ap = argparse.ArgumentParser(description="API Exorcist discovery pipeline")
+    ap = argparse.ArgumentParser(description="API Exorcist pipeline")
     ap.add_argument("--json", action="store_true", help="emit inventory as JSON")
     ap.add_argument("--coverage", action="store_true", help="per-source coverage only")
-    ap.add_argument("--findings", action="store_true", help="show suspicious endpoints")
+    ap.add_argument("--findings", action="store_true", help="raw discovery flags")
+    ap.add_argument(
+        "--classify", action="store_true", help="classify and explain findings"
+    )
+    ap.add_argument(
+        "--explain-all",
+        action="store_true",
+        help="explain every endpoint, including healthy ones",
+    )
     args = ap.parse_args()
 
     quiet = args.json
@@ -208,9 +267,13 @@ def main() -> None:
     if args.findings:
         print_findings(records)
         return
+    if args.classify or args.explain_all:
+        print_classification(run_classification(records), explain_all=args.explain_all)
+        return
 
+    # Default: the full story — what exists, then what it means.
     print_coverage(records)
-    print_findings(records)
+    print_classification(run_classification(records))
 
 
 if __name__ == "__main__":

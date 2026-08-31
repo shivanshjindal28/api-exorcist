@@ -414,11 +414,60 @@ flowchart TD
     class DEP,ORP mid
 ```
 
-The rule layer implements exactly this tree, so it is deterministic and auditable.
-The ML layer runs alongside it and is consulted only where the tree's confidence is
-low — near the traffic threshold, or where sources conflict. **Rules decide; the model
-advises.** That ordering, rather than the reverse, is what keeps the system explainable
-by construction rather than by post-hoc attribution.
+**Implementation note — the tree became additive scoring.** The diagram above is the
+*semantics* of the four classes and remains accurate as a description of intent. The
+implementation in `engine/rules.py` realises it as fourteen evidence rules, each with
+a signed weight per class; the highest total wins. Three reasons drove the change, all
+discovered while building:
+
+1. **A tree commits at its first branch.** Real evidence conflicts — an endpoint can be
+   documented, owned, *and* completely silent. Scoring weighs the conflict; a tree lets
+   whichever test happens to run first decide.
+2. **Confidence falls out of the margin.** A tree yields a label with no native measure
+   of how close the call was. The gap between the top two scores is exactly the signal
+   needed to decide when to consult the ML layer.
+3. **It matches the shape of SHAP.** SHAP explains a prediction as additive feature
+   contributions. This layer explains a verdict as additive evidence contributions.
+   Both layers therefore emit the same explanation structure, and the dashboard and
+   audit log need one renderer rather than two.
+
+Determinism and auditability are unchanged, and the weights were fixed from the class
+definitions *before* accuracy was measured — not tuned against the answer key
+afterwards, which would make the reported figures meaningless.
+
+The ML layer runs alongside and is consulted only where the margin is narrow. **Rules
+decide; the model advises.** That ordering keeps the system explainable by
+construction rather than by post-hoc attribution.
+
+### 3.3.1 Measured performance ✅
+
+Against the 25-endpoint estate, all four sources correlated:
+
+| Class | Precision | Recall | F1 | Support |
+|---|---|---|---|---|
+| ACTIVE | 0.923 | 1.000 | 0.960 | 12 |
+| DEPRECATED | 1.000 | 0.667 | 0.800 | 3 |
+| ORPHANED | 1.000 | 1.000 | 1.000 | 2 |
+| ZOMBIE | 1.000 | 1.000 | 1.000 | 8 |
+| **macro avg** | **0.981** | **0.917** | **0.940** | 25 |
+
+Accuracy 0.960 (24/25). **Zombie recall is 1.000 and no live endpoint was marked for
+removal** — the two properties that matter operationally, since a missed zombie is an
+unremediated exposure and a false zombie is an outage.
+
+**The single error is instructive and is not a tuning problem.**
+`POST /v1/kyc/aadhaar/ekyc` is genuinely DEPRECATED but was classified ACTIVE. It is
+the one deprecated endpoint in the estate whose team never set the OpenAPI
+`deprecated` flag — precisely the behaviour Cassieri et al. [2] documented. Every
+*observable* property of that endpoint is identical to a healthy one: documented,
+registered, owned, carrying traffic.
+
+Note the confidence: **0.803, the same as correctly-classified ACTIVE endpoints.** The
+classifier is not hesitant here — it is confidently wrong, because the evidence
+genuinely does not distinguish the two cases. No amount of model sophistication
+resolves this; only a new signal would, such as `CODEOWNERS`, a changelog, or a pull
+request referencing the migration. **That is a finding about the limits of
+observation, and it belongs in the paper as one.**
 
 ### 3.4 State machine — Safe Kill Simulation ⬜
 
@@ -633,16 +682,39 @@ registry, as a bank would today.
 
 **Full mode** runs the complete six-source correlated pipeline.
 
-| Metric | Baseline (gateway only) | Full (correlated) |
-|---|---|---|
-| Endpoints discovered | 19 / 25 (76%) | 25 / 25 (100%) |
-| Shadow endpoints found | 0 | 6 |
-| Unauthenticated sensitive endpoints found | measured | measured |
-| Classification F1 (per class) | n/a — no classification | measured |
+### 7.1 Measured results ✅
 
-The 76%-versus-100% gap is the paper's headline. It is already produced by the
-existing `coverage_report()`; formalising it as a reproducible benchmark that emits
-paper-ready figures is part of the current phase.
+Produced by `python -m evaluation.benchmark`, which writes `data/benchmark.json`.
+
+| Configuration | Estate coverage | Zombies caught | Zombie recall |
+|---|---|---|---|
+| Gateway registry only | 19 / 25 (76.0%) | 2 / 8 | 25.0% |
+| OpenAPI specification only | 17 / 25 (68.0%) | 0 / 8 | 0.0% |
+| Gateway + specification (conventional) | 19 / 25 (76.0%) | 2 / 8 | 25.0% |
+| **API Exorcist — six sources, correlated** | **25 / 25 (100%)** | **8 / 8** | **100.0%** |
+
+**End-to-end zombie recall is the headline metric**, not raw discovery coverage. It
+counts an endpoint only if the configuration both *discovered* and *correctly
+classified* it, because an organisation cannot remediate an endpoint it never knew
+existed. A configuration that finds an endpoint and calls it healthy has not helped.
+
+The six zombies a conventional inventory misses entirely are:
+
+```
+GET  /v1/kyc/documents/{id}/raw        unauthenticated, raw identity documents
+GET  /v1/cards/{id}/pin                abandoned PIN-retrieval design
+POST /v1/debug/payments/replay         unauthenticated payment replay
+POST /v1/internal/accounts/reindex     2022 migration leftover
+POST /v1/loans/scorecard/experiment    concluded A/B experiment
+GET  /v1/notify/templates/preview      retired internal CMS tool
+```
+
+**Four of the eight carry no authentication at all.** Note that the OpenAPI-only
+configuration scores 0% — documentation, on its own, is worse than useless for this
+problem, because the endpoints that matter are precisely the ones nobody documented.
+
+That every configuration runs identical pipeline code with only the connector set
+varying is what makes this a controlled comparison rather than a marketing claim.
 
 ---
 

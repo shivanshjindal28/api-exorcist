@@ -6,30 +6,79 @@ Capstone project — B.Tech CSE (Cyber Security), MPSTME, NMIMS University.
 
 ---
 
-## Status: Weeks 4–5 complete (the 50% checkpoint)
+## Status: the 50% checkpoint
 
-The **discovery layer** is built, tested, and running end to end. The system
-answers the question *"what APIs actually exist in this environment, and what
-does each source know about each one?"*
+The system runs a complete vertical slice of its core loop:
 
-Not yet built (weeks 6–12): dependency graph, classification engine,
-explainable AI, Safe Kill Simulation, CI/CD enforcement, dashboard.
+**discover → correlate → classify → explain → measure**
+
+| Capability | State |
+|---|---|
+| Six-source discovery with deliberate blind spots | ✅ |
+| Multi-source correlation into a unified inventory (15 flags) | ✅ |
+| Four-class rule classifier, deterministic and auditable | ✅ |
+| Per-verdict explanations with signed evidence contributions | ✅ |
+| Evaluation harness — per-class P/R/F1, confusion matrix | ✅ |
+| Comparative before/after benchmark | ✅ |
+| Labelled dataset for the ML engine | ✅ |
+| 31 tests, including two ground-truth leakage guards | ✅ |
+| Dependency graph (Neo4j), SHAP over a trained model | ⬜ |
+| Safe Kill Simulation, CI/CD enforcement, dashboard | ⬜ |
+
+### Headline results
+
+**Classification** — accuracy 0.960 (24/25), macro-F1 0.940.
+**Zombie recall 1.000, with zero live endpoints marked for removal.**
+
+**Comparative evaluation** — identical pipeline code, only the evidence sources differ:
+
+| Configuration | Coverage | Zombie recall |
+|---|---|---|
+| Gateway registry only | 76.0% | 25.0% |
+| OpenAPI specification only | 68.0% | 0.0% |
+| Gateway + spec (conventional) | 76.0% | 25.0% |
+| **All six, correlated** | **100%** | **100%** |
+
+A conventional API inventory finds 2 of 8 zombies. Correlation finds all 8 — and four
+of them are unauthenticated.
 
 ---
 
 ## Quick start
 
-No infrastructure required. The pipeline runs on the Python standard library.
+No infrastructure required. Runs on the Python standard library. Python 3.10+.
 
 ```bash
-python pipeline.py              # full run: coverage + findings
-python pipeline.py --coverage   # per-source coverage only
-python pipeline.py --findings   # suspicious endpoints only
-python pipeline.py --json       # machine-readable inventory
-
-python dataset/build.py         # build the labelled ML dataset
-python tests/test_discovery.py  # run the test suite (11 tests)
+python pipeline.py                  # discover, classify, explain
 ```
+
+```bash
+python -m evaluation.benchmark      # the comparative before/after study
+```
+
+Other entry points:
+
+```bash
+python pipeline.py --coverage       # per-source coverage table
+python pipeline.py --classify       # classification + explanations only
+python pipeline.py --explain-all    # explain every endpoint, not just risky ones
+python pipeline.py --findings       # raw discovery flags, pre-classification
+python pipeline.py --json           # machine-readable inventory
+python dataset/build.py             # build the labelled ML dataset
+```
+
+Tests:
+
+```bash
+python tests/test_discovery.py      # 11 discovery tests
+```
+
+```bash
+python tests/test_engine.py         # 20 engine, explanation and metrics tests
+```
+
+Outputs land in `data/`: `inventory.json`, `verdicts.json` (audit-shaped),
+`benchmark.json` (paper-ready figures), `dataset.csv`.
 
 For the production transport path:
 
@@ -158,8 +207,31 @@ production bank data."*
 
 ---
 
-## Next: Week 6
+## The one misclassification, and why it is not a bug
 
-Neo4j dependency graph — ingest the inventory as nodes and caller relationships
-as edges, so "what depends on this endpoint" becomes a traversal. This is the
-prerequisite for the Safe Kill Simulation in week 9.
+`POST /v1/kyc/aadhaar/ekyc` is genuinely `DEPRECATED` and was classified `ACTIVE`.
+
+It is the one deprecated endpoint in the estate whose team never set the OpenAPI
+`deprecated` flag — exactly the behaviour Cassieri et al. documented in their study of
+deprecated API usage. Every *observable* property of it is identical to a healthy
+endpoint: documented, registered, owned, carrying traffic.
+
+The confidence is the tell: **0.803, the same as correctly-classified ACTIVE
+endpoints.** The classifier is not hesitant; it is confidently wrong, because the
+evidence genuinely does not distinguish the two cases. No model improvement fixes
+this. Only a new signal would — `CODEOWNERS`, a changelog, a pull request referencing
+the migration.
+
+That is a finding about the limits of observation, and it is stated in the paper as
+one rather than tuned away.
+
+---
+
+## Next
+
+Phase 2 — Neo4j dependency graph. Ingest the inventory as nodes and caller
+relationships as edges so "what depends on this endpoint" becomes a traversal. This is
+the prerequisite for blast-radius computation in the Safe Kill Simulation.
+
+Full schedule: [`docs/design-document.md`](docs/design-document.md).
+Research grounding: [`docs/literature-review.md`](docs/literature-review.md).
