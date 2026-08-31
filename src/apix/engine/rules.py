@@ -169,10 +169,27 @@ RULES: list[EvidenceRule] = [
     ),
     EvidenceRule(
         key="NO_OWNER",
-        statement="no owning team could be determined from spec or CI/CD metadata",
-        evidence_source="OPENAPI+CICD",
+        statement="no owning team could be determined",
+        evidence_source="OPENAPI+CICD+CODE",
         predicate=lambda r: r.owner_team is None,
-        weights={ORPH: 3.0, Z: 0.8, A: -2.0},
+        # Deliberately contributes nothing to ORPHANED. Being unowned is not by
+        # itself orphanhood: ORPHANED means "still genuinely used, but nobody
+        # owns it", and use cannot be established from ownership metadata. The
+        # ORPHANED case is carried by UNOWNED_BUT_USED below, which requires
+        # traffic. Before this split, a scan with no ownership source labelled
+        # every endpoint ORPHANED on the strength of a missing CODEOWNERS file.
+        weights={Z: 0.8, A: -2.0},
+        requires_any=frozenset({Source.OPENAPI, Source.CICD, Source.CODE}),
+    ),
+    EvidenceRule(
+        key="UNOWNED_BUT_USED",
+        statement="carrying real traffic while no team owns it",
+        evidence_source="TRAFFIC+OPENAPI+CICD",
+        predicate=lambda r: r.owner_team is None and _has_meaningful_traffic(r),
+        # The actual definition of ORPHANED, and the reason it is a separate
+        # class from ZOMBIE: something depends on this endpoint right now.
+        weights={ORPH: 3.5, Z: -1.0},
+        requires=frozenset({Source.TRAFFIC}),
         requires_any=frozenset({Source.OPENAPI, Source.CICD, Source.CODE}),
     ),
     EvidenceRule(

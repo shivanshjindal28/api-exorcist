@@ -140,10 +140,25 @@ def _scan_repository(args: argparse.Namespace) -> int:
 
     from collections import Counter
 
-    counts = Counter(v.label.value for v in result.verdicts)
-    print("  Classification (on partial evidence):")
-    for label, n in counts.most_common():
-        print(f"    {label:<11} {n:>4}")
+    lifecycle_ok = any(v.supports_lifecycle_claim for v in result.verdicts)
+    if lifecycle_ok:
+        counts = Counter(v.label.value for v in result.verdicts)
+        print("  Classification:")
+        for label, n in counts.most_common():
+            print(f"    {label:<11} {n:>4}")
+    else:
+        # Every lifecycle class is defined in terms of use, and this scan has no
+        # usage data. Reporting a class histogram here would be inventing one.
+        finding_counts: Counter[str] = Counter()
+        for v in result.verdicts:
+            finding_counts.update(v.findings)
+        print("  Lifecycle classification: NOT AVAILABLE")
+        print("    Every class (active / deprecated / orphaned / zombie) is")
+        print("    defined by usage, and no traffic source was consulted.")
+        print()
+        print(f"  Findings across {len(result.verdicts)} endpoint(s):")
+        for statement, n in finding_counts.most_common(10):
+            print(f"    {n:>4}  {statement}")
     print()
 
     flagged = sorted(

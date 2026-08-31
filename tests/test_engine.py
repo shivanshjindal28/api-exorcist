@@ -338,6 +338,50 @@ def test_no_evidence_means_indeterminate_not_active() -> None:
     )
 
 
+def test_unowned_without_traffic_is_not_orphaned() -> None:
+    """Being unowned is not orphanhood.
+
+    ORPHANED means "still genuinely used, but nobody owns it". A repository has
+    no CODEOWNERS often enough that, before the NO_OWNER / UNOWNED_BUT_USED
+    split, every endpoint in a real scan came back ORPHANED on the strength of a
+    missing file. Use has to be demonstrated, not assumed.
+    """
+    repo_only = frozenset({Source.CODE, Source.OPENAPI, Source.CICD})
+    v = RuleClassifier(consulted=repo_only).classify(
+        _record(owner_team=None, observed_on_wire=False, daily_calls=0)
+    )
+    check(
+        "test_unowned_without_traffic_is_not_orphaned",
+        v.label is not Classification.ORPHANED,
+        f"got {v.label} — ownership alone was treated as orphanhood",
+    )
+
+
+def test_unowned_with_traffic_is_orphaned() -> None:
+    """The converse still holds when usage is actually observed."""
+    v = RuleClassifier().classify(_record(owner_team=None))
+    check(
+        "test_unowned_with_traffic_is_orphaned",
+        v.label is Classification.ORPHANED,
+        f"got {v.label}",
+    )
+
+
+def test_lifecycle_claim_requires_a_usage_source() -> None:
+    """Without traffic, no four-class label is supportable at all."""
+    repo_only = frozenset({Source.CODE, Source.OPENAPI, Source.CICD})
+    partial = RuleClassifier(consulted=repo_only).classify(_record())
+    full = RuleClassifier().classify(_record())
+    check(
+        "test_lifecycle_claim_requires_a_usage_source",
+        not partial.supports_lifecycle_claim
+        and full.supports_lifecycle_claim
+        and partial.findings,
+        f"partial={partial.supports_lifecycle_claim} "
+        f"full={full.supports_lifecycle_claim} findings={partial.findings}",
+    )
+
+
 def test_full_scan_evaluates_every_rule() -> None:
     """With all six sources nothing abstains — the simulated path is unchanged."""
     v = RuleClassifier().classify(_record())
@@ -520,6 +564,9 @@ def main() -> None:
         test_repo_only_scan_does_not_label_healthy_endpoint_zombie,
         test_zombie_without_traffic_evidence_is_not_actionable,
         test_no_evidence_means_indeterminate_not_active,
+        test_unowned_without_traffic_is_not_orphaned,
+        test_unowned_with_traffic_is_orphaned,
+        test_lifecycle_claim_requires_a_usage_source,
         test_full_scan_evaluates_every_rule,
         test_every_verdict_carries_reasons,
         test_verdict_scores_every_class,

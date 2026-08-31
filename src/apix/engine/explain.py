@@ -94,6 +94,23 @@ def explain(v: Verdict, *, indent: str = "") -> str:
         lines.append(f"{indent}        action  : Connect more sources.")
         return "\n".join(lines)
 
+    if not v.supports_lifecycle_claim:
+        # Report what was observed rather than forcing a lifecycle label that
+        # the available evidence cannot support.
+        lines.append(
+            f"{indent}        status  : FINDINGS ONLY — lifecycle cannot be "
+            "determined without usage data"
+        )
+        for statement in v.findings:
+            lines.append(f"{indent}          · {statement}")
+        missing = ", ".join(sorted(_UNSEEN_SOURCES - v.sources_consulted))
+        lines.append(f"{indent}        unknown : {missing} not consulted")
+        lines.append(
+            f"{indent}        action  : Triage on these findings. Connect a "
+            "traffic source before any removal decision."
+        )
+        return "\n".join(lines)
+
     meaning = (PARTIAL_MEANING if partial else LABEL_MEANING)[v.label]
     qualifier = " on partial evidence" if partial else ""
     lines.append(

@@ -113,6 +113,34 @@ class Verdict:
     #: cannot be queued for shutdown on the strength of "we did not look".
     REMOVAL_REQUIRES: ClassVar[frozenset[str]] = frozenset({"TRAFFIC"})
 
+    #: Sources without which no lifecycle label is supportable at all.
+    LIFECYCLE_REQUIRES: ClassVar[frozenset[str]] = frozenset({"TRAFFIC"})
+
+    @property
+    def supports_lifecycle_claim(self) -> bool:
+        """Whether a four-class label means anything for this verdict.
+
+        Every class in the taxonomy is defined in terms of *use*: ACTIVE is in
+        genuine use, DEPRECATED is still responding, ORPHANED is still used but
+        unowned, ZOMBIE has no meaningful use. A scan with no traffic source
+        cannot place an endpoint anywhere in that scheme, so it should report
+        what it observed — undocumented, unowned, unmaintained — and stop short
+        of a lifecycle verdict.
+
+        The label is still computed and retained, because the evidence behind it
+        is real and useful for ranking. It is simply not presented as a
+        conclusion about the endpoint's place in its lifecycle.
+        """
+        return self.sources_consulted >= self.LIFECYCLE_REQUIRES
+
+    @property
+    def findings(self) -> list[str]:
+        """The observations behind this verdict, as plain statements.
+
+        What a scan can honestly report when it cannot classify.
+        """
+        return [r.statement for r in self.supporting_reasons]
+
     @property
     def is_actionable(self) -> bool:
         """Whether this verdict may enter the Safe Kill queue.
