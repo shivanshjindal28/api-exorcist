@@ -8,9 +8,14 @@ endpoint?", and the depth is not known in advance. In SQL that is a recursive
 common table expression whose cost grows with each hop and whose query text
 obscures the intent; in a graph it is a variable-length path match. Since this
 query runs on every removal decision, the store is chosen for the query we run
-most, not for the one that is easiest to set up. This is the argument Ma et al.
-[4] make for graph-based microservice analysis, and Abdelfattah and Cerný [5]
-formalise as a first-class dependency structure.
+most, not for the one that is easiest to set up.
+
+This is not our inference from a paper about graphs in general. Ma et al. [4]
+build a Service Dependency Graph for microservices *in Neo4j* and evaluate its
+generation from ten to hundreds of services; Abdelfattah and Cerný [5] formalise
+inter-service dependency as a first-class, measurable architectural property.
+Where we diverge from [4] is purpose: they use the graph for comprehension and
+regression-test selection, we use it as a safety gate on removal.
 
 Model
 -----

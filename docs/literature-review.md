@@ -128,24 +128,48 @@ its artefacts rather than its documentation.
 
 **Bushong, Das, Al Maruf and Cerný [3]** address microservice architecture
 reconstruction using static analysis, presented at ASE 2021. Their central premise —
-that a distributed system's real architecture must be *recovered* from source because
-the documented architecture drifts from reality — is the same premise that motivates
-our OPENAPI-versus-CODE coverage gap. Their pipeline separates endpoint extraction
-from call extraction and then matches signatures across service boundaries, and that
-three-phase decomposition is mirrored in our own separation of concerns: connectors
-extract, the correlator matches, and neither does the other's job.
+that a distributed system's real architecture must be *recovered* from source, because
+the documented architecture drifts from the deployed reality — is the same premise
+that motivates our OPENAPI-versus-CODE coverage gap.
 
-Their work is the direct justification for using **Semgrep rather than regular
-expressions** in our `CodeConnector`. Semgrep parses source into an abstract syntax
-tree and matches route declarations structurally, so `@app.get("/v1/accounts")`,
-`@RestController`, and `router.post(...)` are recognised as the same kind of construct
-across languages regardless of formatting. A regular expression over source text
-cannot distinguish a route declaration from the same string in a comment or a test
-fixture.
+Two statements of theirs bear directly on our design, and both are quoted from the
+paper rather than paraphrased loosely:
 
-Their measured result — that static analysis recovers endpoints the documentation
-omits — is what our CODE connector reproduces at 100% coverage against the gateway's
-76%.
+> "Our method does not need system runtime data; instead, it uses code analysis to
+> identify microservice endpoints and calls between individual microservices."
+
+> Developers "can get an updated view of the system's service APIs and service
+> interactions as the code changes, rather than waiting for deployments."
+
+This is the justification for the `CodeConnector` and for using **Semgrep rather than
+regular expressions**. Semgrep parses source into an abstract syntax tree and matches
+route declarations structurally, so `@app.get("/v1/accounts")`, `@RestController` and
+`router.post(...)` are recognised as the same kind of construct across languages
+regardless of formatting — and a route written inside a comment or a string literal is
+not matched at all, because structurally it is not a decorator applied to a function.
+A regular expression over source text cannot make that distinction. Our own scan of a
+real repository confirms the practical difference: the extractor finds the routes and
+ignores planted decoys in comments and string constants.
+
+It also explains why source analysis reaches **100% coverage of the estate where the
+gateway registry reaches 76%**: the code is the record of what exists, independent of
+whether anything registered it or observed it running.
+
+**The same property is the source of our sharpest limitation, and [3] states it
+plainly.** Their method deliberately needs no runtime data — which means it also
+yields none. Our Phase 1 work independently rediscovered the consequence: a scan with
+no traffic source cannot place an endpoint anywhere in a taxonomy whose every class is
+defined in terms of use. Static analysis establishes what exists; it cannot establish
+what is used. That is precisely why this project correlates six sources rather than
+building a better static analyser.
+
+**A note on what this paper is.** [3] is a three-page paper presenting a method, with
+sections for introduction, background and approach. **It reports no empirical
+evaluation** — no recall, precision or ground-truth comparison. It is cited here for
+the approach it proposes and the premise it argues, and no quantitative claim is
+attributed to it. An earlier draft of this review credited it with a "measured result"
+and with a three-phase extraction pipeline; neither is in the paper, and both have
+been removed.
 
 ---
 
@@ -154,20 +178,40 @@ omits — is what our CODE connector reproduces at 100% coverage against the gat
 Discovery answers *what exists*. Safe removal requires answering *what breaks if this
 disappears*, and that is a graph reachability question.
 
-**Ma, Fan, Chuang, Liu and Lan [4]** present a graph-based, scenario-driven approach
-to microservice analysis, retrieval and testing in *Future Generation Computer
-Systems*. They model a microservice system as a graph and demonstrate that
-dependency-aware traversal supports analysis that flat inventories cannot. This is the
-justification for our choice of **Neo4j over a relational store** for the dependency
-layer.
+**Ma, Fan, Chuang, Liu and Lan [4]** present GSMART — Graph-based and Scenario-driven
+Microservice Analysis, Retrieval and Testing — in *Future Generation Computer Systems*.
+The first problem they name is the one this project exists to solve: **"the management
+of complex call relationships among microservices."** Their answer is the automatic
+generation of a *Service Dependency Graph* (SDG), used to visualise and analyse
+dependency relationships between microservices, and to retrieve the regression tests
+a given change requires.
 
-The argument is concrete rather than a matter of taste. "Which services transitively
-depend on this endpoint?" is an unbounded-depth traversal. In SQL that is a recursive
-common table expression whose cost grows with each hop and whose query text obscures
-the intent. In Cypher it is a variable-length path match. Since blast-radius
-computation is executed on every kill decision, and since the depth is not known in
-advance, the graph model is the correct fit — not because graphs are fashionable, but
-because the query we run most often is the one relational stores handle worst.
+This is the strongest single justification for our dependency layer, for a reason
+worth being precise about: **they implement the SDG in Neo4j** (version 3.1.1, Bolt
+driver), and evaluate SDG generation efficiency at systems ranging *"from less than
+ten microservices to hundreds"*. So the choice of a graph database for exactly this
+structure is not our inference from a paper about graphs in general — it is the
+architecture the paper actually built and measured.
+
+The argument for it is concrete rather than a matter of taste. "Which services
+transitively depend on this endpoint?" is an unbounded-depth traversal. In SQL that is
+a recursive common table expression whose cost grows with each hop and whose query text
+obscures the intent; in Cypher it is a variable-length path match. Since blast-radius
+computation runs on every removal decision and the depth is not known in advance, the
+graph model fits the query we run most often — which is the one relational stores
+handle worst.
+
+Our implementation follows this directly: `Neo4jGraph` stores endpoints and services
+as nodes with `CALLS` and `OWNS` relationships and answers blast radius with a single
+`(dep)-[:CALLS|OWNS*1..N]->(e)` match. Against the simulated estate it reaches **nine
+services across five hops from three direct callers** — a result no flat inventory can
+produce and no single-hop query would find.
+
+**Where we diverge, and why.** GSMART uses its SDG for comprehension and test
+selection. We use it as a *safety gate*: an endpoint the classifier believes is dead
+may only proceed toward removal if the graph shows nothing depends on it. That
+repurposing — from understanding a system to deciding what may safely be removed from
+it — is part of this project's contribution rather than theirs.
 
 **Abdelfattah and Cerný [5]** extend this with the Microservice Dependency Matrix
 (ESOCC 2023), a formalism for representing and reasoning about inter-service
@@ -314,8 +358,8 @@ design decision it justifies and to the module that implements it.
 |---|---|---|---|---|
 | [1] | Caivano et al., EMSE 2023 | Dead code is detected at commit level, not from a snapshot; decay is slow; **dead methods are rarely revived**; most are stillborn | Temporal signals are first-class evidence; periodic batch scanning rather than real-time; the base rate favouring removal is what makes Safe Kill defensible | `connectors/discovery.py` (`CODE_UNTOUCHED_1Y`), six-source architecture, Phase 4 |
 | [2] | Cassieri et al., PROFES 2023 | Deprecation markers are applied inconsistently by real teams | `DEPRECATED` is a class distinct from `ZOMBIE`; the `spec_deprecated` flag is deliberately imperfect (2 of 3) | `simulated_env/estate.py`, `connectors/gateway.py` |
-| [3] | Bushong et al., ASE 2021 | Real architecture must be recovered from source; extraction, call analysis and matching are separable phases | Semgrep AST matching over regex; connectors extract while the correlator matches | `connectors/discovery.py` (`CodeConnector`), `inventory/correlator.py` |
-| [4] | Ma et al., FGCS 2019 | Graph traversal enables dependency analysis that flat inventories cannot support | Graph store for the dependency layer; a Cypher variable-length path rather than a recursive CTE | `graph/model.py`, `graph/neo4j_store.py` |
+| [3] | Bushong et al., ASE 2021 | Architecture is recovered from source without runtime data, giving a view that updates as code changes; and yielding no usage data in return | Semgrep AST matching over regex; CODE reaches 100% coverage where the gateway reaches 76%; and repository scans must abstain from lifecycle claims | `extractors/semgrep_extractor.py`, `live/connectors.py`, `engine/rules.py` (abstention) |
+| [4] | Ma et al., FGCS 2019 | A Service Dependency Graph implemented **in Neo4j**, evaluated from ten to hundreds of microservices | Neo4j for the dependency layer; a Cypher variable-length path rather than a recursive CTE. Repurposed from comprehension to a removal safety gate | `graph/model.py`, `graph/neo4j_store.py`, `graph/build.py` |
 | [5] | Abdelfattah & Cerný, ESOCC 2023 | Inter-service dependency is a measurable first-class architectural property | Blast radius computed before any removal is cleared; classifier and graph must both agree | `graph/build.py` |
 | [6] | Dell'Immagine et al., Future Internet 2023 | "Security smell" is a valid construct: structural indicators of elevated risk | Discrepancy flags are modelled as security smells with academic grounding | `inventory/correlator.py` (15 flags) |
 | [7] | Ponce et al., CLEIej 2024 | The research programme terminates at detection and triage | The research gap: automated *safe remediation* is the project's contribution | Phase 4 — Safe Kill Simulation (planned) |
@@ -376,21 +420,32 @@ validated against DBLP.
   expensive than LIME" in their experiments. It reports no overhead figure, so §6
   claims no number. Do not add one.
 
+- **[3] Bushong et al.** — verified, and **it forced a correction**. The full text is a
+  three-page method paper with only introduction, background and approach sections. It
+  contains **no evaluation**: zero occurrences of "recall", "precision" or "ground
+  truth". An earlier draft of §3 credited it with a "measured result" and with a
+  three-phase extraction pipeline (endpoint extraction → call extraction → signature
+  matching). Neither is in the paper — the three-phase description came from a
+  different work and was mis-attributed. Both claims are removed, and §3 now quotes the
+  paper directly. **No quantitative claim is attributed to [3].**
+- **[4] Ma et al.** — verified, and stronger than first written. They implement their
+  Service Dependency Graph **in Neo4j 3.1.1 over the Bolt driver** and evaluate
+  generation efficiency from ten to hundreds of microservices. Our Neo4j choice is
+  therefore precedent, not inference. §4 has been strengthened accordingly, and now
+  also states where we diverge: they use the graph for comprehension and test
+  selection, we use it as a removal safety gate.
+
 ### Still to verify ⚠
 
-Both papers are pending library access. The statements about them in §2 and §3 are
-attributed at the level of each paper's stated contribution and abstract, which those
-support — but confirm before submission and correct anything the full text does not
-bear out.
+- **[2] Cassieri et al.** — pending library access. §2 says deprecation markers are
+  "inconsistently applied and inconsistently acted upon", which the abstract supports.
+  Confirm the specific consistency rate of replacement messages before quoting any
+  figure, and correct anything the full text does not bear out.
 
-- **[2] Cassieri et al.** — §2 says deprecation markers are "inconsistently applied
-  and inconsistently acted upon." Confirm the specific consistency rate of replacement
-  messages, and cite it.
-- **[3] Bushong et al.** — §3 says static analysis recovers endpoints that
-  documentation omits. Confirm the reported recall of static endpoint extraction.
-
-This is not optional diligence. A jury that checks one number and finds it unsupported
-will discount the entire review.
+**Why this section exists.** Of the four papers flagged for full-text checking, one
+turned out to be carrying claims it does not make. That was found by reading the PDF,
+not by trusting a summary — and it is exactly the failure a panel would find by
+opening one citation. Do not skip the last one.
 
 ---
 

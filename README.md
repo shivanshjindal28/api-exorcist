@@ -338,4 +338,9 @@ relationships as edges so "what depends on this endpoint" becomes a traversal. T
 the prerequisite for blast-radius computation in the Safe Kill Simulation.
 
 Full schedule: [`docs/design-document.md`](docs/design-document.md).
-Research grounding: [`docs/literature-review.md`](docs/literature-review.md).
+Research grounding: [`docs/literature-review.md`](docs/literature-review.md) — nine
+peer-reviewed sources, each verified against DBLP and mapped to the module it
+justifies. Nine of the ten PDFs are in [`docs/papers/`](docs/papers/README.md), and
+four have been checked against their full text. That checking mattered: one paper
+turned out not to contain a result the review had attributed to it, and the claim was
+removed rather than softened.

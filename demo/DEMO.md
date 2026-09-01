@@ -247,7 +247,7 @@ plainly; the distinction is one a panel will probe.
 | REST API + dashboard | 5 | First thing to cut if time runs short |
 | CI/CD enforcement plugin | 6 | The prevention half |
 | Security hardening, deployment, observability | 7–8 | |
-| Papers [2] Cassieri and [3] Bushong | — | Awaiting library access |
+| Paper [2] Cassieri | — | Last one outstanding; 9 of 10 now in `docs/papers/` |
 
 ---
 
