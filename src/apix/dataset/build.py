@@ -24,7 +24,7 @@ unobtainable, but it must be stated as a limitation: the classifier is
 validated against decay patterns we ourselves modelled. The honest claim
 is "the engine correctly recovers known decay patterns from partial,
 disagreeing evidence" — not "the engine is validated on production bank
-data." Week 12's evaluation section should say exactly that.
+data." The paper's evaluation section must say exactly that.
 
 Feature design
 --------------
@@ -46,7 +46,7 @@ from apix.inventory.correlator import InventoryRecord
 from apix.simulated_env.estate import by_id
 
 # Feature order is fixed and explicit. Stability matters because the
-# explainability layer (week 8) reports feature importances by name.
+# explainability layer reports feature importances by name.
 FEATURE_NAMES: list[str] = [
     # --- visibility / documentation ---
     "in_openapi_spec",
@@ -171,10 +171,11 @@ def main() -> None:
     print()
     print(f"  written to: {out_dir/'dataset.csv'}")
     print()
-    print("  NOTE: the current estate is small (25 endpoints). Week 7 will")
-    print("  scale this up via parameterised generation of many synthetic")
-    print("  estates, giving enough samples to train and cross-validate")
-    print("  properly. The schema above is what scales.")
+    print("  NOTE: 25 samples cannot train a model — ORPHANED has two.")
+    print("  What is settled here is the schema, the provenance and the")
+    print("  labelling method. Volume is Phase 3: parameterised generation")
+    print("  of many estates, held out whole so a model must generalise")
+    print("  across environments rather than memorise one.")
 
 
 if __name__ == "__main__":

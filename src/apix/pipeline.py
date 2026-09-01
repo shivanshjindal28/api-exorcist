@@ -1,20 +1,21 @@
 """
-API Exorcist — discovery pipeline (Weeks 4–5, the 50% deliverable).
+API Exorcist — the discovery and classification pipeline.
 
-Runs the full discovery half of the system end to end:
+Runs end to end over the simulated estate:
 
-    connectors  ->  message bus  ->  correlation  ->  unified inventory
+    connectors -> message bus -> correlation -> inventory -> verdicts
 
-What this stage does NOT do, by design: it does not classify endpoints
-(week 7), does not explain decisions (week 8), and does not act on
-anything (week 9). It answers exactly one question — "what APIs exist
-in this environment, and what does each source know about them?" —
-which is the prerequisite for everything that follows.
+Discovery answers "what APIs exist here, and what does each source know about
+them?". Classification then answers "what state is each one in, and why?".
+Everything downstream — the dependency graph, and eventually Safe Kill — consumes
+the records and verdicts produced here.
 
-Usage:
-    python pipeline.py                 # run and print a summary
-    python pipeline.py --json          # emit the inventory as JSON
-    python pipeline.py --coverage      # show per-source coverage only
+What this module does not do: it does not act on anything. Removal is gated by
+`apix.graph` (does anything depend on it?) and, in Phase 4, by an approval step
+and a canary rollout.
+
+Entry point is `apix.cli`; this module stays importable as a library so the
+benchmark, the tests and a future API server can drive it directly.
 """
 
 from __future__ import annotations
@@ -197,8 +198,9 @@ def print_findings(records: list[InventoryRecord]) -> None:
 def _risk(r: InventoryRecord) -> int:
     """Crude 0-5 triage score for display ordering only.
 
-    NOT the classifier — that arrives in week 7. This just orders the
-    discovery output so the demo surfaces the scary things first.
+    NOT the classifier — that is `apix.engine.rules`. This exists so
+    `apix scan --findings` can rank raw discovery output before any
+    classification has happened.
     """
     score = 0
     if "SHADOW_CANDIDATE" in r.flags:

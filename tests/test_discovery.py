@@ -132,7 +132,7 @@ def test_deprecated_but_used_endpoints_still_show_traffic():
 
     These are the endpoints that must NOT be killed (e.g. the PSP partner
     still on payments v2). If discovery reported them as silent, the
-    Safe Kill stage in week 9 could take down a live integration.
+    Safe Kill stage (Phase 4) could take down a live integration.
     """
     records = run_discovery(verbose=False)
     truth = by_id()

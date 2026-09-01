@@ -20,9 +20,8 @@ why the architecture aggregates six sources rather than relying on a
 single scanner, and it is the concrete reason the project is not simply
 "run a scanner and read the output".
 
-The output of this module is the unified inventory, which is the Week 5
-(50%) deliverable and the input to the profiler and classifier in the
-weeks that follow.
+The output of this module is the unified inventory: the input to the
+classifier (`apix.engine`) and to the dependency graph (`apix.graph`).
 """
 
 from __future__ import annotations
@@ -163,9 +162,9 @@ class Correlator:
     def _derive_flags(self, rec: InventoryRecord) -> None:
         """Derive the discrepancy flags that drive classification.
 
-        These are deliberately *observations*, not verdicts. The
-        classifier (week 7) consumes them; the explainability layer
-        (week 8) surfaces them to the analyst as human-readable reasons.
+        These are deliberately *observations*, not verdicts. The classifier
+        in `apix.engine.rules` consumes them, and `apix.engine.explain`
+        surfaces them to the analyst as human-readable reasons.
         """
         f = rec.flags
 

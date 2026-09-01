@@ -253,17 +253,30 @@ production bank data."*
 
 ## Known limitations (state these; do not hide them)
 
-1. **Ownership is unobservable for fully-shadow endpoints.** If an endpoint is
-   in neither the spec nor CI/CD, the system cannot determine its owner, so a
-   ZOMBIE with a living owner is indistinguishable from an ORPHANED one on that
-   feature alone. Week 7 will need additional signals (e.g. repository
-   CODEOWNERS) to separate these.
-2. **The estate is small (25 endpoints).** Enough to prove correlation works,
-   too small to train and cross-validate a model. Week 7 scales this via
-   parameterised generation of many synthetic estates.
-3. **Traffic capture window is fixed at 30 days.** A genuinely seasonal endpoint
-   (quarterly or annual batch) could look silent. Mitigated later by the Safe
-   Kill Simulation's approval gate rather than by discovery.
+1. **Ownership is unobservable for fully-shadow endpoints.** If an endpoint is in
+   neither the spec nor CI/CD, no owner can be determined. Partly addressed: real
+   repository scans now read `CODEOWNERS` as a third ownership source. The
+   simulated estate has no equivalent, so the gap persists there.
+2. **The estate is small — 25 endpoints, and `ORPHANED` has two.** Enough to show
+   correlation works, far too small to train and cross-validate a model. **No model
+   has been trained;** the reported accuracy is the rule classifier. Phase 3
+   addresses this with parameterised generation of many estates, held out whole so
+   a model must generalise across environments rather than memorise one.
+3. **Traffic capture window is fixed at 30 days.** A genuinely seasonal endpoint —
+   a quarterly or annual batch — can look silent. Deliberately *not* mitigated in
+   discovery: the right response to seasonal ambiguity is a human decision at the
+   Safe Kill approval gate, not a wider window that hides the ambiguity.
+4. **Repository scans cannot make lifecycle claims.** Every class in the taxonomy
+   is defined in terms of use, and a repository has no traffic sensor. Such scans
+   report findings and abstain from classification. This is enforced, not advisory:
+   a ZOMBIE verdict is never actionable unless a usage source was consulted.
+5. **Router mount prefixes resolve only when literal.** A project mounting with
+   `prefix=settings.API_V1_STR` needs cross-module constant resolution, which is
+   not implemented. Those paths are reported relative to the API root and flagged
+   `prefix_resolved=False` rather than presented as absolute.
+6. **Graph isolation means no dependency was *observed*, not that none exists.** A
+   caller silent during the capture window is invisible. This is why the graph is a
+   gate and not a proof, and why approval and canary rollout remain mandatory.
 
 ---
 
@@ -331,11 +344,26 @@ one rather than tuned away.
 
 ---
 
-## Next
+## Progress
 
-Phase 2 — Neo4j dependency graph. Ingest the inventory as nodes and caller
-relationships as edges so "what depends on this endpoint" becomes a traversal. This is
-the prerequisite for blast-radius computation in the Safe Kill Simulation.
+| Phase | | |
+|---|---|---|
+| 0 | Packaging, CLI, CI, strict typing | ✅ done |
+| 1 | Real GitHub scanning — Semgrep AST, git history, CODEOWNERS | ✅ done |
+| 2 | Dependency graph, blast radius, removal gate | ✅ done |
+| 3 | Scaled dataset, trained model, SHAP attribution | ⬜ next |
+| 4 | Safe Kill Simulation — canary, rollback, audit log | ⬜ |
+| 5 | REST API and dashboard | ⬜ |
+| 6 | CI/CD enforcement plugin | ⬜ |
+| 7–8 | Security hardening, deployment, observability | ⬜ |
+
+**Next: Phase 3.** The dataset is schema-complete and leakage-guarded but only 25
+rows, with two `ORPHANED` examples — not enough to train anything. A parameterised
+estate generator comes first, then a model, then SHAP attribution rendered through the
+same additive explanation path the rule layer already uses.
+
+**No model has been trained yet.** The 0.960 accuracy above is the *rule* classifier,
+not machine learning.
 
 Full schedule: [`docs/design-document.md`](docs/design-document.md).
 Research grounding: [`docs/literature-review.md`](docs/literature-review.md) — nine

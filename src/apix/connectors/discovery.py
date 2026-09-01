@@ -188,9 +188,9 @@ class CICDConnector(Connector):
     runs per service, and map which endpoints were introduced or last
     shipped by which run.
 
-    This gives us deployment recency and ownership evidence, and in the
-    enforcement phase (week 10) this is the same integration point where
-    we will *block* undocumented endpoints from shipping.
+    This gives us deployment recency and ownership evidence, and it is the
+    same integration point where the CI/CD enforcement plugin (Phase 6) will
+    *block* undocumented endpoints from shipping.
 
     Blind spot: endpoints deployed manually, outside the pipeline, have
     no record here - and those are disproportionately the shadow ones.

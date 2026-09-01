@@ -363,9 +363,9 @@ design decision it justifies and to the module that implements it.
 | [5] | Abdelfattah & Cerný, ESOCC 2023 | Inter-service dependency is a measurable first-class architectural property | Blast radius computed before any removal is cleared; classifier and graph must both agree | `graph/build.py` |
 | [6] | Dell'Immagine et al., Future Internet 2023 | "Security smell" is a valid construct: structural indicators of elevated risk | Discrepancy flags are modelled as security smells with academic grounding | `inventory/correlator.py` (15 flags) |
 | [7] | Ponce et al., CLEIej 2024 | The research programme terminates at detection and triage | The research gap: automated *safe remediation* is the project's contribution | Phase 4 — Safe Kill Simulation (planned) |
-| [8] | Lundberg & Lee, NIPS 2017 | SHAP gives additive, complete per-prediction feature attribution | SHAP for the ML layer, so every verdict carries a full reason set | Phase 3 — `engine/explain.py` (planned) |
-| [9] | Gaspar et al., IEEE Access 2024 | SHAP is applicable to security decisions; its cost constrains real-time use | Hybrid rules + model; per-scan rather than per-packet workload makes exact attribution affordable | Phase 3 — `engine/` (planned) |
-| [10] | Scheitle et al., IMC 2018 | CT logs publicly expose unintended hostnames; this has privacy implications | Two-tier URL scanning: passive CT/DNS/spec first, active probing only after DNS TXT ownership proof | Phase 1 — `connectors/external/` (planned) |
+| [8] | Lundberg & Lee, NIPS 2017 | SHAP gives additive, complete per-prediction feature attribution | The rule layer already emits *additive signed contributions*, so SHAP will render through the same path rather than a second one | `engine/verdict.py`, `engine/explain.py` ✅ · SHAP itself Phase 3 ⬜ |
+| [9] | Gaspar et al., IEEE Access 2024 | SHAP is applicable to security decisions; its cost constrains real-time use | Hybrid rules + model; a per-scan rather than per-packet workload makes exact attribution affordable | `engine/rules.py` (rules-first) ✅ · model layer Phase 3 ⬜ |
+| [10] | Scheitle et al., IMC 2018 | CT logs publicly expose unintended hostnames; this has privacy implications | Two-tier URL scanning: passive CT/DNS/spec first, active probing only after DNS TXT ownership proof | `live/` scans repositories ✅ · URL tiers Phase 1b ⬜ |
 
 ---
 
