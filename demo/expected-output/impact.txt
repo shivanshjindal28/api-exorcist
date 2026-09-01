@@ -1,0 +1,34 @@
+﻿
+==========================================================================
+DEPENDENCY GRAPH — what would break
+==========================================================================
+
+  backend            : in-memory
+  endpoints          : 25
+  services           : 13
+  observed call edges: 30
+  isolated endpoints : 8
+
+  An endpoint nothing calls is a removal candidate. One that
+  something still calls is blocked, however dead it looks.
+
+  CLEARED FOR SAFE KILL — 8
+    [ok]      GET /v1/accounts/{id}/statement.pdf
+              nothing observed depends on it
+    [ok]      GET /v1/cards/{id}/pin
+              nothing observed depends on it
+    [ok]      GET /v1/kyc/documents/{id}/raw
+              nothing observed depends on it
+    [ok]      GET /v1/notify/templates/preview
+              nothing observed depends on it
+    [ok]      POST /v1/debug/payments/replay
+              nothing observed depends on it
+    [ok]      POST /v1/internal/accounts/reindex
+              nothing observed depends on it
+    [ok]      POST /v1/loans/scorecard/experiment
+              nothing observed depends on it
+    [ok]      POST /v1/payments/wallet/topup
+              nothing observed depends on it
+
+  BLOCKED — 0
+

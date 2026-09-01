@@ -1,0 +1,170 @@
+﻿Stage 1 — collection
+  kong-gateway        19 signals
+  openapi-spec        17 signals
+  zeek-sensor         18 signals
+  semgrep-scan        25 signals
+  dns-mesh            24 signals
+  github-actions      19 signals
+  TOTAL              122 signals
+
+Stage 2 — correlation
+  unified endpoints : 25
+  written to        : data\inventory.json
+  Elasticsearch     : not available (file output used)
+
+Per-source coverage of the estate
+  total endpoints in unified inventory: 25
+
+  source      seen   coverage
+  ---------------------------
+  CICD          19      76.0%
+  CODE          25     100.0%
+  DNS           24      96.0%
+  GATEWAY       19      76.0%
+  OPENAPI       17      68.0%
+  TRAFFIC       18      72.0%
+
+  endpoints invisible to BOTH authoritative sources (gateway + spec): 6
+  -> these are the shadow/zombie candidates that no single
+     source could have surfaced alone.
+
+Classification summary
+
+  ACTIVE       13  (52.0%)  #############
+  DEPRECATED    2  ( 8.0%)  ##
+  ORPHANED      2  ( 8.0%)  ##
+  ZOMBIE        8  (32.0%)  ########
+
+  8 endpoint(s) are Safe Kill candidates; 2 need an owner but must not be removed.
+
+Endpoints requiring attention (12)
+
+[#####] GET /v1/kyc/documents/{id}/raw
+        verdict : ZOMBIE (99% confidence) — no meaningful use and largely invisible to the organisation
+        because :
+          + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
+          + absent from both the OpenAPI spec and the gateway registry  [OPENAPI+GATEWAY, +2.5]
+          + no meaningful use for over six months  [TRAFFIC, +2.0]
+          + still resolvable via DNS despite no observed traffic  [DNS+TRAFFIC, +1.5]
+          + no CI/CD pipeline record for this endpoint's deployment  [CICD, +1.2]
+          + handler exists in code but the endpoint is not documented  [CODE+OPENAPI, +1.0]
+          + no commit touching this handler in over a year  [CODE, +1.0]
+          + no owning team could be determined  [OPENAPI+CICD+CODE, +0.8]
+        action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
+
+[#####] POST /v1/internal/accounts/reindex
+        verdict : ZOMBIE (99% confidence) — no meaningful use and largely invisible to the organisation
+        because :
+          + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
+          + absent from both the OpenAPI spec and the gateway registry  [OPENAPI+GATEWAY, +2.5]
+          + no meaningful use for over six months  [TRAFFIC, +2.0]
+          + still resolvable via DNS despite no observed traffic  [DNS+TRAFFIC, +1.5]
+          + no CI/CD pipeline record for this endpoint's deployment  [CICD, +1.2]
+          + handler exists in code but the endpoint is not documented  [CODE+OPENAPI, +1.0]
+          + no commit touching this handler in over a year  [CODE, +1.0]
+          + no owning team could be determined  [OPENAPI+CICD+CODE, +0.8]
+        action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
+
+[####.] GET /v1/cards/{id}/pin
+        verdict : ZOMBIE (99% confidence) — no meaningful use and largely invisible to the organisation
+        because :
+          + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
+          + absent from both the OpenAPI spec and the gateway registry  [OPENAPI+GATEWAY, +2.5]
+          + no meaningful use for over six months  [TRAFFIC, +2.0]
+          + still resolvable via DNS despite no observed traffic  [DNS+TRAFFIC, +1.5]
+          + no CI/CD pipeline record for this endpoint's deployment  [CICD, +1.2]
+          + handler exists in code but the endpoint is not documented  [CODE+OPENAPI, +1.0]
+          + no commit touching this handler in over a year  [CODE, +1.0]
+          + no owning team could be determined  [OPENAPI+CICD+CODE, +0.8]
+        action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
+
+[####.] GET /v1/notify/templates/preview
+        verdict : ZOMBIE (98% confidence) — no meaningful use and largely invisible to the organisation
+        because :
+          + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
+          + absent from both the OpenAPI spec and the gateway registry  [OPENAPI+GATEWAY, +2.5]
+          + no meaningful use for over six months  [TRAFFIC, +2.0]
+          + no CI/CD pipeline record for this endpoint's deployment  [CICD, +1.2]
+          + handler exists in code but the endpoint is not documented  [CODE+OPENAPI, +1.0]
+          + no commit touching this handler in over a year  [CODE, +1.0]
+          + no owning team could be determined  [OPENAPI+CICD+CODE, +0.8]
+        action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
+
+[####.] POST /v1/debug/payments/replay
+        verdict : ZOMBIE (95% confidence) — no meaningful use and largely invisible to the organisation
+        because :
+          + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
+          + absent from both the OpenAPI spec and the gateway registry  [OPENAPI+GATEWAY, +2.5]
+          + no CI/CD pipeline record for this endpoint's deployment  [CICD, +1.2]
+          + handler exists in code but the endpoint is not documented  [CODE+OPENAPI, +1.0]
+          + no owning team could be determined  [OPENAPI+CICD+CODE, +0.8]
+        action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
+
+[###..] POST /v1/loans/scorecard/experiment
+        verdict : ZOMBIE (99% confidence) — no meaningful use and largely invisible to the organisation
+        because :
+          + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
+          + absent from both the OpenAPI spec and the gateway registry  [OPENAPI+GATEWAY, +2.5]
+          + no meaningful use for over six months  [TRAFFIC, +2.0]
+          + still resolvable via DNS despite no observed traffic  [DNS+TRAFFIC, +1.5]
+          + no CI/CD pipeline record for this endpoint's deployment  [CICD, +1.2]
+          + handler exists in code but the endpoint is not documented  [CODE+OPENAPI, +1.0]
+          + no owning team could be determined  [OPENAPI+CICD+CODE, +0.8]
+        action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
+
+[###..] GET /v1/accounts/{id}/statement.pdf
+        verdict : ZOMBIE (95% confidence) — no meaningful use and largely invisible to the organisation
+        because :
+          + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
+          + no meaningful use for over six months  [TRAFFIC, +2.0]
+          + still resolvable via DNS despite no observed traffic  [DNS+TRAFFIC, +1.5]
+          + handler exists in code but the endpoint is not documented  [CODE+OPENAPI, +1.0]
+          + no commit touching this handler in over a year  [CODE, +1.0]
+          + no owning team could be determined  [OPENAPI+CICD+CODE, +0.8]
+        action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
+
+[###..] POST /v1/notify/email/bulk
+        verdict : ORPHANED (65% confidence) — genuinely in use, but nobody owns it
+        because :
+          + carrying real traffic while no team owns it  [TRAFFIC+OPENAPI+CICD, +3.5]
+          + serving real traffic above the significance threshold  [TRAFFIC, +1.5]
+          + used within the last 30 days  [TRAFFIC, +1.0]
+          + other services were observed calling this endpoint  [TRAFFIC, +1.0]
+        action  : Assign an owner. Do NOT schedule removal — this endpoint carries real traffic and disabling it would cause an outage.
+
+[###..] GET /v1/accounts/{id}
+        verdict : DEPRECATED (62% confidence) — announced as retiring but still responding
+        because :
+          + explicitly marked deprecated in the OpenAPI specification  [OPENAPI, +5.5]
+          + serving real traffic above the significance threshold  [TRAFFIC, +1.0]
+          + an owning team is recorded  [OPENAPI+CICD, +0.5]
+        action  : Confirm the retirement plan has a date. Deprecated endpoints that never get removed are how zombies are created.
+
+[##...] POST /v1/payments/wallet/topup
+        verdict : ZOMBIE (95% confidence) — no meaningful use and largely invisible to the organisation
+        because :
+          + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
+          + no meaningful use for over six months  [TRAFFIC, +2.0]
+          + still resolvable via DNS despite no observed traffic  [DNS+TRAFFIC, +1.5]
+          + handler exists in code but the endpoint is not documented  [CODE+OPENAPI, +1.0]
+          + no commit touching this handler in over a year  [CODE, +1.0]
+          + no owning team could be determined  [OPENAPI+CICD+CODE, +0.8]
+        action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
+
+[##...] POST /v2/payments/upi/pay
+        verdict : DEPRECATED (62% confidence) — announced as retiring but still responding
+        because :
+          + explicitly marked deprecated in the OpenAPI specification  [OPENAPI, +5.5]
+          + serving real traffic above the significance threshold  [TRAFFIC, +1.0]
+          + an owning team is recorded  [OPENAPI+CICD, +0.5]
+        action  : Confirm the retirement plan has a date. Deprecated endpoints that never get removed are how zombies are created.
+
+[#....] GET /v1/cards/rewards/catalogue
+        verdict : ORPHANED (65% confidence) — genuinely in use, but nobody owns it
+        because :
+          + carrying real traffic while no team owns it  [TRAFFIC+OPENAPI+CICD, +3.5]
+          + serving real traffic above the significance threshold  [TRAFFIC, +1.5]
+          + used within the last 30 days  [TRAFFIC, +1.0]
+          + other services were observed calling this endpoint  [TRAFFIC, +1.0]
+        action  : Assign an owner. Do NOT schedule removal — this endpoint carries real traffic and disabling it would cause an outage.
+

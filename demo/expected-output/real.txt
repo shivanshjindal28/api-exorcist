@@ -1,0 +1,50 @@
+﻿
+==========================================================================
+REAL SCAN — demo\repos\full-stack-fastapi-template @ 486f054
+==========================================================================
+
+  route declarations found : 23
+  unified endpoints        : 23
+  OpenAPI specs parsed     : 0
+  CI/CD workflows          : 15
+  CODEOWNERS rules         : 0
+  commits walked           : 1497
+  extractor                : semgrep
+
+  mount prefix             : none found as a literal
+    -> paths are relative to the API root. A project that mounts
+       with a variable (prefix=settings.API_V1_STR) needs
+       cross-module constant resolution, which is not implemented.
+
+  sources consulted   : CICD, CODE, OPENAPI
+  sources UNAVAILABLE : DNS, GATEWAY, TRAFFIC
+    -> rules depending on those abstain. Nothing here is a removal
+       candidate, because real usage was never measured.
+
+  Lifecycle classification: NOT AVAILABLE
+    Every class (active / deprecated / orphaned / zombie) is
+    defined by usage, and no traffic source was consulted.
+
+  Findings across 23 endpoint(s):
+      23  handler exists in code but the endpoint is not documented
+      23  no owning team could be determined
+       3  no commit touching this handler in over a year
+
+  Endpoints worth review (showing 2):
+
+  [##...] DELETE /items/{id}
+          status  : FINDINGS ONLY — lifecycle cannot be determined without usage data
+            · handler exists in code but the endpoint is not documented
+            · no owning team could be determined
+          unknown : DNS, GATEWAY, TRAFFIC not consulted
+          action  : Triage on these findings. Connect a traffic source before any removal decision.
+          note    : not actionable: TRAFFIC was not consulted, so real usage was never measured
+
+  [##...] DELETE /users/me
+          status  : FINDINGS ONLY — lifecycle cannot be determined without usage data
+            · handler exists in code but the endpoint is not documented
+            · no owning team could be determined
+          unknown : DNS, GATEWAY, TRAFFIC not consulted
+          action  : Triage on these findings. Connect a traffic source before any removal decision.
+          note    : not actionable: TRAFFIC was not consulted, so real usage was never measured
+

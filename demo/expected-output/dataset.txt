@@ -1,0 +1,18 @@
+﻿Labelled dataset for the ML engine
+  samples  : 25
+  features : 16
+  classes  : 4
+
+  class balance:
+    ACTIVE       12  (48.0%)  ############
+    DEPRECATED    3  (12.0%)  ###
+    ORPHANED      2  ( 8.0%)  ##
+    ZOMBIE        8  (32.0%)  ########
+
+  written to: C:\Users\shiva\OneDrive\Documents\Desktop\Capstone\api-exorcist\data\dataset.csv
+
+  NOTE: 25 samples cannot train a model — ORPHANED has two.
+  What is settled here is the schema, the provenance and the
+  labelling method. Volume is Phase 3: parameterised generation
+  of many estates, held out whole so a model must generalise
+  across environments rather than memorise one.

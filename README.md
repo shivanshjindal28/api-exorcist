@@ -34,17 +34,20 @@ The system runs a complete vertical slice of its core loop:
 
 **Comparative evaluation** — identical pipeline code, only the evidence sources differ:
 
-| Configuration | Coverage | Rules usable | Zombie recall |
-|---|---|---|---|
-| Gateway registry only | 76.0% | 0 / 14 | 0.0% |
-| OpenAPI specification only | 68.0% | 3 / 14 | 0.0% |
-| Gateway + spec (conventional) | 76.0% | 5 / 14 | 0.0% |
-| **All six, correlated** | **100%** | **14 / 14** | **100%** |
+| Configuration | Coverage | Rules usable | Zombies caught | Recall |
+|---|---|---|---|---|
+| Gateway registry only | 76.0% | 0 / 15 | 0 / 8 | 0.0% |
+| OpenAPI specification only | 68.0% | 3 / 15 | 0 / 8 | 0.0% |
+| Gateway + spec (conventional) | 76.0% | 5 / 15 | 2 / 8 | 25.0% |
+| **All six, correlated** | **100%** | **15 / 15** | **8 / 8** | **100%** |
 
-A conventional API inventory finds **none** of the 8 zombies. Correlation finds all
-8 — and four of them are unauthenticated. A gateway registry on its own cannot
-evaluate a single classification rule: it enumerates endpoints without being able to
-say anything about them.
+A conventional API inventory finds **2 of 8** zombies. It classifies those two
+correctly — it simply never discovers the other **six**, which are invisible to both
+the gateway and the specification. Correlation finds all 8, and four of them are
+unauthenticated.
+
+A gateway registry on its own cannot evaluate a **single** classification rule. It
+enumerates endpoints without being able to say anything about them.
 
 ---
 
@@ -181,7 +184,7 @@ src/apix/
   inventory/correlator.py  Multi-source correlation -> inventory + 15 flags
   engine/
     verdict.py             Classification, Verdict, Reason
-    rules.py               14 evidence rules with signed per-class weights
+    rules.py               15 evidence rules with signed per-class weights
     explain.py             Natural-language explanations + audit-log shape
   evaluation/
     metrics.py             Precision, recall, F1, confusion matrix

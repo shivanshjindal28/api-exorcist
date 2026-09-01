@@ -57,7 +57,7 @@ from apix.inventory.correlator import InventoryRecord
 #: so the classifier must too.
 MEANINGFUL_TRAFFIC_THRESHOLD = 10
 
-#: Softmax temperature. Above 1.0 to damp confidence — with fourteen rules the
+#: Softmax temperature. Above 1.0 to damp confidence — with fifteen rules the
 #: raw score spread is wide, and a classifier that reports 0.99 on a
 #: 25-endpoint synthetic estate would be lying about how much it knows.
 _TEMPERATURE = 3.0
@@ -336,7 +336,7 @@ def _softmax_confidence(
 ) -> float:
     """Confidence as the softmax probability of the winning class.
 
-    Temperature-damped: the raw score spread across fourteen rules is wide, and
+    Temperature-damped: the raw score spread across fifteen rules is wide, and
     an undamped softmax would report near-certainty on almost every endpoint.
     The value that matters operationally is not the absolute number but the
     ordering - low-confidence verdicts are the ones the ML layer will arbitrate.

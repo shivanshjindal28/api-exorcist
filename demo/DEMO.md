@@ -80,7 +80,8 @@ by a different algorithm."*
 **Point at:** the recall column.
 
 > A conventional API inventory — gateway plus specification, what most banks
-> actually have — finds **0 of 8** zombies. Correlating six sources finds **8**.
+> actually have — finds **2 of 8** zombies. It classifies those two correctly; it
+never discovers the other six. Correlating six sources finds **8**.
 
 **Then point at the rules-usable column.** A gateway registry alone can evaluate
 **0 of 14** classification rules. It can list endpoints; it cannot say anything
