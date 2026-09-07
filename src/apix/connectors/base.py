@@ -89,6 +89,25 @@ class Connector:
         return list(self.collect())
 
 
+class SimulatedConnector(Connector):
+    """A connector that reads a simulated estate rather than a live system.
+
+    The estate is injected rather than imported, so the same six connectors can
+    run over the hand-written estate or over any of the thousands produced by
+    `simulated_env.generator`. Without this the generator would need its own
+    parallel set of connectors, and the two would drift.
+    """
+
+    def __init__(self, estate: list[Any] | None = None) -> None:
+        # Imported lazily: the default estate is a large literal table and
+        # nothing should pay for it until a simulated connector is constructed.
+        if estate is None:
+            from apix.simulated_env.estate import ESTATE
+
+            estate = list(ESTATE)
+        self.estate = estate
+
+
 def split_endpoint_id(endpoint_id: str) -> tuple[str, str, str]:
     """'GET /v2/accounts/{id}' -> ('GET', 'v2', '/accounts/{id}')."""
     method, full_path = endpoint_id.split(" ", 1)

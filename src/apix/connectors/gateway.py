@@ -20,11 +20,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from apix.connectors.base import Connector, DiscoverySignal, Source
-from apix.simulated_env.estate import ESTATE
+from apix.connectors.base import DiscoverySignal, SimulatedConnector, Source
 
 
-class GatewayConnector(Connector):
+class GatewayConnector(SimulatedConnector):
     """Reads the API gateway's route registry.
 
     Real implementation: GET /routes and /services from the Kong admin
@@ -39,7 +38,7 @@ class GatewayConnector(Connector):
     name = "kong-gateway"
 
     def collect(self) -> Iterator[DiscoverySignal]:
-        for e in ESTATE:
+        for e in self.estate:
             if not e.in_gateway_registry:
                 continue  # gateway genuinely does not know about it
             yield DiscoverySignal(
@@ -61,7 +60,7 @@ class GatewayConnector(Connector):
             )
 
 
-class OpenAPIConnector(Connector):
+class OpenAPIConnector(SimulatedConnector):
     """Parses the published OpenAPI specification for each service.
 
     Real implementation: fetch /openapi.json (or the spec published to a
@@ -77,7 +76,7 @@ class OpenAPIConnector(Connector):
     name = "openapi-spec"
 
     def collect(self) -> Iterator[DiscoverySignal]:
-        for e in ESTATE:
+        for e in self.estate:
             if not e.in_openapi_spec:
                 continue  # not documented
             yield DiscoverySignal(

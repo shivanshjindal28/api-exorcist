@@ -29,15 +29,15 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterator
 
-from apix.connectors.base import Connector, DiscoverySignal, Source
-from apix.simulated_env.estate import ESTATE, Endpoint
+from apix.connectors.base import DiscoverySignal, SimulatedConnector, Source
+from apix.simulated_env.estate import Endpoint
 
 # Capture window for the passive sensor, in days. An endpoint that
 # received no calls in this window simply does not appear in traffic.
 TRAFFIC_CAPTURE_WINDOW_DAYS = 30
 
 
-class TrafficConnector(Connector):
+class TrafficConnector(SimulatedConnector):
     """Passive network traffic analysis (Zeek).
 
     Real implementation: parse Zeek's http.log / conn.log from a SPAN or
@@ -59,7 +59,7 @@ class TrafficConnector(Connector):
     name = "zeek-sensor"
 
     def collect(self) -> Iterator[DiscoverySignal]:
-        for e in ESTATE:
+        for e in self.estate:
             # Traffic can only witness endpoints that were actually called
             # within the capture window.
             seen_in_window = (
@@ -93,7 +93,7 @@ class TrafficConnector(Connector):
             )
 
 
-class CodeConnector(Connector):
+class CodeConnector(SimulatedConnector):
     """Static analysis of service source code (Semgrep).
 
     Real implementation: run Semgrep rules per framework that match route
@@ -116,7 +116,7 @@ class CodeConnector(Connector):
     name = "semgrep-scan"
 
     def collect(self) -> Iterator[DiscoverySignal]:
-        for e in ESTATE:
+        for e in self.estate:
             # Every endpoint in the estate exists as a handler in code -
             # that is precisely why zombies keep responding.
             repo = f"examplebank/{e.service}"
@@ -142,7 +142,7 @@ class CodeConnector(Connector):
             )
 
 
-class DNSConnector(Connector):
+class DNSConnector(SimulatedConnector):
     """DNS records and service-mesh registry.
 
     Real implementation: zone transfer / DNS enumeration for the internal
@@ -163,7 +163,7 @@ class DNSConnector(Connector):
     name = "dns-mesh"
 
     def collect(self) -> Iterator[DiscoverySignal]:
-        for e in ESTATE:
+        for e in self.estate:
             if not e.dns_record:
                 continue
             yield DiscoverySignal(
@@ -181,7 +181,7 @@ class DNSConnector(Connector):
             )
 
 
-class CICDConnector(Connector):
+class CICDConnector(SimulatedConnector):
     """CI/CD deployment history (GitHub Actions).
 
     Real implementation: query the Actions API for deployment workflow
@@ -200,7 +200,7 @@ class CICDConnector(Connector):
     name = "github-actions"
 
     def collect(self) -> Iterator[DiscoverySignal]:
-        for e in ESTATE:
+        for e in self.estate:
             # Anything registered with the gateway went through the
             # pipeline. Manually-deployed shadow endpoints did not.
             if not e.in_gateway_registry:

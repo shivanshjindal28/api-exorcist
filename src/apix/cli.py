@@ -287,6 +287,37 @@ def _print_radius(radius: object) -> None:
     print()
 
 
+def _cmd_train(args: argparse.Namespace) -> int:
+    """Train the ML classifier and compare it honestly against the rules."""
+    from apix.evaluation.train import (
+        format_comparison,
+        save_report,
+        train_and_compare,
+        verdict_line,
+    )
+
+    report = train_and_compare(args.estates, seed=args.seed, verbose=not args.json)
+    if report.error:
+        print(f"apix: {report.error}", file=sys.stderr)
+        return EXIT_ERROR
+
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2))
+        return EXIT_OK
+
+    print()
+    print(format_comparison(report))
+    print()
+    print(verdict_line(report))
+    print()
+
+    out = load_settings().ensure_data_dir() / "training-report.json"
+    save_report(report, out)
+    print(f"  Full report written to {out}")
+    print()
+    return EXIT_OK
+
+
 def _cmd_dataset(args: argparse.Namespace) -> int:
     from apix.dataset.build import main as build_main
 
@@ -370,6 +401,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     imp.add_argument("--json", action="store_true", help="emit as JSON")
     imp.set_defaults(func=_cmd_impact)
+
+    tr = sub.add_parser(
+        "train", help="train the ML classifier and compare it against the rules"
+    )
+    tr.add_argument(
+        "--estates", type=int, default=120, help="how many estates to generate"
+    )
+    tr.add_argument("--seed", type=int, default=42, help="split/model seed")
+    tr.add_argument("--json", action="store_true", help="emit the report as JSON")
+    tr.set_defaults(func=_cmd_train)
 
     ds = sub.add_parser("dataset", help="build the labelled ML dataset")
     ds.set_defaults(func=_cmd_dataset)

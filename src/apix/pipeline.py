@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from apix.config import load as load_settings
 from apix.connectors.base import Connector, DiscoverySignal, Source
@@ -60,6 +60,7 @@ def run_discovery(
     verbose: bool = True,
     connectors: list[type[Connector]] | None = None,
     persist: bool = True,
+    estate: list[Any] | None = None,
 ) -> list[InventoryRecord]:
     """Execute the discovery pipeline and return the inventory.
 
@@ -78,7 +79,8 @@ def run_discovery(
     total_signals = 0
     per_connector: dict[str, int] = {}
     for cls in active_connectors:
-        conn = cls()
+        # Simulated connectors accept an injected estate; live ones do not.
+        conn = cls(estate) if estate is not None else cls()  # type: ignore[call-arg]
         signals: list[DiscoverySignal] = conn.run()
         per_connector[conn.name] = len(signals)
         for sig in signals:
