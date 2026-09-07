@@ -6,7 +6,10 @@ genuinely different jobs and a user should be able to discover them with
 ``apix --help`` rather than by reading source.
 
     apix scan                  discover, classify and explain
+    apix scan --github O/R     scan a real GitHub repository
+    apix impact                dependency graph, blast radius, removal gate
     apix benchmark             the comparative before/after evaluation
+    apix train                 train the model and compare it against the rules
     apix dataset               build the labelled dataset for the ML engine
     apix version               version and resolved configuration
 

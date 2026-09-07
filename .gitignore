@@ -54,3 +54,6 @@ demo/repos/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local reproduction of the CI environment
+.ci-venv/

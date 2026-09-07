@@ -23,9 +23,12 @@ CI fails — this has happened twice. To check against the environment CI actual
 has:
 
 ```bash
-python -m venv /tmp/apix-ci && /tmp/apix-ci/bin/pip install -e ".[dev]"
-/tmp/apix-ci/bin/python -m ruff check . && /tmp/apix-ci/bin/mypy && /tmp/apix-ci/bin/pytest
+python -m venv .ci-venv && .ci-venv/bin/pip install -e ".[dev]"
+.ci-venv/bin/python -m ruff check . && .ci-venv/bin/mypy && .ci-venv/bin/pytest
 ```
+
+On Windows the interpreter is `.ci-venv\Scripts\python.exe`. Add `.ci-venv/` to
+`.gitignore` if you keep it around.
 
 Both failures this caused were the same shape: code that imports an optional
 dependency, and a mypy override list that had not been updated to match.
