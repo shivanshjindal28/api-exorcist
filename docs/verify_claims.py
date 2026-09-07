@@ -135,6 +135,80 @@ def build_claims(live: dict[str, float]) -> list[Claim]:
     ]
 
 
+#: Capability -> (file that exists iff it is built, phrases that describe it).
+#:
+#: Checked in BOTH directions. If the module exists, no document may mark that
+#: capability as not-built; if it does not exist, no document may mark it done.
+#: The first version of this script checked only numbers, and a README table
+#: sat on the repository landing page saying "SHAP over a trained model ⬜"
+#: after SHAP had shipped — the most visible line in the project, and the
+#: numeric checks could not see it.
+CAPABILITIES: dict[str, tuple[str, list[str]]] = {
+    "SHAP / model layer": (
+        "src/apix/engine/model.py",
+        [r"SHAP", r"trained model", r"learned model", r"model layer"],
+    ),
+    "dependency graph": (
+        "src/apix/graph/build.py",
+        [r"dependency graph", r"blast radius", r"removal gate"],
+    ),
+    "live repository scanning": (
+        "src/apix/live/scan.py",
+        [r"GitHub repository scanning", r"Semgrep AST", r"repository scanning"],
+    ),
+    "estate generator": (
+        "src/apix/simulated_env/generator.py",
+        [r"estate generator", r"parameterised generation", r"generated estates"],
+    ),
+    "Safe Kill": (
+        "src/apix/safekill/__init__.py",
+        [r"Safe Kill Simulation"],
+    ),
+    "dashboard": (
+        "src/apix/api/__init__.py",
+        [r"REST API and dashboard"],
+    ),
+}
+
+_NOT_BUILT = ("⬜", "🔵")
+_BUILT = "✅"
+
+
+def check_status_markers() -> list[str]:
+    """A status marker is a claim too, and drifts exactly like a number does."""
+    problems: list[str] = []
+
+    for label, (path, phrases) in CAPABILITIES.items():
+        built = (ROOT / path).exists()
+        combined = re.compile("|".join(phrases), re.I)
+
+        for doc in DOCS:
+            if not doc.exists():
+                continue
+            rel = doc.relative_to(ROOT)
+            for lineno, line in enumerate(
+                doc.read_text(encoding="utf-8").splitlines(), 1
+            ):
+                if not combined.search(line):
+                    continue
+                # Only table rows and headings carry a status marker; prose
+                # mentioning a capability is not making a claim about it.
+                if not (line.lstrip().startswith(("|", "#")) or "—" in line[:4]):
+                    continue
+
+                if built and any(m in line for m in _NOT_BUILT):
+                    problems.append(
+                        f"{rel}:{lineno}: {label} IS built ({path} exists) but "
+                        f"this line marks it unbuilt — {line.strip()[:70]}"
+                    )
+                elif not built and _BUILT in line:
+                    problems.append(
+                        f"{rel}:{lineno}: {label} is NOT built ({path} missing) "
+                        f"but this line marks it done — {line.strip()[:70]}"
+                    )
+    return problems
+
+
 def check_diagram_lists() -> list[str]:
     """Figure names and captions are positional; they must stay in step.
 
@@ -177,7 +251,7 @@ def main() -> int:
         print(f"    {k:<24} {v:g}")
     print()
 
-    failures: list[str] = check_diagram_lists()
+    failures: list[str] = check_diagram_lists() + check_status_markers()
     checked = 0
 
     for doc in DOCS:

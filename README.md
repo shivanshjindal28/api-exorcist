@@ -22,10 +22,11 @@ The system runs a complete vertical slice of its core loop:
 | Per-verdict explanations with signed evidence contributions | ✅ |
 | Evaluation harness — per-class P/R/F1, confusion matrix | ✅ |
 | Comparative before/after benchmark | ✅ |
-| Labelled dataset for the ML engine | ✅ |
+| Labelled dataset for the ML engine — schema, and scaled by generated estates | ✅ |
+| Trained model with SHAP attribution, used as a veto over removals | ✅ |
 | 85 tests, including three ground-truth leakage guards | ✅ |
-| SHAP over a trained model | ⬜ |
-| Safe Kill Simulation, CI/CD enforcement, dashboard | ⬜ |
+| Safe Kill Simulation — canary, rollback, audit log | ⬜ |
+| CI/CD enforcement plugin, REST API, dashboard | ⬜ |
 
 ### Headline results
 
