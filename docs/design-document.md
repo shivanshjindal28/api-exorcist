@@ -53,7 +53,7 @@ flowchart TB
     end
 
     subgraph L3["Layer 3 · Analysis and Intelligence"]
-        CORR["Correlation Engine<br/>unified inventory + 15 flags"]
+        CORR["Correlation Engine<br/>unified inventory + 14 flags"]
         FEAT["Feature Extraction<br/>16 observable features"]
         RULES["Rule Classifier<br/>deterministic, auditable"]
         ML["ML Classifier<br/>gradient boosting"]
@@ -93,7 +93,7 @@ flowchart TB
     classDef wip  fill:#fdf0dc,stroke:#A9631B,color:#123
     classDef todo fill:#eeeeee,stroke:#999,color:#333,stroke-dasharray:4 3
     class GW,SPEC,TRAF,CODE,DNS,CICD,CONN,BUS,SINK,CORR,FEAT,CLI,GRAPH,BLAST done
-    class RULES,ML,XAI wip
+    class RULES,ML,XAI done
     class GATE,KILL,AUDIT,ENF,API,UI todo
 ```
 
@@ -228,10 +228,13 @@ classDiagram
     Verdict o-- Reason
 ```
 
-Implemented: `Source`, `DiscoverySignal`, `Connector` and its six subclasses,
-`InventoryRecord`, `Correlator`. ✅
-In progress: `Classification`, `Verdict`, `Reason`, `Classifier`, `RuleClassifier`. 🔵
-Designed: `MLClassifier`. ⬜
+**All of the above are implemented ✅** — `Source`, `DiscoverySignal`, `Connector`
+and its six subclasses, `InventoryRecord`, `Correlator`, `Classification`,
+`Verdict`, `Reason`, `RuleClassifier` and `MLClassifier`.
+
+The model layer adds one class not shown on the diagram: `HybridClassifier`. It is
+deliberately *not* a third `Classifier` subclass — it composes the other two,
+because the rules decide and the model may only veto (§3.3.3).
 
 **Why `Verdict` composes `Reason` rather than carrying a string.** P4 requires that
 every decision be auditable. A `list[Reason]`, each naming the flag, a
@@ -323,7 +326,7 @@ sequenceDiagram
         BUS->>COR: ingest(signals)
         COR->>COR: group by endpoint_id
         COR->>COR: _reconcile() — observed beats declared
-        COR->>COR: _derive_flags() — 15 discrepancy flags
+        COR->>COR: _derive_flags() — 14 discrepancy flags
         COR-->>ST: InventoryRecord ×25
     end
 
@@ -377,7 +380,7 @@ has neither. Conflating them is the failure mode that would make this product
 dangerous, which is why they are separate classes rather than a single "abandoned"
 label.
 
-### 3.3 Classification decision logic 🔵
+### 3.3 Classification decision logic ✅
 
 ```mermaid
 flowchart TD
@@ -507,6 +510,79 @@ none exists. A caller that was silent during the capture window is invisible to
 the graph. This is precisely why the graph is a gate and not a proof, and why
 the approval step and canary rollout in §3.4 remain mandatory.
 
+### 3.3.3 The learned layer, and why it did not replace the rules ✅
+
+25 endpoints cannot train a model, so `simulated_env/generator.py` produces many
+estates. Generation is **by lifecycle mechanism, not by label rule**: an endpoint is
+put through a story — a product is discontinued, a team dissolves, a migration
+stalls, a debug route outlives an incident — and its features are consequences of
+that story. Each estate also draws its own observation discipline, so no single
+organisation's sensor biases can be memorised.
+
+Evaluation splits **by estate, never by endpoint**. Endpoints inside one estate
+share its biases; splitting by endpoint would put those correlations on both sides
+of the split and inflate every score.
+
+| On 36 held-out estates | Rules | Model |
+|---|---|---|
+| macro-F1 | 0.842 | 0.844 |
+| ZOMBIE false positives | 17 | **0** |
+| DEPRECATED F1 | 0.674 | 0.514 |
+
+**Aggregate performance is indistinguishable.** The average hides the operationally
+important difference: the rules produce 17 false zombies on unseen estates and the
+model produces none. A false zombie is an outage; a missed one is a line on a
+report. Those errors are not interchangeable, and a macro-average treats them as
+though they were.
+
+**So the model is a veto, not a replacement.**
+
+```mermaid
+flowchart LR
+    R["Rule classifier<br/>deterministic, auditable<br/>works with zero training data"]
+    Q{"Rules say<br/>ZOMBIE?"}
+    M["Model + SHAP<br/>0 false zombies on held-out estates"]
+    D{"Model<br/>agrees?"}
+    KEEP["Reported, not actionable<br/>both opinions retained"]
+    GATE["Eligible for the removal gate<br/>graph check still applies"]
+    OTHER["Reported as classified"]
+
+    R --> Q
+    Q -->|no| OTHER
+    Q -->|yes| M --> D
+    D -->|"disagrees"| KEEP
+    D -->|"agrees"| GATE
+
+    classDef done fill:#dff0e8,stroke:#2F6B63,color:#123
+    classDef warn fill:#f4e4e0,stroke:#9B3B2E,color:#123
+    class R,M,GATE done
+    class KEEP warn
+```
+
+The rules propose; the model may block but never create. This encodes the asymmetry
+rather than averaging the two opinions, and it keeps the property that matters for
+deployment: **the rules need no training data**, so a new installation classifies on
+day one and produces the labelled decisions the model later learns from.
+
+**SHAP renders through the same `Reason` objects the rules emit.** Both layers are
+signed additive contributions — which is why additive scoring was chosen for the
+rules in §3.3 — so the audit log and the dashboard need one renderer, not two. Exact
+`TreeExplainer` values are affordable here for the reason [9] identifies as
+prohibitive for an IDS: this is a per-scan batch workload, not per-packet at line
+rate.
+
+**The veto has a measured cost, and it is reported rather than hidden.** On the
+demonstration estate it wrongly blocks one genuine zombie — an unauthenticated debug
+route with three calls a day, which the model reads as still in use. That endpoint
+keeps its ZOMBIE label and full evidence; it simply does not auto-clear.
+
+**Two generator artifacts were found by disbelieving good results**, and both are now
+guarded by tests. A first run scored 0.968 F1 on DEPRECATED while ignoring
+`spec_deprecated` entirely — each story had drawn its own traffic distribution,
+making the classes nearly separable without semantics. A second gave ACTIVE endpoints
+authentication schemes no other class could have. A generated dataset is only worth
+training on if it is honestly hard.
+
 ### 3.4 State machine — Safe Kill Simulation ⬜
 
 The centrepiece of the remediation half, and the project's actual research
@@ -562,7 +638,7 @@ auditor asking "why was this endpoint *not* removed" needs an answer as much as 
 reverse. This is a compliance requirement under the RBI framework, not a
 nice-to-have.
 
-### 3.5 Data flow diagram — level 1 ✅🔵
+### 3.5 Data flow diagram — level 1 ✅
 
 ```mermaid
 flowchart LR
@@ -631,7 +707,7 @@ Every feature answers: *what real-world observation produces this?* If the answe
 `source_count` is the operationalisation of P2: a low count with a live `dns_resolvable`
 is the zombie signature.
 
-### 4.2 The fifteen discrepancy flags ✅
+### 4.2 The fourteen discrepancy flags ✅
 
 Grouped by the security-smell category they instantiate [6][7].
 
@@ -700,18 +776,18 @@ criminal matter. A product that shipped without this gate could not be sold.
 
 | Requirement | Origin | Addressed by |
 |---|---|---|
-| Identify a dataset for the ML engine | Jury review | §4.1, synthetic labelled estate; `dataset/build.py` ✅ |
-| Use explainable AI | Jury review | §2.2 `Verdict`/`Reason`; §3.3 rules-first; SHAP for the model layer 🔵 |
-| Comparative before/after study | Jury review | §7 benchmark: single-source baseline vs. correlated full pipeline 🔵 |
+| Identify a dataset for the ML engine | Jury review | §4.1 schema; `dataset/build.py` ✅ · scaled by `simulated_env/generator.py`, ~3,400 endpoints across 120 estates ✅ |
+| Use explainable AI | Jury review | §2.2 `Verdict`/`Reason`; §3.3 rules-first; §3.3.3 SHAP through the same additive path ✅ |
+| Comparative before/after study | Jury review | §7 benchmark, reproducible into `data/benchmark.json` ✅ |
 | Focus on one application | Jury review | Simulated retail-banking mesh, 6 services, 25 endpoints ✅ |
-| Enhance the engine section of the paper | Jury review | Written last, from measured results (Phase 9) ⬜ |
-| Scan via GitHub repository | Product | Real Semgrep `CodeConnector` (Phase 1) ⬜ |
+| Enhance the engine section of the paper | Jury review | Written last, from measured results ⬜ |
+| Scan via GitHub repository | Product | `live/` — Semgrep AST extraction, git-history staleness, CODEOWNERS ✅ |
 | Scan via URL | Product | §5 two-tier scanner ⬜ |
-| Shippable, self-hosted | Product | §2.3 deployment; credential separation ⬜ |
+| Shippable, self-hosted | Product | Packaging, CLI, CI, strict typing ✅ · §2.3 deployment and credential separation ⬜ |
 
 ---
 
-## 7. The comparative evaluation design 🔵
+## 7. The comparative evaluation design ✅
 
 The before/after paper requires a measurable baseline built into the product, not
 assembled afterwards.

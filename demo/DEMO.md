@@ -186,11 +186,11 @@ straight from GitHub; it takes about 99 seconds, nearly all of it cloning.
 python -m pytest -q
 ```
 
-> **64 tests.** Including two ground-truth leakage guards, the removal gate, and
+> **85 tests.** Including two ground-truth leakage guards, the removal gate, and
 > a test asserting no live endpoint is ever cleared for removal.
 
 **Then, if there is time,** click to `src/apix/engine/rules.py` in VS Code and
-scroll to `RULES`. Say: *"Fourteen evidence rules. The weights were set from the
+scroll to `RULES`. Say: *"Fifteen evidence rules. The weights were set from the
 class definitions before accuracy was measured, and deliberately never tuned
 against the answer key — otherwise the number would mean nothing."*
 
@@ -227,7 +227,7 @@ plainly; the distinction is one a panel will probe.
 | Capability | State |
 |---|---|
 | Six-source discovery with realistic blind spots | Done |
-| Multi-source correlation → unified inventory, 15 flags | Done |
+| Multi-source correlation → unified inventory, 14 flags | Done |
 | Four-class rule classifier, deterministic and auditable | Done |
 | Per-verdict explanations with signed evidence | Done |
 | Source-availability handling — abstention, indeterminacy | Done |
@@ -237,7 +237,7 @@ plainly; the distinction is one a panel will probe.
 | **Real GitHub repository scanning** — Semgrep AST, git history, CODEOWNERS | Done |
 | **Dependency graph + blast radius**, Neo4j backend | Done |
 | **Removal gate** — classifier and graph must both agree | Done |
-| Packaging, CLI, CI on 3.10/3.12, mypy strict, 64 tests | Done |
+| Packaging, CLI, CI on 3.10/3.12, mypy strict, 85 tests | Done |
 
 ### What is left
 

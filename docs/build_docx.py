@@ -310,6 +310,7 @@ def render_markdown(doc, md: str) -> None:
     i = 0
     figure_index = 0
     # Diagram captions, in the order the fenced blocks appear.
+    # Positional, and must stay in step with NAMES in render_diagrams.py.
     captions = [
         ("component", "Component diagram — the five architectural layers"),
         ("classes", "Class diagram — core domain model"),
@@ -317,6 +318,7 @@ def render_markdown(doc, md: str) -> None:
         ("sequence-scan", "Sequence diagram — a discovery scan"),
         ("state-lifecycle", "State machine — endpoint lifecycle"),
         ("decision-tree", "Classification decision logic"),
+        ("hybrid-veto", "The learned layer as a veto over rule-derived removals"),
         ("state-safekill", "State machine — Safe Kill Simulation"),
         ("dfd", "Data flow diagram — level 1"),
         ("url-tiers", "Two-tier URL scanner"),

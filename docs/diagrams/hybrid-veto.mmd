@@ -1,0 +1,19 @@
+flowchart LR
+    R["Rule classifier<br/>deterministic, auditable<br/>works with zero training data"]
+    Q{"Rules say<br/>ZOMBIE?"}
+    M["Model + SHAP<br/>0 false zombies on held-out estates"]
+    D{"Model<br/>agrees?"}
+    KEEP["Reported, not actionable<br/>both opinions retained"]
+    GATE["Eligible for the removal gate<br/>graph check still applies"]
+    OTHER["Reported as classified"]
+
+    R --> Q
+    Q -->|no| OTHER
+    Q -->|yes| M --> D
+    D -->|"disagrees"| KEEP
+    D -->|"agrees"| GATE
+
+    classDef done fill:#dff0e8,stroke:#2F6B63,color:#123
+    classDef warn fill:#f4e4e0,stroke:#9B3B2E,color:#123
+    class R,M,GATE done
+    class KEEP warn

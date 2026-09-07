@@ -24,7 +24,7 @@ sequenceDiagram
         BUS->>COR: ingest(signals)
         COR->>COR: group by endpoint_id
         COR->>COR: _reconcile() — observed beats declared
-        COR->>COR: _derive_flags() — 15 discrepancy flags
+        COR->>COR: _derive_flags() — 14 discrepancy flags
         COR-->>ST: InventoryRecord ×25
     end
 

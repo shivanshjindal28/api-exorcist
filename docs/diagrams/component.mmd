@@ -16,7 +16,7 @@ flowchart TB
     end
 
     subgraph L3["Layer 3 · Analysis and Intelligence"]
-        CORR["Correlation Engine<br/>unified inventory + 15 flags"]
+        CORR["Correlation Engine<br/>unified inventory + 14 flags"]
         FEAT["Feature Extraction<br/>16 observable features"]
         RULES["Rule Classifier<br/>deterministic, auditable"]
         ML["ML Classifier<br/>gradient boosting"]
@@ -56,5 +56,5 @@ flowchart TB
     classDef wip  fill:#fdf0dc,stroke:#A9631B,color:#123
     classDef todo fill:#eeeeee,stroke:#999,color:#333,stroke-dasharray:4 3
     class GW,SPEC,TRAF,CODE,DNS,CICD,CONN,BUS,SINK,CORR,FEAT,CLI,GRAPH,BLAST done
-    class RULES,ML,XAI wip
+    class RULES,ML,XAI done
     class GATE,KILL,AUDIT,ENF,API,UI todo

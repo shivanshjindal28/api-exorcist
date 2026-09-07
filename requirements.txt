@@ -1,18 +1,18 @@
-# Core discovery pipeline has NO hard external dependencies -
-# it runs on the Python standard library alone. This is deliberate:
-# the demo and CI must work without infrastructure.
+# Dependencies are declared in pyproject.toml, which is the single source of
+# truth. This file exists only as a signpost — it used to list packages itself,
+# which meant two places to update and one of them silently going stale.
+#
+#   pip install -e .                    core: standard library only
+#   pip install -e ".[live]"            + semgrep, pyyaml  (scan real repos)
+#   pip install -e ".[ml]"              + scikit-learn, shap  (model + SHAP)
+#   pip install -e ".[graph]"           + neo4j driver
+#   pip install -e ".[stream]"          + kafka, elasticsearch
+#   pip install -e ".[dev]"             + pytest, ruff, mypy, pre-commit
+#
+# Everything for development:
+#   pip install -e ".[dev,live,ml]"
+#
+# The core pipeline deliberately has no hard external dependencies: the demo,
+# the test suite and CI must all run with no infrastructure and no network.
 
-# --- optional: production transport / storage ---
-kafka-python>=2.0.2          # KafkaBus  (APIX_BUS=kafka)
-elasticsearch>=8.11.0        # ElasticSink
-
-# --- weeks 7-8: classification + explainability ---
-scikit-learn>=1.4.0
-pandas>=2.0.0
-shap>=0.44.0                 # explainable AI (jury ask #3)
-
-# --- week 6: dependency graph ---
-neo4j>=5.15.0
-
-# --- dev ---
-pytest>=8.0.0
+-e .

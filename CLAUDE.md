@@ -111,7 +111,7 @@ src/apix/
   config.py        settings from environment, defaults that need no infra
   connectors/      six discovery sources, each a partial and imperfect witness
   ingestion/       LocalBus (default) / Kafka / Elasticsearch
-  inventory/       multi-source correlation -> unified inventory + 15 flags
+  inventory/       multi-source correlation -> unified inventory + 14 flags
   engine/          verdict types, rule classifier, explanations
   evaluation/      metrics + the comparative benchmark
   dataset/         labelled dataset for the ML engine

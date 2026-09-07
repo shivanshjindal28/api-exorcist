@@ -45,6 +45,12 @@ jobs:
       - name: Tests
         run: pytest --cov=apix --cov-report=term-missing
 
+      # Figures written in the documentation are claims about the system, and
+      # they have drifted from it three times. Tests check code against code;
+      # this checks the documents against the code.
+      - name: Documented figures match the code
+        run: python docs/verify_claims.py
+
   evaluation:
     name: reproduce published results
     runs-on: ubuntu-latest

@@ -31,16 +31,22 @@ OUT = DOCS / "diagrams"
 #: Names in the order the fenced blocks appear in design-document.md.
 #: build_docx.py pairs these with captions using the same ordering, so the two
 #: lists must stay in step. A count mismatch is reported rather than guessed at.
+#: ORDER IS LOAD-BEARING. Names are assigned by position, so inserting a
+#: diagram into the middle of the document shifts every name after it and
+#: silently mismatches figures with captions. If you add a ```mermaid block,
+#: add its name here at the same position, and the caption in build_docx.py at
+#: the same position too. The count check below is what catches forgetting.
 NAMES = [
-    "component",
-    "classes",
-    "deployment",
-    "sequence-scan",
-    "state-lifecycle",
-    "decision-tree",
-    "state-safekill",
-    "dfd",
-    "url-tiers",
+    "component",        # 2.1
+    "classes",          # 2.2
+    "deployment",       # 2.3
+    "sequence-scan",    # 3.1
+    "state-lifecycle",  # 3.2
+    "decision-tree",    # 3.3
+    "hybrid-veto",      # 3.3.3
+    "state-safekill",   # 3.4
+    "dfd",              # 3.5
+    "url-tiers",        # 5
 ]
 
 #: Light background and generous scale: these are embedded in a printed
