@@ -327,6 +327,65 @@ in-process by default; `APIX_GRAPH=neo4j` switches backends with no code change.
 not that none exists. A caller silent during the capture window is invisible —
 which is why the approval gate and canary rollout still exist downstream.
 
+## The learned model, and why it did not replace the rules
+
+25 endpoints cannot train anything, so `simulated_env/generator.py` produces many
+estates — **by lifecycle mechanism, not by label rule**. An endpoint is put through a
+story (a product is discontinued, a team dissolves, a migration stalls, a debug route
+outlives an incident) and its features are consequences of that story. Each estate
+also draws its own observation discipline, so one organisation's sensor biases cannot
+be memorised.
+
+```bash
+apix train --estates 120 --save
+```
+
+Split is **by estate, never by endpoint** — endpoints within one estate share its
+biases, and splitting by endpoint would put those correlations on both sides.
+
+| On 36 unseen estates | Rules | Model |
+|---|---|---|
+| macro-F1 | 0.842 | 0.844 |
+| ZOMBIE false positives | 17 | **0** |
+| DEPRECATED F1 | 0.674 | 0.514 |
+
+**Aggregate: indistinguishable.** But the average hides the part that matters — the
+rules produce 17 false zombies and the model produces none. So the model is not a
+replacement; it is a **veto**:
+
+```bash
+apix scan --model
+```
+
+The rules propose removals (they need no training data, which is what lets a new
+deployment work on day one, and they are auditable line by line). The model may block
+one, never create one. Both opinions are retained on the verdict so an auditor can see
+that the rules proposed removal and the model objected.
+
+SHAP renders through the *same* `Reason` objects the rules emit — additive signed
+contributions in both cases — so the audit log and dashboard need one renderer:
+
+```
+GET /v1/kyc/documents/{id}/raw  ->  ZOMBIE (100%)
+   +10.736  last used 3650 days ago
+   + 7.692  handler last committed 548 days ago
+   + 1.536  0 calls/day
+   + 0.136  no owning team recorded
+```
+
+**The veto has a cost, and it is not hidden.** On the demo estate it wrongly blocks
+one genuine zombie — an unauthenticated debug route with 3 calls/day, which the model
+reads as still in use. That endpoint is still reported as ZOMBIE with full evidence;
+it simply does not auto-clear for removal. The trade is deliberate: a missed zombie
+stays on a report, a false zombie is an outage.
+
+**Two generator artifacts were found and fixed by disbelieving good results.** A first
+run scored 0.968 F1 on DEPRECATED while ignoring `spec_deprecated` — each story had
+its own traffic distribution, making the classes nearly separable without semantics.
+A second gave ACTIVE endpoints auth schemes no other class could have. Both are now
+guarded by tests, because a generated dataset is only worth training on if it is
+honestly hard.
+
 ## The one misclassification, and why it is not a bug
 
 `POST /v1/kyc/aadhaar/ekyc` is genuinely `DEPRECATED` and was classified `ACTIVE`.
@@ -354,19 +413,18 @@ one rather than tuned away.
 | 0 | Packaging, CLI, CI, strict typing | ✅ done |
 | 1 | Real GitHub scanning — Semgrep AST, git history, CODEOWNERS | ✅ done |
 | 2 | Dependency graph, blast radius, removal gate | ✅ done |
-| 3 | Scaled dataset, trained model, SHAP attribution | ⬜ next |
+| 3 | Scaled dataset, trained model, SHAP attribution | ✅ done |
 | 4 | Safe Kill Simulation — canary, rollback, audit log | ⬜ |
 | 5 | REST API and dashboard | ⬜ |
 | 6 | CI/CD enforcement plugin | ⬜ |
 | 7–8 | Security hardening, deployment, observability | ⬜ |
 
-**Next: Phase 3.** The dataset is schema-complete and leakage-guarded but only 25
-rows, with two `ORPHANED` examples — not enough to train anything. A parameterised
-estate generator comes first, then a model, then SHAP attribution rendered through the
-same additive explanation path the rule layer already uses.
+**Next: Phase 4 — Safe Kill.** Canary rollout, automatic rollback, hash-chained
+audit log. The dependency graph and the removal gate are already in place as its
+preconditions.
 
-**No model has been trained yet.** The 0.960 accuracy above is the *rule* classifier,
-not machine learning.
+**Note on the headline number.** The 0.960 accuracy above is the *rule* classifier on
+the 25-endpoint estate. The learned model is a separate, later layer — see below.
 
 Full schedule: [`docs/design-document.md`](docs/design-document.md).
 Research grounding: [`docs/literature-review.md`](docs/literature-review.md) — nine

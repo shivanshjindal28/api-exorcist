@@ -73,7 +73,27 @@ packages = ["src/apix"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q --strict-markers"
-filterwarnings = ["error"]
+# Warnings from our own code are errors — that is the point of this setting.
+# The ML stack (shap -> pandas -> dateutil) emits DeprecationWarnings at import
+# time that we cannot fix and should not fail the suite for. Scoped to those
+# modules by name so a deprecation in apix still fails the build.
+#
+# Matched by message rather than module: these fire while importing shap's
+# dependency chain, where the module attribution pytest sees is the importing
+# test rather than the library at fault. Naming the exact messages keeps the
+# filter narrow — a deprecation raised anywhere in apix still fails the build.
+filterwarnings = [
+    "error",
+    "ignore:The set_bad function will be deprecated:PendingDeprecationWarning",
+    "ignore:datetime.datetime.utcfromtimestamp\\(\\) is deprecated:DeprecationWarning",
+    # shap 0.52 assigns to ndarray.shape, which NumPy 2.5 deprecates. A real
+    # incompatibility between two dependencies, in neither of which we have a
+    # say. Named exactly so it cannot mask anything else.
+    "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning",
+    # joblib probes for physical core count by shelling out, which is blocked in
+    # some sandboxed and containerised environments. Environmental, not a defect.
+    "ignore:Could not find the number of physical cores:UserWarning",
+]
 
 [tool.coverage.run]
 source = ["apix"]
@@ -130,7 +150,11 @@ known-first-party = ["apix"]
 
 # ---------------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.10"
+# Deliberately not pinned to 3.10. NumPy 2.5 ships stubs written in Python 3.12
+# syntax, which mypy rejects outright when told to target 3.10 — it is a parse
+# error in a dependency, not a finding about our code. Compatibility with the
+# 3.10 floor is enforced where it actually matters: ruff targets py310, and CI
+# runs the whole test suite on 3.10.
 files = ["src/apix"]
 strict = true
 warn_unreachable = true
@@ -139,5 +163,15 @@ warn_unreachable = true
 [[tool.mypy.overrides]]
 module = [
     "kafka.*", "elasticsearch.*", "shap.*", "sklearn.*", "pandas.*", "neo4j.*",
+    "joblib.*", "yaml.*",
 ]
+ignore_missing_imports = true
+
+# NumPy 2.5 ships stubs written for Python 3.12 (they use `type` statements),
+# which mypy rejects while we target 3.10 as the floor. Skipping them costs
+# nothing: our code passes arrays through to sklearn and never relies on
+# NumPy's own type surface.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
 ignore_missing_imports = true

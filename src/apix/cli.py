@@ -58,7 +58,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         print_findings(records)
         return EXIT_OK
 
-    verdicts = run_classification(records)
+    verdicts = run_classification(records, use_model=args.model)
     if not args.classify_only:
         print_coverage(records)
     print_classification(verdicts, explain_all=args.explain_all)
@@ -289,6 +289,7 @@ def _print_radius(radius: object) -> None:
 
 def _cmd_train(args: argparse.Namespace) -> int:
     """Train the ML classifier and compare it honestly against the rules."""
+    from apix.engine.model import DEFAULT_MODEL_PATH
     from apix.evaluation.train import (
         format_comparison,
         save_report,
@@ -296,7 +297,12 @@ def _cmd_train(args: argparse.Namespace) -> int:
         verdict_line,
     )
 
-    report = train_and_compare(args.estates, seed=args.seed, verbose=not args.json)
+    report = train_and_compare(
+        args.estates,
+        seed=args.seed,
+        verbose=not args.json,
+        save_to=DEFAULT_MODEL_PATH if args.save else None,
+    )
     if report.error:
         print(f"apix: {report.error}", file=sys.stderr)
         return EXIT_ERROR
@@ -380,6 +386,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="explain every endpoint, not only those needing attention",
     )
+    scan.add_argument(
+        "--model",
+        action="store_true",
+        help="add the learned layer as a veto over removal candidates "
+             "(needs: apix train --save)",
+    )
     scan.set_defaults(func=_cmd_scan)
 
     bench = sub.add_parser(
@@ -409,6 +421,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--estates", type=int, default=120, help="how many estates to generate"
     )
     tr.add_argument("--seed", type=int, default=42, help="split/model seed")
+    tr.add_argument(
+        "--save", action="store_true", help="persist the fitted model for scans"
+    )
     tr.add_argument("--json", action="store_true", help="emit the report as JSON")
     tr.set_defaults(func=_cmd_train)
 

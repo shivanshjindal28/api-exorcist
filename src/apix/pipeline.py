@@ -224,16 +224,26 @@ def sources_of(connectors: list[type[Connector]] | None = None) -> frozenset[Sou
 def run_classification(
     records: list[InventoryRecord],
     consulted: frozenset[Source] | None = None,
+    use_model: bool = False,
 ) -> list[Verdict]:
     """Classify the inventory and persist the explained verdicts.
 
     `consulted` must name the sources that actually ran. Passing None means all
     six, which is only true for a full scan of the simulated estate.
+
+    `use_model` adds the learned layer as a veto over rule-derived removal
+    candidates. It never authorises a removal the rules did not propose.
     """
     from apix.engine.explain import audit_entry
     from apix.engine.rules import RuleClassifier
 
-    verdicts = RuleClassifier(consulted=consulted).classify_all(records)
+    rules = RuleClassifier(consulted=consulted)
+    if use_model:
+        from apix.engine.model import HybridClassifier
+
+        verdicts = HybridClassifier(rules=rules).classify_all(records)
+    else:
+        verdicts = rules.classify_all(records)
 
     data_dir = load_settings().ensure_data_dir()
     (data_dir / "verdicts.json").write_text(

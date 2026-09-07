@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from apix.dataset.build import FEATURE_NAMES, extract_features
@@ -69,6 +70,7 @@ class TrainingReport:
     rule_result: EvaluationResult | None = None
     feature_importance: list[tuple[str, float]] = field(default_factory=list)
     label_counts: dict[str, int] = field(default_factory=dict)
+    saved_to: str | None = None
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -80,6 +82,7 @@ class TrainingReport:
             "n_train": self.n_train,
             "n_test": self.n_test,
             "model": self.model_name,
+            "saved_to": self.saved_to,
             "label_counts": self.label_counts,
             "model_result": self.model_result.to_dict() if self.model_result else None,
             "rule_result": self.rule_result.to_dict() if self.rule_result else None,
@@ -124,9 +127,18 @@ def build_samples(n_estates: int, *, verbose: bool = True) -> list[Sample]:
 
 
 def train_and_compare(
-    n_estates: int = 120, *, seed: int = 42, verbose: bool = True
+    n_estates: int = 120,
+    *,
+    seed: int = 42,
+    verbose: bool = True,
+    save_to: Any = None,
 ) -> TrainingReport:
-    """Train a model and score it against the rule baseline on held-out estates."""
+    """Train a model and score it against the rule baseline on held-out estates.
+
+    `save_to` persists the fitted model together with the feature list it was
+    trained on, so a later scan can refuse to use it if the features have since
+    changed rather than silently scoring garbage.
+    """
     report = TrainingReport(n_estates=n_estates)
 
     try:
@@ -202,6 +214,27 @@ def train_and_compare(
     report.feature_importance = _permutation_importance(
         model, X[test_idx], y[test_idx], seed=seed
     )
+
+    if save_to is not None:
+        import joblib
+
+        save_to = Path(save_to)
+        save_to.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(
+            {
+                "model": model,
+                "classes": [str(c) for c in model.classes_],
+                "features": list(FEATURE_NAMES),
+                "n_estates": n_estates,
+                "trained_on": report.n_train,
+                "seed": seed,
+            },
+            save_to,
+        )
+        report.saved_to = str(save_to)
+        if verbose:
+            print(f"  Model saved to {save_to}")
+
     return report
 
 

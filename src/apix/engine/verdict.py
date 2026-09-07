@@ -85,6 +85,14 @@ class Verdict:
     #: all, and `label` is then a tie-break artifact rather than a conclusion.
     rules_fired: int = 0
 
+    #: Set when the learned model disagreed with a rule-derived removal
+    #: candidate. Both opinions are retained: an auditor must be able to see
+    #: that the rules proposed removal and the model objected, rather than one
+    #: silently overwriting the other.
+    vetoed_by_model: bool = False
+    model_label: str | None = None
+    model_confidence: float | None = None
+
     @property
     def is_determinate(self) -> bool:
         """Whether any evidence at all supported this verdict.
@@ -159,6 +167,8 @@ class Verdict:
         """
         if self.label is not Classification.ZOMBIE or not self.is_determinate:
             return False
+        if self.vetoed_by_model:
+            return False
         return self.sources_consulted >= self.REMOVAL_REQUIRES
 
     @property
@@ -166,6 +176,13 @@ class Verdict:
         """Why a ZOMBIE verdict is not actionable, if it is not."""
         if self.label is not Classification.ZOMBIE:
             return None
+        if self.vetoed_by_model:
+            return (
+                f"vetoed: the learned model classifies this as "
+                f"{self.model_label} at {(self.model_confidence or 0):.0%} "
+                "confidence, and the model may block a removal but never "
+                "authorise one"
+            )
         missing = self.REMOVAL_REQUIRES - self.sources_consulted
         if not missing:
             return None
