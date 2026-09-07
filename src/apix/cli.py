@@ -152,22 +152,57 @@ def _scan_repository(args: argparse.Namespace) -> int:
     else:
         # Every lifecycle class is defined in terms of use, and this scan has no
         # usage data. Reporting a class histogram here would be inventing one.
-        finding_counts: Counter[str] = Counter()
-        for v in result.verdicts:
-            finding_counts.update(v.findings)
         print("  Lifecycle classification: NOT AVAILABLE")
         print("    Every class (active / deprecated / orphaned / zombie) is")
         print("    defined by usage, and no traffic source was consulted.")
-        print()
-        print(f"  Findings across {len(result.verdicts)} endpoint(s):")
-        for statement, n in finding_counts.most_common(10):
-            print(f"    {n:>4}  {statement}")
     print()
 
+    total = len(result.verdicts)
+    finding_counts: Counter[str] = Counter()
+    for v in result.verdicts:
+        finding_counts.update(v.findings)
+
+    # A finding that holds for every endpoint is a fact about the repository,
+    # not about any endpoint in it. Repeating "no CODEOWNERS file" once per
+    # route buries the findings that actually differ, which is the opposite of
+    # triage. Separate them.
+    universal = {s for s, n in finding_counts.items() if n == total and total}
+    if universal:
+        print("  Repository-level — true of all "
+              f"{total} endpoint(s), so it distinguishes none of them:")
+        for statement in sorted(universal):
+            print(f"    · {statement}")
+        print()
+
+    distinguishing = {
+        s: n for s, n in finding_counts.items() if s not in universal
+    }
+    if distinguishing:
+        print("  Endpoint-level — these differ between endpoints:")
+        for statement, n in Counter(distinguishing).most_common(10):
+            print(f"    {n:>4}/{total}  {statement}")
+    else:
+        print("  Endpoint-level: none. Every endpoint carries exactly the same")
+        print("  findings, so this scan cannot rank them against each other.")
+        print("  Connect a traffic source, or add CODEOWNERS and a published")
+        print("  specification, to get signal that varies per endpoint.")
+    print()
+
+    if result.total_commits < 20:
+        print(f"  NOTE: only {result.total_commits} commit(s) of history. Staleness")
+        print("  signals are computed from commit dates and mean little here.")
+        print()
+
+    # Only worth listing individually when an endpoint has something the others
+    # do not. Otherwise the list is the same paragraph repeated.
+    candidates = [
+        v for v in result.verdicts
+        if args.explain_all or (v.risk_score > 0 and (set(v.findings) - universal))
+    ]
     flagged = sorted(
-        (v for v in result.verdicts if v.risk_score > 0),
-        key=lambda v: (-v.risk_score, v.endpoint_id),
-    )[: args.limit]
+        candidates, key=lambda v: (-v.risk_score, v.endpoint_id)
+    )[: args.limit if args.limit else None]
+
     if flagged:
         print(f"  Endpoints worth review (showing {len(flagged)}):")
         print()
@@ -176,6 +211,12 @@ def _scan_repository(args: argparse.Namespace) -> int:
             if v.blocked_reason:
                 print(f"          note    : {v.blocked_reason}")
             print()
+    elif universal:
+        print(f"  No endpoint stands out: all {total} share the same findings.")
+        print("  Listing them individually would repeat one paragraph "
+              f"{total} times.")
+        print("  Use --explain-all to see them anyway.")
+        print()
 
     return EXIT_FINDINGS if result.actionable else EXIT_OK
 
