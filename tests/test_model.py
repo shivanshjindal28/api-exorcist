@@ -16,6 +16,7 @@ the opposite of the truth on the endpoint an operator is about to disable.
 from __future__ import annotations
 
 import contextlib
+import os
 import sys
 import warnings
 from pathlib import Path
@@ -52,9 +53,24 @@ def check(name: str, condition: bool, detail: str = "") -> None:
 
 
 def skip(name: str, why: str) -> None:
+    """Report a genuine skip — and under pytest, actually skip.
+
+    Printing and returning would let pytest count the test as passed, which is
+    the silently-green failure mode: CI would show these as green on a machine
+    that cannot run them at all. Raising `pytest.skip` makes the report honest.
+    """
     global _SKIP
     _SKIP += 1
     print(f"  SKIP  {name}  ({why})")
+
+    # Only raise when pytest is actually driving; `import pytest` succeeding is
+    # not the same as running under it, and raising Skipped in the standalone
+    # script runner would abort the file.
+    if "PYTEST_CURRENT_TEST" not in os.environ:
+        return
+    import pytest
+
+    pytest.skip(why)
 
 
 def _model_or_none() -> MLClassifier | None:
@@ -68,13 +84,22 @@ def _model_or_none() -> MLClassifier | None:
 
 # ---------------------------------------------------------------------------
 def test_missing_model_fails_loudly() -> None:
-    """A missing model must raise, never silently classify everything ACTIVE."""
+    """A missing model must raise, never silently classify everything ACTIVE.
+
+    Two different things can be missing — the ML dependencies, or the trained
+    artefact — and which one depends on the environment. CI installs only
+    `.[dev]`, so there it is the dependencies; on a developer machine with the
+    extras it is the model file. The requirement is the same either way: raise
+    `ModelUnavailable` and say what to do about it.
+    """
     m = MLClassifier(model_path=Path("does-not-exist.joblib"))
     try:
         m.load()
         ok, detail = False, "load() succeeded with no model file"
     except ModelUnavailable as exc:
-        ok, detail = "apix train" in str(exc), str(exc)
+        message = str(exc)
+        ok = "apix train" in message or "pip install" in message
+        detail = f"raised, but without actionable guidance: {message}"
     check("test_missing_model_fails_loudly", ok, detail)
 
 

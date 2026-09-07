@@ -7,12 +7,28 @@ shippable, not only demonstrable.
 ## Commands
 
 ```bash
-pip install -e ".[dev]"   # first-time setup
-apix scan                 # discover, classify, explain
-apix benchmark            # comparative before/after evaluation
-pytest                    # 32 tests
-ruff check . && mypy      # lint + strict types
+pip install -e ".[dev,live,ml]"   # first-time setup
+apix scan                         # discover, classify, explain
+apix impact                       # dependency graph + removal gate
+apix benchmark                    # comparative before/after evaluation
+apix train --estates 120 --save   # train the model, compare against rules
+pytest                            # 85 tests
+ruff check . && mypy              # lint + strict types
 ```
+
+## Reproducing CI before you push
+
+**CI installs only `.[dev]`.** A local machine with the ML extras will pass things
+CI fails — this has happened twice. To check against the environment CI actually
+has:
+
+```bash
+python -m venv /tmp/apix-ci && /tmp/apix-ci/bin/pip install -e ".[dev]"
+/tmp/apix-ci/bin/python -m ruff check . && /tmp/apix-ci/bin/mypy && /tmp/apix-ci/bin/pytest
+```
+
+Both failures this caused were the same shape: code that imports an optional
+dependency, and a mypy override list that had not been updated to match.
 
 ## Three rules that are not negotiable
 
