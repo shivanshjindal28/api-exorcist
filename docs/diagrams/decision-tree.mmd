@@ -11,7 +11,7 @@ flowchart TD
     Q4 -->|No| ORP["ORPHANED<br/>in use, unowned"]
 
     Q3 -->|Yes| Q5{"Marked<br/>deprecated?"}
-    Q3 -->|"No — invisible<br/>to both authorities"| ZOM["ZOMBIE<br/>shadow + silent"]
+    Q3 -->|"No: invisible<br/>to both authorities"| ZOM["ZOMBIE<br/>shadow + silent"]
 
     Q5 -->|Yes| DEP
     Q5 -->|No| Q6{"Reachable<br/>via DNS?"}

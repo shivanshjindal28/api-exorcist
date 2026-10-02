@@ -216,6 +216,29 @@ def test_profiles_vary_between_estates() -> None:
     )
 
 
+def test_endpoint_ids_are_well_formed_and_unique() -> None:
+    """Paths are stored without the version, as in the hand-written estate.
+
+    The generator once stored "/v3/loans/..." as the path, so endpoint_id
+    rendered "/v3/v3/loans/...". Its duplicate check compared against that
+    doubled form and never matched, so colliding endpoints slipped through and
+    were merged by the correlator into one record with two ground truths.
+    """
+    doubled: list[str] = []
+    dupes = 0
+    for _, est in generate_many(120):
+        ids = Counter(e.endpoint_id for e in est)
+        dupes += sum(n - 1 for n in ids.values() if n > 1)
+        doubled += [
+            e.endpoint_id for e in est if e.path.startswith(f"/{e.version}/")
+        ]
+    check(
+        "test_endpoint_ids_are_well_formed_and_unique",
+        not doubled and dupes == 0,
+        f"{len(doubled)} doubled versions (e.g. {doubled[:1]}), {dupes} duplicates",
+    )
+
+
 def test_generated_estate_runs_through_the_pipeline() -> None:
     """The generator's output must work with the unmodified connectors."""
     from apix.pipeline import run_discovery
@@ -242,6 +265,7 @@ def main() -> None:
         test_auth_does_not_encode_the_label,
         test_dependencies_follow_usage,
         test_profiles_vary_between_estates,
+        test_endpoint_ids_are_well_formed_and_unique,
         test_generated_estate_runs_through_the_pipeline,
     ]:
         with contextlib.suppress(AssertionError):

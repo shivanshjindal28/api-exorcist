@@ -1,0 +1,165 @@
+"""
+Append-only, hash-chained audit log for Safe Kill decisions.
+
+Why hash-chained
+----------------
+A removal decision in a bank has to survive an audit months later. A plain log
+file proves nothing: anyone with write access can edit a line to say an
+endpoint was approved by someone who never saw it, and the file looks the same
+afterwards. Here every entry carries the SHA-256 of its own canonical content
+together with the hash of the entry before it. Editing, deleting or reordering
+any entry breaks every hash after it, and `verify` reports the first entry at
+which the chain stops holding.
+
+What this does and does not guarantee
+-------------------------------------
+It makes tampering *detectable*, not impossible. Someone who can rewrite the
+whole file can recompute the whole chain. The standard answer, and the
+deployment intention, is to anchor the latest hash somewhere the operator does
+not control (a WORM bucket, the bank's SIEM, a signed daily digest). The chain
+is what makes that one small anchor sufficient to vouch for every entry before
+it. Stated plainly so nobody reads more into "hash-chained" than it delivers.
+
+Every transition is written, not only terminal ones. The design requires that
+Blocked, Rejected and Denied are recorded with the same rigour as Retired,
+because "why was this endpoint *not* removed" is as much an audit question as
+the reverse; writing the full path also records *how* each state was reached.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+GENESIS = "0" * 64
+
+
+def _canonical(payload: dict[str, Any]) -> bytes:
+    """One byte representation per entry, independent of dict ordering."""
+    return json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+
+
+def _digest(payload: dict[str, Any]) -> str:
+    return hashlib.sha256(_canonical(payload)).hexdigest()
+
+
+@dataclass(frozen=True)
+class AuditEntry:
+    seq: int
+    at: str                     # ISO timestamp on the controller's clock
+    endpoint_id: str
+    from_state: str | None
+    to_state: str
+    reason: str
+    actor: str                  # "safekill-controller", or a named approver
+    evidence: dict[str, Any]
+    prev_hash: str
+    hash: str
+
+    def body(self) -> dict[str, Any]:
+        """Everything the hash covers: all fields except the hash itself."""
+        return {
+            "seq": self.seq,
+            "at": self.at,
+            "endpoint_id": self.endpoint_id,
+            "from_state": self.from_state,
+            "to_state": self.to_state,
+            "reason": self.reason,
+            "actor": self.actor,
+            "evidence": self.evidence,
+            "prev_hash": self.prev_hash,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self.body(), "hash": self.hash}
+
+
+@dataclass(frozen=True)
+class ChainCheck:
+    ok: bool
+    entries: int
+    broken_at: int | None = None
+    problem: str = ""
+
+
+@dataclass
+class AuditLog:
+    """In memory by default; mirrored to a JSON Lines file when given a path."""
+
+    path: Path | None = None
+    entries: list[AuditEntry] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.path is not None and self.path.exists():
+            self.entries = load(self.path)
+
+    @property
+    def head(self) -> str:
+        return self.entries[-1].hash if self.entries else GENESIS
+
+    def append(
+        self,
+        *,
+        at: str,
+        endpoint_id: str,
+        from_state: str | None,
+        to_state: str,
+        reason: str,
+        actor: str,
+        evidence: dict[str, Any] | None = None,
+    ) -> AuditEntry:
+        body: dict[str, Any] = {
+            "seq": len(self.entries),
+            "at": at,
+            "endpoint_id": endpoint_id,
+            "from_state": from_state,
+            "to_state": to_state,
+            "reason": reason,
+            "actor": actor,
+            "evidence": evidence or {},
+            "prev_hash": self.head,
+        }
+        entry = AuditEntry(**body, hash=_digest(body))
+        self.entries.append(entry)
+        if self.path is not None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry.to_dict(), ensure_ascii=False) + "\n")
+        return entry
+
+    def verify(self) -> ChainCheck:
+        return verify_entries(self.entries)
+
+    def for_endpoint(self, endpoint_id: str) -> list[AuditEntry]:
+        return [e for e in self.entries if e.endpoint_id == endpoint_id]
+
+
+def verify_entries(entries: list[AuditEntry]) -> ChainCheck:
+    """Recompute every hash and every link. Reports the first failure."""
+    prev = GENESIS
+    for i, entry in enumerate(entries):
+        if entry.seq != i:
+            return ChainCheck(False, len(entries), i, f"sequence {entry.seq} at position {i}")
+        if entry.prev_hash != prev:
+            return ChainCheck(False, len(entries), i, "link to previous entry broken")
+        if _digest(entry.body()) != entry.hash:
+            return ChainCheck(False, len(entries), i, "content does not match its hash")
+        prev = entry.hash
+    return ChainCheck(True, len(entries))
+
+
+def load(path: Path) -> list[AuditEntry]:
+    out: list[AuditEntry] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            out.append(AuditEntry(**json.loads(line)))
+    return out
+
+
+def verify_file(path: Path) -> ChainCheck:
+    return verify_entries(load(path))

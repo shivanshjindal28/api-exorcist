@@ -125,7 +125,7 @@ apix impact "GET /v2/accounts/{id}"
 
 **Say:** *"Before anything can be removed, we have to know what breaks."*
 
-> Three direct callers. **Nine services. Five hops deep.** Twelve endpoints
+> Three direct callers. **Nine services. Five hops deep.** Thirteen endpoints
 > degraded.
 
 **The architectural point:** the depth is not known in advance. In SQL that is a
@@ -151,6 +151,41 @@ the graph says nothing depends on it. Either alone is not enough."*
 observed, not that none exists. A caller silent during the capture window is
 invisible here. That is exactly why this is a gate and not a proof, and why the
 approval step and canary rollout still come after it."*
+
+---
+
+### Step 4b: Safe Kill, and the hidden caller
+
+```powershell
+apix safekill "GET /v1/cards/{id}/pin" --approve-as shivansh --hidden-caller "GET /v1/cards/{id}/pin"
+```
+
+**Say:** *"The gate cleared this endpoint. Now suppose a month-end batch job calls it
+every 25 days, and the traffic capture never saw it. Classifier and graph both missed
+it. Watch what Safe Kill does."*
+
+> The 90-day shadow names `month-end-recon-batch` three times and **rejects** the
+> removal. Nothing was refused. Nobody was harmed.
+
+**Then shorten the window, and say why it is wrong:**
+
+```powershell
+apix safekill "GET /v1/cards/{id}/pin" --approve-as shivansh --hidden-caller "GET /v1/cards/{id}/pin" --slowest-caller-days 3 --seed 3
+apix safekill "GET /v1/cards/{id}/pin" --approve-as shivansh --hidden-caller "GET /v1/cards/{id}/pin" --slowest-caller-days 3 --seed 1
+```
+
+> Seed 3: the shadow misses it, the canary refuses one real request, and the
+> controller **rolls back automatically**. Seed 1: it slips through everything and is
+> **retired into an outage**. At that window this happens 15 times in 40.
+
+**Say:** *"The 90 days is not a guess. To be 95% sure of catching a caller that calls
+once a month you have to watch for ln(20) times 30 days: the rule of three. These seeds
+were chosen to show each branch; the evaluation measures how often each happens."*
+
+**If asked "why not just a canary?":** *"We measured it. A canary with no shadow has
+no baseline for anonymous traffic, so scanner noise triggers rollbacks. It wrongly
+keeps 118 dead endpoints running, 15% of the attack surface, and refuses 67 real
+requests before it catches the live ones."*
 
 ---
 
@@ -186,8 +221,10 @@ straight from GitHub; it takes about 99 seconds, nearly all of it cloning.
 python -m pytest -q
 ```
 
-> **85 tests.** Including two ground-truth leakage guards, the removal gate, and
-> a test asserting no live endpoint is ever cleared for removal.
+> **108 tests.** Including the ground-truth leakage guards, the removal gate, a
+> test asserting no live endpoint is ever cleared for removal, and every Safe Kill
+> safety path forced and asserted: rejection, denial, automatic rollback, and
+> tamper detection in the audit chain.
 
 **Then, if there is time,** click to `src/apix/engine/rules.py` in VS Code and
 scroll to `RULES`. Say: *"Fifteen evidence rules. The weights were set from the
@@ -233,19 +270,19 @@ plainly; the distinction is one a panel will probe.
 | Source-availability handling — abstention, indeterminacy | Done |
 | Evaluation harness — per-class P/R/F1, confusion matrix | Done |
 | Comparative before/after benchmark | Done |
-| Labelled dataset for the ML engine | Done (schema) |
+| Labelled dataset, estate generator, trained model with SHAP | Done |
 | **Real GitHub repository scanning** — Semgrep AST, git history, CODEOWNERS | Done |
 | **Dependency graph + blast radius**, Neo4j backend | Done |
 | **Removal gate** — classifier and graph must both agree | Done |
-| Packaging, CLI, CI on 3.10/3.12, mypy strict, 85 tests | Done |
+| **Safe Kill**: rule-of-three shadow, named approval, canary, automatic rollback | Done |
+| **Hash-chained audit log**, tamper-evident, every transition recorded | Done |
+| Packaging, CLI, CI on 3.10/3.12, mypy strict, 108 tests | Done |
 
 ### What is left
 
 | Remaining | Phase | Notes |
 |---|---|---|
-| Scaled dataset + trained model + SHAP | 3 | The estate generator is the first step |
-| Safe Kill Simulation — canary, rollback, audit log | 4 | The research contribution |
-| REST API + dashboard | 5 | First thing to cut if time runs short |
+| REST API + dashboard | 5 | Next; every result already serialises to JSON |
 | CI/CD enforcement plugin | 6 | The prevention half |
 | Security hardening, deployment, observability | 7–8 | |
 | Paper [2] Cassieri | — | Last one outstanding; 9 of 10 now in `docs/papers/` |
@@ -277,10 +314,11 @@ classifier is confidently wrong, because the observable evidence genuinely does
 not distinguish the cases. No model fixes that; only a new signal would.
 
 **"What if it deletes something important?"**
-Three independent barriers. The classifier must say ZOMBIE *and* have consulted
-a usage source. The graph must show nothing depends on it. And Safe Kill is
-canary-and-rollback, never immediate deletion. A test asserts no live endpoint
-is ever cleared, and CI fails the build if that ever changes.
+Four independent barriers. The classifier must say ZOMBIE *and* have consulted
+a usage source. The graph must show nothing depends on it. A 90-day shadow must
+see no named caller, and a named human must approve. Only then does a canary
+start, and it rolls back automatically on the first breach. Across 120 estates
+the gate alone would have removed 49 live endpoints; with Safe Kill, none.
 
 **"Why not just use machine learning?"**
 A new deployment has zero labels on day one. If the product needed a trained
@@ -317,6 +355,7 @@ what this document exists to let you do.
 | 2 Scan | 0.3s | 4 min |
 | 3 Blast radius | 0.3s | 2 min |
 | 4 Removal gate | 0.3s | 3 min |
+| 4b Safe Kill (three runs) | 1s | 4 min |
 | 5 Real repository | 9s | 4 min |
 | 6 Tests | 2s | 2 min |
 

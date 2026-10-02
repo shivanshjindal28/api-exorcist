@@ -1,6 +1,6 @@
 # Design Document
 
-**API Exorcist — autonomous discovery and safe elimination of zombie, shadow and orphaned APIs**
+**API Exorcist, autonomous discovery and safe elimination of zombie, shadow and orphaned APIs**
 
 B.Tech CSE (Cyber Security), MPSTME, NMIMS · 2026–2027
 
@@ -32,7 +32,7 @@ target rather than a research finding.
 
 ## 2. Structural view
 
-### 2.1 Component diagram — five layers
+### 2.1 Component diagram: five layers
 
 ```mermaid
 flowchart TB
@@ -100,10 +100,10 @@ flowchart TB
 **Layer boundaries are enforced by dependency direction.** Layer 1 knows nothing of
 Layer 2; connectors emit `DiscoverySignal` and never classify. Layer 3 never reaches
 back to a data source. This is what makes the simulated estate swappable for live
-sources without touching anything downstream — the single most important structural
+sources without touching anything downstream, the single most important structural
 property of the system.
 
-### 2.2 Class diagram — core domain model
+### 2.2 Class diagram: core domain model
 
 ```mermaid
 classDiagram
@@ -228,12 +228,12 @@ classDiagram
     Verdict o-- Reason
 ```
 
-**All of the above are implemented ✅** — `Source`, `DiscoverySignal`, `Connector`
+**All of the above are implemented ✅**, `Source`, `DiscoverySignal`, `Connector`
 and its six subclasses, `InventoryRecord`, `Correlator`, `Classification`,
 `Verdict`, `Reason`, `RuleClassifier` and `MLClassifier`.
 
 The model layer adds one class not shown on the diagram: `HybridClassifier`. It is
-deliberately *not* a third `Classifier` subclass — it composes the other two,
+deliberately *not* a third `Classifier` subclass, it composes the other two,
 because the rules decide and the model may only veto (§3.3.3).
 
 **Why `Verdict` composes `Reason` rather than carrying a string.** P4 requires that
@@ -246,7 +246,7 @@ would have to be parsed back apart for either purpose.
 
 ```mermaid
 flowchart TB
-    subgraph CUST["Customer environment — read-only access"]
+    subgraph CUST["Customer environment: read-only access"]
         direction LR
         C1["Kong Admin API"]
         C2["GitHub org<br/>repos + Actions"]
@@ -254,7 +254,7 @@ flowchart TB
         C4["CoreDNS / mesh"]
     end
 
-    subgraph HOST["API Exorcist — self-hosted, single tenant"]
+    subgraph HOST["API Exorcist: self-hosted, single tenant"]
         direction TB
         subgraph POD1["Scanner workload"]
             W1["Connector workers"]
@@ -297,7 +297,7 @@ separation is a hard requirement of the banking deployment target.
 
 ## 3. Behavioural view
 
-### 3.1 Sequence diagram — a discovery scan ✅
+### 3.1 Sequence diagram: a discovery scan ✅
 
 ```mermaid
 sequenceDiagram
@@ -313,32 +313,32 @@ sequenceDiagram
     CLI->>PIPE: run()
 
     rect rgb(240,245,250)
-        note over PIPE,CN: Stage 1 — collection (parallelisable, no shared state)
+        note over PIPE,CN: Stage 1: collection (parallelisable, no shared state)
         PIPE->>CN: collect()
         loop each of 6 sources
             CN-->>BUS: DiscoverySignal ×N
         end
-        note right of CN: 122 signals from 25 endpoints<br/>Sources disagree — that is the point
+        note right of CN: 122 signals from 25 endpoints<br/>Sources disagree: that is the point
     end
 
     rect rgb(250,245,238)
-        note over BUS,COR: Stage 2 — correlation
+        note over BUS,COR: Stage 2: correlation
         BUS->>COR: ingest(signals)
         COR->>COR: group by endpoint_id
-        COR->>COR: _reconcile() — observed beats declared
-        COR->>COR: _derive_flags() — 14 discrepancy flags
+        COR->>COR: _reconcile(): observed beats declared
+        COR->>COR: _derive_flags(): 14 discrepancy flags
         COR-->>ST: InventoryRecord ×25
     end
 
     rect rgb(240,248,244)
-        note over PIPE,ST: Stage 3 — reporting
+        note over PIPE,ST: Stage 3: reporting
         PIPE->>ST: coverage_report()
         ST-->>CLI: no source exceeds 76%<br/>6 invisible to both authorities
         CLI-->>OP: ranked findings
     end
 ```
 
-### 3.2 State machine — endpoint lifecycle
+### 3.2 State machine: endpoint lifecycle
 
 This is the taxonomy the project is named for, expressed as states rather than a
 static quadrant. Transitions are what the classifier detects.
@@ -396,7 +396,7 @@ flowchart TD
     Q4 -->|No| ORP["ORPHANED<br/>in use, unowned"]
 
     Q3 -->|Yes| Q5{"Marked<br/>deprecated?"}
-    Q3 -->|"No — invisible<br/>to both authorities"| ZOM["ZOMBIE<br/>shadow + silent"]
+    Q3 -->|"No: invisible<br/>to both authorities"| ZOM["ZOMBIE<br/>shadow + silent"]
 
     Q5 -->|Yes| DEP
     Q5 -->|No| Q6{"Reachable<br/>via DNS?"}
@@ -417,13 +417,13 @@ flowchart TD
     class DEP,ORP mid
 ```
 
-**Implementation note — the tree became additive scoring.** The diagram above is the
+**Implementation note, the tree became additive scoring.** The diagram above is the
 *semantics* of the four classes and remains accurate as a description of intent. The
 implementation in `engine/rules.py` realises it as fifteen evidence rules, each with
 a signed weight per class; the highest total wins. Three reasons drove the change, all
 discovered while building:
 
-1. **A tree commits at its first branch.** Real evidence conflicts — an endpoint can be
+1. **A tree commits at its first branch.** Real evidence conflicts, an endpoint can be
    documented, owned, *and* completely silent. Scoring weighs the conflict; a tree lets
    whichever test happens to run first decide.
 2. **Confidence falls out of the margin.** A tree yields a label with no native measure
@@ -435,7 +435,7 @@ discovered while building:
    audit log need one renderer rather than two.
 
 Determinism and auditability are unchanged, and the weights were fixed from the class
-definitions *before* accuracy was measured — not tuned against the answer key
+definitions *before* accuracy was measured, not tuned against the answer key
 afterwards, which would make the reported figures meaningless.
 
 The ML layer runs alongside and is consulted only where the margin is narrow. **Rules
@@ -455,18 +455,18 @@ Against the 25-endpoint estate, all four sources correlated:
 | **macro avg** | **0.981** | **0.917** | **0.940** | 25 |
 
 Accuracy 0.960 (24/25). **Zombie recall is 1.000 and no live endpoint was marked for
-removal** — the two properties that matter operationally, since a missed zombie is an
+removal**, the two properties that matter operationally, since a missed zombie is an
 unremediated exposure and a false zombie is an outage.
 
 **The single error is instructive and is not a tuning problem.**
 `POST /v1/kyc/aadhaar/ekyc` is genuinely DEPRECATED but was classified ACTIVE. It is
 the one deprecated endpoint in the estate whose team never set the OpenAPI
-`deprecated` flag — precisely the behaviour Cassieri et al. [2] documented. Every
+`deprecated` flag, precisely the behaviour Cassieri et al. [2] documented. Every
 *observable* property of that endpoint is identical to a healthy one: documented,
 registered, owned, carrying traffic.
 
 Note the confidence: **0.803, the same as correctly-classified ACTIVE endpoints.** The
-classifier is not hesitant here — it is confidently wrong, because the evidence
+classifier is not hesitant here, it is confidently wrong, because the evidence
 genuinely does not distinguish the two cases. No amount of model sophistication
 resolves this; only a new signal would, such as `CODEOWNERS`, a changelog, or a pull
 request referencing the migration. **That is a finding about the limits of
@@ -480,7 +480,7 @@ ZOMBIE verdict from a conclusion into a hypothesis that can be falsified.
 **Both signals are required before removal.** The classifier must say ZOMBIE
 *with a usage source consulted*, and the graph must show nothing depends on the
 endpoint. Neither alone is sufficient: the classifier can be wrong about usage,
-and an endpoint nobody calls is not thereby dead — it may be new, or called only
+and an endpoint nobody calls is not thereby dead, it may be new, or called only
 by clients outside the observed estate.
 
 Measured against the estate: all **8 zombies are isolated** (zero observed
@@ -514,8 +514,8 @@ the approval step and canary rollout in §3.4 remain mandatory.
 
 25 endpoints cannot train a model, so `simulated_env/generator.py` produces many
 estates. Generation is **by lifecycle mechanism, not by label rule**: an endpoint is
-put through a story — a product is discontinued, a team dissolves, a migration
-stalls, a debug route outlives an incident — and its features are consequences of
+put through a story, a product is discontinued, a team dissolves, a migration
+stalls, a debug route outlives an incident, and its features are consequences of
 that story. Each estate also draws its own observation discipline, so no single
 organisation's sensor biases can be memorised.
 
@@ -525,12 +525,13 @@ of the split and inflate every score.
 
 | On 36 held-out estates | Rules | Model |
 |---|---|---|
-| macro-F1 | 0.842 | 0.844 |
-| ZOMBIE false positives | 17 | **0** |
-| DEPRECATED F1 | 0.674 | 0.514 |
+| macro-F1 | 0.843 | 0.861 |
+| ZOMBIE false positives | 14 | **0** |
+| DEPRECATED F1 | 0.681 | 0.587 |
 
-**Aggregate performance is indistinguishable.** The average hides the operationally
-important difference: the rules produce 17 false zombies on unseen estates and the
+**Aggregate performance is close: the model leads by 0.018 on a single held-out
+split.** The average hides the operationally
+important difference: the rules produce 14 false zombies on unseen estates and the
 model produces none. A false zombie is an outage; a missed one is a line on a
 report. Those errors are not interchangeable, and a macro-average treats them as
 though they were.
@@ -565,25 +566,25 @@ deployment: **the rules need no training data**, so a new installation classifie
 day one and produces the labelled decisions the model later learns from.
 
 **SHAP renders through the same `Reason` objects the rules emit.** Both layers are
-signed additive contributions — which is why additive scoring was chosen for the
-rules in §3.3 — so the audit log and the dashboard need one renderer, not two. Exact
+signed additive contributions, which is why additive scoring was chosen for the
+rules in §3.3, so the audit log and the dashboard need one renderer, not two. Exact
 `TreeExplainer` values are affordable here for the reason [9] identifies as
 prohibitive for an IDS: this is a per-scan batch workload, not per-packet at line
 rate.
 
 **The veto has a measured cost, and it is reported rather than hidden.** On the
-demonstration estate it wrongly blocks one genuine zombie — an unauthenticated debug
+demonstration estate it wrongly blocks one genuine zombie, an unauthenticated debug
 route with three calls a day, which the model reads as still in use. That endpoint
 keeps its ZOMBIE label and full evidence; it simply does not auto-clear.
 
 **Two generator artifacts were found by disbelieving good results**, and both are now
 guarded by tests. A first run scored 0.968 F1 on DEPRECATED while ignoring
-`spec_deprecated` entirely — each story had drawn its own traffic distribution,
+`spec_deprecated` entirely, each story had drawn its own traffic distribution,
 making the classes nearly separable without semantics. A second gave ACTIVE endpoints
 authentication schemes no other class could have. A generated dataset is only worth
 training on if it is honestly hard.
 
-### 3.4 State machine — Safe Kill Simulation ⬜
+### 3.4 State machine: Safe Kill Simulation ✅
 
 The centrepiece of the remediation half, and the project's actual research
 contribution.
@@ -638,7 +639,46 @@ auditor asking "why was this endpoint *not* removed" needs an answer as much as 
 reverse. This is a compliance requirement under the RBI framework, not a
 nice-to-have.
 
-### 3.5 Data flow diagram — level 1 ✅
+#### As built, and the one place it departs from the diagram
+
+The diagram's `Simulated` stage is implemented as a **shadow kill**: requests pass as
+normal, and every request that *would* have been refused is recorded with its
+caller's authenticated identity. The departure was forced by a measurement. Across
+120 generated estates the rules wrongly call 49 live endpoints ZOMBIE, and the
+dependency graph blocks none of them, because at 1 to 9 calls a day no caller edge is
+ever recorded. A 5% canary on a one-call-a-day endpoint refuses an expected 0.05
+requests a day, so the percentage canary as drawn would wave almost all of them
+through.
+
+The shadow window is derived, not chosen. To catch a caller making `r` calls a day
+with confidence `c`, observe for at least `ln(1 / (1 - c)) / r` days. At 95% that is
+the rule of three; for a monthly caller it is 90 days.
+
+| Shadow window | Live endpoints removed (outages) | Real requests refused | Dead endpoints wrongly kept |
+|---:|---:|---:|---:|
+| none (the diagram as drawn) | 0 | 67 | 118 |
+| 7 days | 6 | 12 | 4 |
+| **90 days (as built)** | **0** | **1** | **0** |
+
+The canary-only row's zero outages are not discrimination: 21 of its 49 catches were
+triggered by anonymous scanner traffic, which with no shadow baseline also keeps 118
+dead endpoints running. Predicted and measured shadow misses agree within sampling
+noise at every window length, so the result follows from the statistics rather than
+from the simulation. The one real request refused at 90 days is that agreement at
+work: the window should let through 0.1 of a live endpoint in expectation, one got through, and the canary
+caught it and rolled back automatically.
+
+Three further properties hold by construction. Nothing passes `AwaitingApproval`
+without a named decision, and with no approver the walk stops there. Rollback is
+performed by the controller, never a person. And an unauthenticated endpoint carrying
+anonymous traffic is declined unless a human explicitly accepts that risk, because a
+forgotten integration and a scanner are indistinguishable on the wire.
+
+The controller never sees the simulated world: it is barred from importing it by the
+same AST guard that protects the classifier, and learns about traffic only through
+the `EnforcementBackend` protocol a gateway plugin would implement.
+
+### 3.5 Data flow diagram: level 1 ✅
 
 ```mermaid
 flowchart LR
@@ -691,7 +731,7 @@ Every feature answers: *what real-world observation produces this?* If the answe
 | `in_gateway_registry` | bool | GATEWAY | Registration presence |
 | `observed_on_wire` | bool | TRAFFIC | Any real usage |
 | `handler_exists_in_code` | bool | CODE | Implementation presence |
-| `dns_resolvable` | bool | DNS | Reachability — the danger multiplier |
+| `dns_resolvable` | bool | DNS | Reachability, the danger multiplier |
 | `deployed_via_pipeline` | bool | CICD | Deployment provenance |
 | `daily_calls` | int | TRAFFIC | Usage intensity |
 | `last_seen_days_ago` | int | TRAFFIC | Recency of use |
@@ -723,7 +763,7 @@ Grouped by the security-smell category they instantiate [6][7].
 
 ---
 
-## 5. Interface design — the two-tier URL scanner ⬜
+## 5. Interface design: the two-tier URL scanner ⬜
 
 A customer may onboard by connecting a repository or by supplying a URL. The URL path
 is deliberately tiered, for the reasons established in [10].
@@ -732,7 +772,7 @@ is deliberately tiered, for the reasons established in [10].
 flowchart TB
     U(["Customer supplies<br/>https://api.example.com"]) --> T1
 
-    subgraph T1["Tier 1 — any URL, zero probing"]
+    subgraph T1["Tier 1: any URL, zero probing"]
         direction LR
         A1["Fetch published<br/>OpenAPI / Swagger"]
         A2["Mine Certificate<br/>Transparency logs"]
@@ -744,9 +784,9 @@ flowchart TB
     INV --> Q{"Domain ownership<br/>proven?"}
 
     Q -->|"No"| STOP["Report Tier 1 findings.<br/>Prompt for DNS TXT record."]
-    Q -->|"Yes — DNS TXT<br/>record verified"| T2
+    Q -->|"Yes: DNS TXT<br/>record verified"| T2
 
-    subgraph T2["Tier 2 — authorised active scanning"]
+    subgraph T2["Tier 2: authorised active scanning"]
         direction LR
         B1["Active endpoint probing"]
         B2["Auth posture checks"]
@@ -763,7 +803,7 @@ flowchart TB
 
 **Tier 1 makes no request to any customer endpoint.** It reads published
 specifications, public CT logs, public DNS, and the customer's own served JavaScript.
-Tier 2 unlocks only after a DNS TXT record proves domain control — the same pattern
+Tier 2 unlocks only after a DNS TXT record proves domain control, the same pattern
 used by Google Search Console and by commercial attack-surface platforms.
 
 This is a design constraint, not a limitation to apologise for. Probing endpoints on
@@ -772,7 +812,7 @@ criminal matter. A product that shipped without this gate could not be sold.
 
 ---
 
-## 6. Traceability — requirements to design
+## 6. Traceability: requirements to design
 
 | Requirement | Origin | Addressed by |
 |---|---|---|
@@ -781,7 +821,7 @@ criminal matter. A product that shipped without this gate could not be sold.
 | Comparative before/after study | Jury review | §7 benchmark, reproducible into `data/benchmark.json` ✅ |
 | Focus on one application | Jury review | Simulated retail-banking mesh, 6 services, 25 endpoints ✅ |
 | Enhance the engine section of the paper | Jury review | Written last, from measured results ⬜ |
-| Scan via GitHub repository | Product | `live/` — Semgrep AST extraction, git-history staleness, CODEOWNERS ✅ |
+| Scan via GitHub repository | Product | `live/`: Semgrep AST extraction, git-history staleness, CODEOWNERS ✅ |
 | Scan via URL | Product | §5 two-tier scanner ⬜ |
 | Shippable, self-hosted | Product | Packaging, CLI, CI, strict typing ✅ · §2.3 deployment and credential separation ⬜ |
 
@@ -793,7 +833,7 @@ The before/after paper requires a measurable baseline built into the product, no
 assembled afterwards.
 
 **Baseline mode** answers: *what would a conventional single-source approach have
-found?* It runs the same estate through one authoritative source alone — the gateway
+found?* It runs the same estate through one authoritative source alone, the gateway
 registry, as a bank would today.
 
 **Full mode** runs the complete six-source correlated pipeline.
@@ -807,10 +847,10 @@ Produced by `python -m evaluation.benchmark`, which writes `data/benchmark.json`
 | Gateway registry only | 19 / 25 (76.0%) | **0 / 15** | 0 / 8 | 0.0% |
 | OpenAPI specification only | 17 / 25 (68.0%) | 3 / 15 | 0 / 8 | 0.0% |
 | Gateway + specification (conventional) | 19 / 25 (76.0%) | 5 / 15 | 2 / 8 | 25.0% |
-| **API Exorcist — six sources, correlated** | **25 / 25 (100%)** | **15 / 15** | **8 / 8** | **100.0%** |
+| **API Exorcist, six sources, correlated** | **25 / 25 (100%)** | **15 / 15** | **8 / 8** | **100.0%** |
 
 **Why the conventional configuration reaches 2 and not more.** It is not wrong about
-the endpoints it can see — it classifies both of those correctly. It simply never
+the endpoints it can see, it classifies both of those correctly. It simply never
 *discovers* the other six, which are absent from both the gateway registry and the
 specification. Its failure is one of visibility, not of judgement, and that is the
 more interesting result: better classification would not have helped it.
@@ -848,7 +888,7 @@ GET  /v1/notify/templates/preview      retired internal CMS tool
 ```
 
 **Four of the eight carry no authentication at all.** Note that the OpenAPI-only
-configuration scores 0% — documentation, on its own, is worse than useless for this
+configuration scores 0%, documentation, on its own, is worse than useless for this
 problem, because the endpoints that matter are precisely the ones nobody documented.
 
 That every configuration runs identical pipeline code with only the connector set
@@ -867,11 +907,11 @@ Stated here rather than discovered by a reviewer.
 2. **The estate is small.** 25 endpoints proves correlation works; it cannot
    cross-validate a model. Mitigation: parameterised generation of many estates.
 3. **The traffic window is fixed at 30 days.** A genuinely quarterly batch endpoint
-   looks silent. Mitigation is deliberately *not* in discovery — it is the Safe Kill
+   looks silent. Mitigation is deliberately *not* in discovery, it is the Safe Kill
    approval gate, because the correct response to seasonal ambiguity is a human
    decision, not a smarter threshold.
 4. **The estate is synthetic.** The defensible claim is that the engine recovers known
-   decay patterns from partial, disagreeing evidence — never that it is validated on
+   decay patterns from partial, disagreeing evidence, never that it is validated on
    production bank data. No public zombie-API corpus exists, because a real API
    inventory is a map of an attack surface.
 

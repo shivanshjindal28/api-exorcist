@@ -307,8 +307,10 @@ def generate_estate(
             version = rng.choice(["v1", "v1", "v2", "v2", "v3"])
             method = rng.choice(["GET", "GET", "POST", "PUT", "DELETE"])
             suffix = rng.choice(["", "", "/{id}", "/{id}", "/status"])
-            path = f"/{version}/{domain}/{resource}{suffix}"
-            endpoint_id = f"{method} {path}"
+            # The version is a separate field, as in the hand-written estate;
+            # Endpoint.endpoint_id puts it back in front of the path.
+            path = f"/{domain}/{resource}{suffix}"
+            endpoint_id = f"{method} /{version}{path}"
             if any(e.endpoint_id == endpoint_id for e in endpoints):
                 continue
 

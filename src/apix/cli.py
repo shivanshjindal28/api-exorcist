@@ -8,6 +8,7 @@ genuinely different jobs and a user should be able to discover them with
     apix scan                  discover, classify and explain
     apix scan --github O/R     scan a real GitHub repository
     apix impact                dependency graph, blast radius, removal gate
+    apix safekill              shadow, approval, canary and rollback (Phase 4)
     apix benchmark             the comparative before/after evaluation
     apix train                 train the model and compare it against the rules
     apix dataset               build the labelled dataset for the ML engine
@@ -325,10 +326,195 @@ def _print_radius(radius: object) -> None:
     if r.indirect_services:  # type: ignore[attr-defined]
         print(f"  reached onward   : {', '.join(r.indirect_services)}")  # type: ignore[attr-defined]
     if r.affected_endpoints:  # type: ignore[attr-defined]
-        print("  endpoints degraded:")
-        for ep, hop in r.affected_endpoints[:12]:  # type: ignore[attr-defined]
+        affected = r.affected_endpoints  # type: ignore[attr-defined]
+        print(f"  endpoints degraded: {len(affected)}")
+        shown = 12
+        for ep, hop in affected[:shown]:
             print(f"      hop {hop}  {ep}")
+        if len(affected) > shown:
+            # A truncated list that does not say it is truncated is how the
+            # demo script came to report 12 when the real figure was 13.
+            print(f"      ... and {len(affected) - shown} more")
     print()
+
+
+def _cmd_safekill(args: argparse.Namespace) -> int:
+    """Safe Kill: walk every removal candidate through shadow, approval, canary."""
+    from pathlib import Path
+
+    from apix.safekill import (
+        AuditLog,
+        NamedApprover,
+        NoApprover,
+        SafeKillController,
+        SafeKillPolicy,
+        verify_file,
+    )
+
+    if args.verify:
+        check = verify_file(Path(args.verify))
+        if check.ok:
+            print(f"  chain verifies: {check.entries} entries, no break")
+            return EXIT_OK
+        print(f"  CHAIN BROKEN at entry {check.broken_at}: {check.problem}")
+        return EXIT_FINDINGS
+
+    if args.evaluate:
+        return _safekill_evaluate(args.evaluate, args.json)
+
+    from apix.graph import assess_removals, build_graph
+    from apix.pipeline import run_classification, run_discovery, sources_of
+    from apix.simulated_env.enforcement import HIDDEN_CALLER, SimulatedEnforcement
+    from apix.simulated_env.estate import ESTATE
+
+    policy = SafeKillPolicy(min_detectable_rate=1 / args.slowest_caller_days)
+    records = run_discovery(verbose=False)
+    verdicts = run_classification(records, consulted=sources_of(), use_model=args.model)
+    graph = build_graph(records)
+    try:
+        assessments = assess_removals(verdicts, graph)
+    finally:
+        graph.close()
+    if args.endpoint:
+        assessments = [a for a in assessments if a.verdict.endpoint_id == args.endpoint]
+        if not assessments:
+            print(f"  {args.endpoint} is not a removal candidate (not classified ZOMBIE)")
+            return EXIT_ERROR
+
+    audit_path = Path(args.audit) if args.audit else (
+        load_settings().ensure_data_dir() / "safekill-audit.jsonl"
+    )
+    audit = AuditLog(path=audit_path)
+    before = len(audit.entries)
+    approver = (
+        NamedApprover(args.approve_as, accept_unidentified=args.accept_unidentified)
+        if args.approve_as else NoApprover()
+    )
+    hidden = {ep: HIDDEN_CALLER for ep in (args.hidden_caller or [])}
+    backend = SimulatedEnforcement(ESTATE, seed=args.seed, hidden_callers=hidden)
+    controller = SafeKillController(
+        backend=backend,
+        audit=audit,
+        policy=policy,
+        approver=approver,
+    )
+    outcomes = controller.run_all(assessments)
+    chain = audit.verify()
+
+    if args.json:
+        print(json.dumps({
+            "policy": {"shadow_days": policy.shadow_days,
+                       "canary_days": list(policy.canary_days)},
+            "approver": args.approve_as,
+            "outcomes": [o.to_dict() for o in outcomes],
+            "audit": {"path": str(audit_path), "entries": len(audit.entries),
+                      "appended": len(audit.entries) - before,
+                      "chain_ok": chain.ok, "head": audit.head},
+        }, indent=2))
+        return EXIT_OK if chain.ok else EXIT_FINDINGS
+
+    print()
+    print("=" * 74)
+    print("SAFE KILL")
+    print("=" * 74)
+    print()
+    print("  simulated gateway over the simulated estate: nothing real is touched")
+    print()
+    print(f"  shadow   : {policy.shadow_days:g} days, nothing refused, every request "
+          f"recorded")
+    print(f"             (catches a 1-in-{args.slowest_caller_days:g}-day caller with "
+          f"{policy.confidence:.0%} confidence)")
+    print("  canary   : 5% / 25% / 100% for "
+          + " / ".join(f"{d:g}" for d in policy.canary_days)
+          + " days, rolled back automatically on a breach")
+    for ep in hidden:
+        name, every = HIDDEN_CALLER
+        print(f"  WHAT-IF  : {ep} has a hidden caller, {name},")
+        print(f"             calling every {every:g} days. The traffic capture never")
+        print("             saw it, so classifier and graph both cleared this endpoint.")
+    if hidden:
+        print()
+    if args.approve_as:
+        extra = ", including unidentified traffic" if args.accept_unidentified else ""
+        print(f"  approver : {args.approve_as}{extra}")
+    else:
+        print("  approver : none. Nothing will be removed; re-run with --approve-as NAME")
+    print()
+
+    for o in outcomes:
+        state = o.state.value.lower().replace("_", " ")
+        print(f"  {o.endpoint_id:<42} {state:<18} {o.days:>4g} days")
+        if o.shadow is not None:
+            sh = o.shadow
+            who = (", ".join(f"{c} ({n})" for c, n in sorted(sh.identified.items()))
+                   or "no identified caller")
+            print(f"      shadow : {sh.requests} request(s); {who}; "
+                  f"{sh.unidentified} unidentified")
+        if o.canary and not o.breach_kind and all(not c.refused_total for c in o.canary):
+            print("      canary : clean at 5% / 25% / 100%")
+        else:
+            for i, c in enumerate(o.canary):
+                print(f"      canary {c.refuse_fraction:>4.0%}: {c.refused_total} refused "
+                      f"of {c.requests}")
+                if i == len(o.canary) - 1 and o.breach_kind:
+                    print(f"      -> rolled back automatically ({o.breach_kind} breach)")
+        if o.state.value in ("BLOCKED", "REJECTED", "DENIED", "ROLLED_BACK"):
+            print(f"      {o.reason}")
+        print()
+
+    # What actually happened to the hidden caller. A real controller cannot
+    # know this, and this one does not: it is read from the simulated world's
+    # harm ledger, after the run, purely so a what-if can show its consequence.
+    for ep in hidden:
+        name, _ = HIDDEN_CALLER
+        refused = backend.harm.genuine_refused.get(ep, 0)
+        print("  CONSEQUENCE (visible only because this is a simulation):")
+        if ep in backend.harm.retired_with_live_caller:
+            print(f"    {ep} was RETIRED while {name} still depends on it.")
+            print("    Its next month-end run fails. This is the outage Safe Kill exists")
+            print("    to prevent, and the shadow window was too short to catch it.")
+        elif refused:
+            print(f"    {refused} real request(s) from {name} were refused before the")
+            print("    automatic rollback restored the endpoint. Caught, at a cost.")
+        else:
+            print(f"    {name} was never refused. Caught with no harm at all.")
+        print()
+
+    counts: dict[str, int] = {}
+    for o in outcomes:
+        counts[o.state.value] = counts.get(o.state.value, 0) + 1
+    print("  " + "  ".join(f"{k.lower().replace('_', ' ')}: {v}"
+                           for k, v in sorted(counts.items())))
+    print()
+    print(f"  audit    : {len(audit.entries) - before} entries appended to {audit_path}")
+    print(f"             {len(audit.entries)} in total; chain "
+          + ("verifies" if chain.ok else f"BROKEN at entry {chain.broken_at}"))
+    print(f"             head {audit.head[:16]}...")
+    print()
+    return EXIT_OK if chain.ok else EXIT_FINDINGS
+
+
+def _safekill_evaluate(n_estates: int, as_json: bool) -> int:
+    from apix.evaluation.safekill_eval import (
+        evaluate,
+        format_report,
+        format_sweep,
+        sweep,
+    )
+
+    report = evaluate(n_estates)
+    reports = sweep(n_estates=n_estates)
+    data = {"default": report.to_dict(), "sweep": [r.to_dict() for r in reports]}
+    out = load_settings().ensure_data_dir() / "safekill-eval.json"
+    out.write_text(json.dumps(data, indent=2))
+    if as_json:
+        print(json.dumps(data, indent=2))
+        return EXIT_OK
+    print(format_report(report))
+    print(format_sweep(reports))
+    print(f"  Figures written to {out}")
+    print()
+    return EXIT_OK
 
 
 def _cmd_train(args: argparse.Namespace) -> int:
@@ -457,6 +643,45 @@ def build_parser() -> argparse.ArgumentParser:
     )
     imp.add_argument("--json", action="store_true", help="emit as JSON")
     imp.set_defaults(func=_cmd_impact)
+
+    sk = sub.add_parser(
+        "safekill",
+        help="shadow, approval, canary and automatic rollback (Phase 4)",
+    )
+    sk.add_argument(
+        "endpoint", nargs="?",
+        help='walk one candidate only, e.g. "GET /v1/cards/{id}/pin"',
+    )
+    sk.add_argument(
+        "--approve-as", metavar="NAME",
+        help="approve clean candidates under this name; without it nothing is removed",
+    )
+    sk.add_argument(
+        "--accept-unidentified", action="store_true",
+        help="also approve candidates whose shadow saw traffic with no caller identity",
+    )
+    sk.add_argument(
+        "--slowest-caller-days", type=float, default=30.0, metavar="DAYS",
+        help="slowest recurring caller the shadow must catch "
+             "(default 30, which gives a 90-day shadow)",
+    )
+    sk.add_argument(
+        "--model", action="store_true",
+        help="add the learned layer's veto before Safe Kill (needs: apix train --save)",
+    )
+    sk.add_argument(
+        "--hidden-caller", metavar="ENDPOINT", action="append",
+        help="what-if: give ENDPOINT a month-end batch caller the capture never saw",
+    )
+    sk.add_argument("--audit", metavar="PATH", help="audit log path (JSON Lines)")
+    sk.add_argument("--verify", metavar="PATH", help="verify an audit log's hash chain")
+    sk.add_argument(
+        "--evaluate", type=int, metavar="N", nargs="?", const=120,
+        help="measure Safe Kill across N generated estates (default 120)",
+    )
+    sk.add_argument("--seed", type=int, default=7, help="simulated traffic seed")
+    sk.add_argument("--json", action="store_true", help="emit as JSON")
+    sk.set_defaults(func=_cmd_safekill)
 
     tr = sub.add_parser(
         "train", help="train the ML classifier and compare it against the rules"

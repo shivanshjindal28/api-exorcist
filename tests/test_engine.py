@@ -71,7 +71,14 @@ _GROUND_TRUTH_MODULES = ("simulated_env", "apix.simulated_env")
 #: STRUCTURAL isolation — must not import the estate at all. These packages
 #: reason over the correlated inventory and have no business knowing that a
 #: simulated environment even exists. Enforced at the AST level.
-_STRUCTURALLY_ISOLATED = ("engine", "inventory")
+#:
+#: `safekill` is here for a sharper reason than the others. Its controller
+#: decides what gets switched off, and in simulation the thing that knows which
+#: endpoints are really in use is the estate. A controller that could import it
+#: could "detect" a hidden caller by reading the answer instead of observing
+#: traffic, and every Safe Kill result would be worthless. It learns about the
+#: world only through the EnforcementBackend protocol, as a gateway plugin would.
+_STRUCTURALLY_ISOLATED = ("engine", "inventory", "safekill")
 #:
 #: TOKEN isolation — may import the estate, because in simulation mode it IS
 #: their data source, but must never read the answer-key fields. Connectors read

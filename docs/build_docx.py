@@ -31,7 +31,7 @@ from pathlib import Path
 from docx import Document
 from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
@@ -50,12 +50,71 @@ ACCENT = RGBColor(0x8A, 0x4B, 0x12)
 # Document metadata
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
+class Style:
+    """Type sizes for one document kind, in points.
+
+    The two reference documents use an 11pt body because they are read on
+    screen. The interim report uses the sizes the NMIMS report format
+    mandates (Annexure A.8): body 12, chapter title 18, section 14,
+    subsection 12, figure and table captions 10.
+    """
+
+    body: int = 11
+    h2: float = 15          # "## " is a chapter title in a report
+    h3: float = 12.5        # "### " is a section title
+    h4: float = 11.5        # "#### " is a subsection title
+    caption: int = 9
+    line_spacing: float = 1.15
+    chapter_page_break: bool = False
+
+
+DEFAULT_STYLE = Style()
+
+#: Mandated by the guidelines: Times New Roman, 1.5 spacing, 18/14/12 headings,
+#: 12pt body, 10pt figure and table captions, every chapter starting a new page.
+REPORT_STYLE = Style(
+    body=12,
+    h2=18,
+    h3=14,
+    h4=12,
+    caption=10,
+    line_spacing=1.5,
+    chapter_page_break=True,
+)
+
+#: Diagram captions for the design document, in the order the mermaid fences
+#: appear. Positional, and must stay in step with NAMES in render_diagrams.py.
+#: The interim report does not use this list; it names each figure inline with
+#: an explicit `![figure](diagrams/<name>.png "Caption")` directive, which is
+#: why inserting a section there cannot silently shift its captions.
+DESIGN_CAPTIONS = [
+    ("component", "Component diagram: the five architectural layers"),
+    ("classes", "Class diagram: core domain model"),
+    ("deployment", "Deployment diagram: self-hosted, single tenant"),
+    ("sequence-scan", "Sequence diagram: a discovery scan"),
+    ("state-lifecycle", "State machine: endpoint lifecycle"),
+    ("decision-tree", "Classification decision logic"),
+    ("hybrid-veto", "The learned layer as a veto over rule-derived removals"),
+    ("state-safekill", "State machine: Safe Kill Simulation"),
+    ("dfd", "Data flow diagram: level 1"),
+    ("url-tiers", "Two-tier URL scanner"),
+]
+
+
+@dataclass(frozen=True)
 class DocSpec:
     key: str
     source: str
     output: str
     title: str
     subtitle: str
+    #: "document" -> plain title page + TOC field.
+    #: "report"   -> the NMIMS front matter required by Annexure A.8.
+    kind: str = "document"
+    style: Style = DEFAULT_STYLE
+    #: (appendix title, source Markdown, positional captions) appended after
+    #: the body, with figure and table numbering continuing across the join.
+    appendices: tuple[tuple[str, str, str], ...] = ()
 
 
 SPECS = [
@@ -65,7 +124,7 @@ SPECS = [
         output="API_Exorcist_Literature_Review.docx",
         title="Literature Review",
         subtitle=(
-            "API Exorcist — Autonomous Discovery and Safe Elimination of "
+            "API Exorcist: Autonomous Discovery and Safe Elimination of "
             "Zombie, Shadow and Orphaned APIs"
         ),
     ),
@@ -75,11 +134,41 @@ SPECS = [
         output="API_Exorcist_Design_Document.docx",
         title="Design Document",
         subtitle=(
-            "API Exorcist — Autonomous Discovery and Safe Elimination of "
+            "API Exorcist: Autonomous Discovery and Safe Elimination of "
             "Zombie, Shadow and Orphaned APIs"
         ),
     ),
+    DocSpec(
+        key="interim",
+        source="interim-report.md",
+        output="API_Exorcist_Interim_Report.docx",
+        title=(
+            "API Exorcist: Autonomous Discovery and Safe Elimination of "
+            "Zombie, Shadow and Orphaned APIs"
+        ),
+        subtitle="Interim Report: Chapters 1 to 3",
+        kind="report",
+        style=REPORT_STYLE,
+        # The guidelines ask for the design document to be prepared separately
+        # and then included in the report. It is both: its own .docx, and this
+        # appendix, built from the same Markdown so they cannot diverge.
+        appendices=(
+            ("Appendix A: Design Document", "design-document.md", "design"),
+        ),
+    ),
 ]
+
+#: Left blank deliberately rather than guessed. Fill these in before printing.
+TEAM = [
+    ("Shivansh Jindal", "________", "________"),
+    ("Jal Bafana", "________", "________"),
+    ("Arjun Mehta", "________", "________"),
+    ("Tejas Sahoo", "________", "________"),
+]
+MENTOR = "________________________"
+ACADEMIC_YEAR = "2026–2027"
+PROGRAM = "B.Tech. Computer Science and Engineering"
+STREAM = "Cyber Security"
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +176,7 @@ SPECS = [
 # ---------------------------------------------------------------------------
 def _set_cell_background(cell, hex_colour: str) -> None:
     shd = OxmlElement("w:shd")
-    shd.set(qn("w:val"), "clear")          # never "solid" — renders black
+    shd.set(qn("w:val"), "clear")          # never "solid", which renders black
     shd.set(qn("w:color"), "auto")
     shd.set(qn("w:fill"), hex_colour)
     cell._tc.get_or_add_tcPr().append(shd)
@@ -111,14 +200,52 @@ def _add_field(paragraph, instruction: str) -> None:
         run._r.append(el)
 
 
+#: Page furniture for the document currently being built. A module-level
+#: setting because `_set_orientation` creates sections deep inside diagram
+#: rendering, and those sections need the same header and footer as the rest.
+PAGE_FURNITURE: dict[str, object] = {
+    "footer_align": WD_ALIGN_PARAGRAPH.CENTER,
+    "header_left": "",
+    "header_right": "",
+}
+
+
 def _add_page_numbers(section) -> None:
     footer = section.footer.paragraphs[0]
-    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    footer.alignment = PAGE_FURNITURE["footer_align"]
     _add_field(footer, "PAGE")
     for run in footer.runs:
         run.font.name = BODY_FONT
         run.font.size = Pt(9)
         run.font.color.rgb = MUTED
+
+    left = str(PAGE_FURNITURE["header_left"])
+    right = str(PAGE_FURNITURE["header_right"])
+    if not (left or right):
+        return
+
+    # One centred tab stop is not enough: the format asks for the title hard
+    # left and the academic year hard right, which needs a right-aligned tab
+    # at the right margin.
+    header = section.header.paragraphs[0]
+    header.text = ""
+    usable = section.page_width - section.left_margin - section.right_margin
+    fmt = header.paragraph_format
+    fmt.tab_stops.clear_all()
+    fmt.tab_stops.add_tab_stop(usable, WD_TAB_ALIGNMENT.RIGHT)
+    run = header.add_run(f"{left}\t{right}")
+    run.font.name = BODY_FONT
+    run.font.size = Pt(9)
+    run.font.color.rgb = MUTED
+
+
+def _set_page_numbering(section, fmt: str, start: int | None = None) -> None:
+    """Set the numeral format for a section ('decimal', 'lowerRoman')."""
+    pg = OxmlElement("w:pgNumType")
+    pg.set(qn("w:fmt"), fmt)
+    if start is not None:
+        pg.set(qn("w:start"), str(start))
+    section._sectPr.append(pg)
 
 
 # ---------------------------------------------------------------------------
@@ -225,11 +352,26 @@ LANDSCAPE_W, LANDSCAPE_H = 9.0, 5.9
 WIDE_RATIO = 1.35
 
 
+def _continue_page_numbering(section) -> None:
+    """Drop any inherited page-numbering restart from a new section.
+
+    `add_section` copies the previous section's properties, and the body
+    section carries `<w:pgNumType w:start="1"/>` so Chapter 1 begins at page 1.
+    Inherited, that restarts the count at every landscape diagram: the finished
+    report had page 1 appearing a dozen times and a table of contents that
+    pointed at all of them. Removing the element means "carry on".
+    """
+    sectPr = section._sectPr
+    for el in sectPr.findall(qn("w:pgNumType")):
+        sectPr.remove(el)
+
+
 def _set_orientation(doc, landscape: bool) -> None:
     """Start a new section with the given page orientation."""
     from docx.enum.section import WD_ORIENT
 
     section = doc.add_section(WD_SECTION.NEW_PAGE)
+    _continue_page_numbering(section)
     portrait_w, portrait_h = Inches(8.5), Inches(11)
     if landscape:
         section.orientation = WD_ORIENT.LANDSCAPE
@@ -248,7 +390,9 @@ def _fit(img_w: int, img_h: int, box_w: float, box_h: float) -> Inches:
     return Inches(img_w * scale)
 
 
-def add_diagram(doc, name: str, caption: str, index: int) -> None:
+def add_diagram(
+    doc, name: str, caption: str, index: int, *, style: Style | None = None
+) -> None:
     """Embed a rendered Mermaid diagram, or flag its absence visibly."""
     png = DIAGRAMS / f"{name}.png"
     if png.exists():
@@ -282,7 +426,7 @@ def add_diagram(doc, name: str, caption: str, index: int) -> None:
     cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = cap.add_run(f"Figure {index}: {caption}")
     run.font.name = BODY_FONT
-    run.font.size = Pt(9)
+    run.font.size = Pt((style or DEFAULT_STYLE).caption)
     run.italic = True
     run.font.color.rgb = MUTED
 
@@ -297,7 +441,7 @@ def add_diagram(doc, name: str, caption: str, index: int) -> None:
 # Markdown parsing
 # ---------------------------------------------------------------------------
 def strip_status_markers(text: str) -> str:
-    """Replace status emoji with words — emoji render inconsistently in Word."""
+    """Replace status emoji with words; emoji render inconsistently in Word."""
     return (
         text.replace("✅", "[implemented]")
         .replace("🔵", "[in progress]")
@@ -305,27 +449,79 @@ def strip_status_markers(text: str) -> str:
     )
 
 
-def render_markdown(doc, md: str) -> None:
+#: `![figure](diagrams/component.png "Component diagram")` is an explicitly named
+#: figure. Preferred over the positional caption list: a section inserted above
+#: one of these cannot shift its caption onto a different picture.
+_FIGURE = re.compile(r'^!\[[^\]]*\]\(\s*(?:diagrams/)?([\w.-]+?)(?:\.png)?\s*"([^"]*)"\s*\)$')
+
+
+def render_markdown(
+    doc,
+    md: str,
+    *,
+    captions: list[tuple[str, str]] | None = None,
+    style: Style = DEFAULT_STYLE,
+    figures: list[tuple[int, str]] | None = None,
+    tables: list[tuple[int, str]] | None = None,
+    figure_start: int = 0,
+    table_start: int = 0,
+) -> tuple[int, int]:
+    """Render Markdown into `doc`.
+
+    `figures` and `tables`, when given, collect (number, caption) pairs for the
+    List of Figures and List of Tables. `figure_start` and `table_start`
+    continue the numbering of a document appended after another one; the
+    running counts are returned so the next append can carry on.
+    """
     lines = md.splitlines()
     i = 0
-    figure_index = 0
-    # Diagram captions, in the order the fenced blocks appear.
-    # Positional, and must stay in step with NAMES in render_diagrams.py.
-    captions = [
-        ("component", "Component diagram — the five architectural layers"),
-        ("classes", "Class diagram — core domain model"),
-        ("deployment", "Deployment diagram — self-hosted, single tenant"),
-        ("sequence-scan", "Sequence diagram — a discovery scan"),
-        ("state-lifecycle", "State machine — endpoint lifecycle"),
-        ("decision-tree", "Classification decision logic"),
-        ("hybrid-veto", "The learned layer as a veto over rule-derived removals"),
-        ("state-safekill", "State machine — Safe Kill Simulation"),
-        ("dfd", "Data flow diagram — level 1"),
-        ("url-tiers", "Two-tier URL scanner"),
-    ]
+    figure_index = figure_start
+    table_index = table_start
+    seen_h2 = False
+    # Positional captions are indexed by how many mermaid fences this call
+    # has seen, not by figure number, which may start above zero.
+    mermaid_seen = 0
+    captions = captions if captions is not None else DESIGN_CAPTIONS
 
     while i < len(lines):
         line = strip_status_markers(lines[i].rstrip())
+
+        # --- HTML comment block (editorial notes, never rendered) -----------
+        if line.startswith("<!--"):
+            while i < len(lines) and "-->" not in lines[i]:
+                i += 1
+            i += 1
+            continue
+
+        # --- table caption --------------------------------------------------
+        # `Table: <name>` on its own line, immediately above the table. The
+        # format requires the table name *above* the table at 10pt, and this
+        # is also what populates the List of Tables.
+        if line.startswith("Table: "):
+            table_index += 1
+            cap = doc.add_paragraph()
+            cap.paragraph_format.space_before = Pt(10)
+            cap.paragraph_format.space_after = Pt(2)
+            caption_text = line[len("Table: "):].strip()
+            run = cap.add_run(f"Table {table_index}: {caption_text}")
+            run.font.name = BODY_FONT
+            run.font.size = Pt(style.caption)
+            run.italic = True
+            run.font.color.rgb = MUTED
+            if tables is not None:
+                tables.append((table_index, caption_text))
+            i += 1
+            continue
+
+        # --- explicitly named figure ---------------------------------------
+        fig = _FIGURE.match(line)
+        if fig:
+            figure_index += 1
+            add_diagram(doc, fig.group(1), fig.group(2), figure_index, style=style)
+            if figures is not None:
+                figures.append((figure_index, fig.group(2)))
+            i += 1
+            continue
 
         # --- fenced blocks -------------------------------------------------
         if line.startswith("```"):
@@ -337,12 +533,15 @@ def render_markdown(doc, md: str) -> None:
                 i += 1
             i += 1
             if lang == "mermaid":
-                if figure_index < len(captions):
-                    name, caption = captions[figure_index]
+                if mermaid_seen < len(captions):
+                    name, caption = captions[mermaid_seen]
                 else:
-                    name, caption = f"diagram-{figure_index}", "Diagram"
+                    name, caption = f"diagram-{mermaid_seen}", "Diagram"
+                mermaid_seen += 1
                 figure_index += 1
-                add_diagram(doc, name, caption, figure_index)
+                add_diagram(doc, name, caption, figure_index, style=style)
+                if figures is not None:
+                    figures.append((figure_index, caption))
             else:
                 add_code_block(doc, block, lang)
             continue
@@ -370,12 +569,19 @@ def render_markdown(doc, md: str) -> None:
             if level == 1:
                 i += 1
                 continue  # document title handled by the title page
+            if level == 2:
+                # The body already starts on a fresh section, so only
+                # chapters after the first need a break of their own.
+                if style.chapter_page_break and seen_h2:
+                    doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+                seen_h2 = True
             heading = doc.add_heading(level=min(level - 1, 4))
             heading.paragraph_format.space_before = Pt(14 if level == 2 else 10)
             heading.paragraph_format.space_after = Pt(6)
             for run in heading.runs:
                 run.text = ""
-            add_inline(heading, text, size=15 if level == 2 else 12.5, bold_all=True)
+            size = {2: style.h2, 3: style.h3}.get(level, style.h4)
+            add_inline(heading, text, size=size, bold_all=True)
             for run in heading.runs:
                 run.font.color.rgb = INK
             i += 1
@@ -396,7 +602,8 @@ def render_markdown(doc, md: str) -> None:
             para.paragraph_format.left_indent = Inches(0.4)
             para.paragraph_format.space_before = Pt(6)
             para.paragraph_format.space_after = Pt(8)
-            add_inline(para, " ".join(quote_lines), size=11)
+            para.paragraph_format.line_spacing = style.line_spacing
+            add_inline(para, " ".join(quote_lines), size=style.body)
             for run in para.runs:
                 run.italic = True
             continue
@@ -405,11 +612,13 @@ def render_markdown(doc, md: str) -> None:
         bullet = re.match(r"^(\s*)[-*]\s+(.*)", line)
         number = re.match(r"^(\s*)(\d+)\.\s+(.*)", line)
         if bullet or number:
-            style = "List Bullet" if bullet else "List Number"
+            # Not `style`: that name is the Style parameter of this function.
+            list_style = "List Bullet" if bullet else "List Number"
             text = bullet.group(2) if bullet else number.group(3)
-            para = doc.add_paragraph(style=style)
+            para = doc.add_paragraph(style=list_style)
             para.paragraph_format.space_after = Pt(3)
-            add_inline(para, text, size=11)
+            para.paragraph_format.line_spacing = style.line_spacing
+            add_inline(para, text, size=style.body)
             i += 1
             continue
 
@@ -434,13 +643,301 @@ def render_markdown(doc, md: str) -> None:
         para = doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         para.paragraph_format.space_after = Pt(8)
-        para.paragraph_format.line_spacing = 1.15
-        add_inline(para, " ".join(buf), size=11)
+        para.paragraph_format.line_spacing = style.line_spacing
+        add_inline(para, " ".join(buf), size=style.body)
+
+    return figure_index, table_index
 
 
 # ---------------------------------------------------------------------------
-def build(spec: DocSpec) -> Path:
+# Report front matter (NMIMS Annexure A.8)
+# ---------------------------------------------------------------------------
+def _centred(doc, text: str, size: int, *, bold: bool = False,
+             colour=INK, italic: bool = False, space_after: int = 6):
+    para = doc.add_paragraph()
+    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    para.paragraph_format.space_after = Pt(space_after)
+    run = para.add_run(text)
+    run.font.name = BODY_FONT
+    run.font.size = Pt(size)
+    run.bold = bold
+    run.italic = italic
+    run.font.color.rgb = colour
+    return para
+
+
+def _page_break(doc) -> None:
+    doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+
+
+def _listing(doc, heading: str, rows: list[tuple[int, str]], label: str) -> None:
+    """List of Figures / List of Tables."""
+    _centred(doc, heading, 16, bold=True, space_after=12)
+    if not rows:
+        _centred(doc, "(none)", 11, colour=MUTED)
+        _page_break(doc)
+        return
+    add_table(
+        doc,
+        [
+            [f"{label} No.", f"Name of the {label.lower()}", "Page No."],
+            *([f"{label} {n}", caption, ""] for n, caption in rows),
+        ],
+    )
+    _page_break(doc)
+
+
+def _front_matter(doc, spec: DocSpec, figures, tables) -> None:
+    # ---- title page ----
+    for _ in range(3):
+        doc.add_paragraph()
+    _centred(doc, spec.title, 22, bold=True, space_after=18)
+    _centred(doc, "Project Report submitted in the partial fulfilment", 12)
+    _centred(doc, "of", 12)
+    _centred(doc, PROGRAM, 12, bold=True)
+    _centred(doc, "in", 12)
+    _centred(doc, STREAM, 12, bold=True, space_after=18)
+    _centred(doc, "by", 12, space_after=10)
+    for name, roll, _sap in TEAM:
+        _centred(doc, f"{name}  ({roll})", 12, space_after=2)
+    doc.add_paragraph()
+    _centred(doc, "Under the supervision of", 12)
+    _centred(doc, MENTOR, 12, bold=True)
+    _centred(doc, "(Designation, Department, MPSTME)", 10, colour=MUTED,
+             space_after=18)
+    _centred(doc, "Mukesh Patel School of Technology Management & Engineering",
+             12, bold=True)
+    _centred(doc, "SVKM's NMIMS University (Deemed-to-be University)", 11)
+    _centred(doc, "Vile Parle (W), Mumbai - 400056", 11)
+    _centred(doc, ACADEMIC_YEAR, 11, space_after=0)
+    _page_break(doc)
+
+    # ---- certificate ----
+    _centred(doc, "SVKM's NMIMS University", 14, bold=True, space_after=2)
+    _centred(doc, "(Deemed-to-be University)", 11, colour=MUTED)
+    _centred(doc, "MUKESH PATEL SCHOOL OF TECHNOLOGY MANAGEMENT & ENGINEERING",
+             12, bold=True, space_after=2)
+    _centred(doc, "Vile Parle (W), Mumbai-56", 11, colour=MUTED)
+    _centred(doc, f"({ACADEMIC_YEAR})", 11, colour=MUTED, space_after=18)
+    _centred(doc, "CERTIFICATE", 16, bold=True, space_after=18)
+
+    body = doc.add_paragraph()
+    body.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    body.paragraph_format.line_spacing = 1.5
+    names = ", ".join(n for n, _r, _s in TEAM)
+    add_inline(
+        body,
+        f'This is to certify that the project entitled "{spec.title}" has been '
+        f"done by {names} under my guidance and supervision, and has been "
+        f"submitted in partial fulfilment of the degree of {PROGRAM} in "
+        f"{STREAM} of MPSTME, SVKM's NMIMS (Deemed-to-be University), Mumbai, "
+        "India.",
+        size=12,
+    )
+    for _ in range(4):
+        doc.add_paragraph()
+    add_table(
+        doc,
+        [
+            ["Project mentor (Internal Guide)", "Examiner"],
+            ["\n\nName and Signature", "\n\nName and Signature"],
+            ["Date:", "Date:"],
+            ["Place: Mumbai", "Head of Department"],
+        ],
+    )
+    _page_break(doc)
+
+    # ---- acknowledgement ----
+    _centred(doc, "ACKNOWLEDGEMENT", 16, bold=True, space_after=14)
+    ack = doc.add_paragraph()
+    ack.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    ack.paragraph_format.line_spacing = 1.5
+    add_inline(
+        ack,
+        "We thank our faculty mentor for the guidance and for the critical "
+        "questioning that shaped this work, and the review panel whose "
+        "observations at the first review directed the dataset, explainability "
+        "and comparative-evaluation strands of the project. We also thank the "
+        "Department of Computer Engineering, MPSTME, for the resources made "
+        "available to us.",
+        size=12,
+    )
+    doc.add_paragraph()
+    add_table(
+        doc,
+        [["NAME", "ROLL NO.", "SAP ID"], *(list(m) for m in TEAM)],
+    )
+    _page_break(doc)
+
+    # ---- abstract ----
+    _centred(doc, "ABSTRACT", 16, bold=True, space_after=14)
+    for para_text in ABSTRACT:
+        para = doc.add_paragraph()
+        para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        para.paragraph_format.line_spacing = 1.5
+        para.paragraph_format.space_after = Pt(8)
+        add_inline(para, para_text, size=12)
+    _page_break(doc)
+
+    # ---- table of contents ----
+    _centred(doc, "Table of Contents", 16, bold=True, space_after=12)
+    _add_field(doc.add_paragraph(), r'TOC \o "1-3" \h \z \u')
+    _page_break(doc)
+
+    _listing(doc, "List of Figures", figures, "Figure")
+    _listing(doc, "List of Tables", tables, "Table")
+
+    _centred(doc, "Abbreviations", 16, bold=True, space_after=12)
+    add_table(doc, [["Abbreviation", "Expansion"], *ABBREVIATIONS])
+
+
+#: Roughly one page, as the format asks: the problem, the approach, the result.
+ABSTRACT = [
+    "Banking API estates accumulate endpoints that remain deployed and "
+    "network-reachable long after they have ceased to serve any purpose. Such "
+    "endpoints retain their database credentials, their network routes and "
+    "their access to production data while disappearing from the "
+    "organisation's inventory. This is the condition OWASP catalogues as API9:2023 "
+    "Improper Inventory Management, and one that the Reserve Bank of India's "
+    "Cyber Security Framework in Banks makes an explicit compliance concern. "
+    "The difficulty is that no single source of evidence can identify them. A "
+    "gateway registry cannot see a service addressed directly; an API "
+    "specification cannot describe a route the team forgot to document; "
+    "traffic capture cannot observe an endpoint that nothing called during the "
+    "capture window; and static analysis of source code establishes that an "
+    "endpoint exists but never that anything calls it.",
+
+    "This report presents API Exorcist, a system that determines an endpoint's "
+    "true lifecycle state by correlating six independent and deliberately "
+    "imperfect discovery sources: source code, DNS, API gateway, CI/CD "
+    "pipeline records, traffic capture and OpenAPI specifications. The central "
+    "design principle is that a zombie endpoint is identified not by any one "
+    "source but by a pattern of *disagreement* between them, and that the "
+    "absence of an observation is itself evidence, provided the system can "
+    "distinguish a source that saw nothing from a source that was never "
+    "consulted. Fifteen weighted evidence rules classify each endpoint as "
+    "ACTIVE, DEPRECATED, ORPHANED or ZOMBIE, and a rule whose required source "
+    "was never consulted abstains rather than firing, so a partial deployment "
+    "reports what it cannot determine instead of guessing. Every verdict "
+    "carries the complete set of signed evidence contributions that produced "
+    "it. A dependency graph computes the blast radius of a proposed removal, "
+    "and an endpoint is cleared only when the classifier and the graph agree "
+    "independently.",
+
+    "On a generated twenty-five-endpoint retail-banking estate with a known "
+    "answer key, the system achieves 0.960 accuracy and 0.940 macro-F1 with "
+    "perfect zombie recall and no live endpoint marked for removal. Under the "
+    "same pipeline restricted to a conventional gateway-plus-specification "
+    "inventory, two of eight zombies are found; correlating all six sources "
+    "finds all eight, four of which carry no authentication at all. A "
+    "gradient-boosted model with exact SHAP attribution is layered over the "
+    "rules as a veto, in that it may block a proposed removal and never create one, "
+    "because on held-out estates it produces no false zombies where the rules "
+    "produce seventeen. The architecture and the analysis are real code; the "
+    "estate they are measured against is synthetic, and the claim made is that "
+    "the engine recovers known decay patterns from partial and disagreeing "
+    "evidence, not that it has been validated against production bank traffic.",
+]
+
+ABBREVIATIONS = [
+    ["API", "Application Programming Interface"],
+    ["AST", "Abstract Syntax Tree"],
+    ["BFS", "Breadth-First Search"],
+    ["CI/CD", "Continuous Integration / Continuous Deployment"],
+    ["CT", "Certificate Transparency"],
+    ["CTE", "Common Table Expression"],
+    ["DFD", "Data Flow Diagram"],
+    ["DNS", "Domain Name System"],
+    ["F1", "Harmonic mean of precision and recall"],
+    ["IDS", "Intrusion Detection System"],
+    ["KYC", "Know Your Customer"],
+    ["OWASP", "Open Worldwide Application Security Project"],
+    ["RBI", "Reserve Bank of India"],
+    ["REST", "Representational State Transfer"],
+    ["SHAP", "SHapley Additive exPlanations"],
+    ["TTL", "Time To Live"],
+    ["XAI", "Explainable Artificial Intelligence"],
+]
+
+
+# ---------------------------------------------------------------------------
+def _build_report(spec: DocSpec) -> Path:
+    """The interim report: NMIMS front matter, roman-then-decimal paging."""
     md = (DOCS / spec.source).read_text(encoding="utf-8")
+
+    PAGE_FURNITURE["footer_align"] = WD_ALIGN_PARAGRAPH.RIGHT
+    PAGE_FURNITURE["header_left"] = "API Exorcist"
+    PAGE_FURNITURE["header_right"] = ACADEMIC_YEAR
+
+    doc = Document()
+    normal = doc.styles["Normal"]
+    normal.font.name = BODY_FONT
+    normal.font.size = Pt(spec.style.body)
+
+    front = doc.sections[0]
+    front.top_margin = front.bottom_margin = front.right_margin = Inches(1)
+    front.left_margin = Inches(1.5)          # the format asks for 1.5" here
+    _add_page_numbers(front)
+    _set_page_numbering(front, "lowerRoman", start=1)
+
+    # Figures and tables are collected in a dry run so that the List of
+    # Figures can be written before the body it describes.
+    figures: list[tuple[int, str]] = []
+    tables: list[tuple[int, str]] = []
+    _render_all(Document(), spec, md, figures=figures, tables=tables)
+
+    _front_matter(doc, spec, figures, tables)
+
+    # Chapter 1 onward restarts at 1 in decimal, as the format requires.
+    body = doc.add_section(WD_SECTION.NEW_PAGE)
+    body.top_margin = body.bottom_margin = body.right_margin = Inches(1)
+    body.left_margin = Inches(1.5)
+    _add_page_numbers(body)
+    _set_page_numbering(body, "decimal", start=1)
+
+    _render_all(doc, spec, md)
+
+    out = DOCS / spec.output
+    doc.save(out)
+    return out
+
+
+def _render_all(doc, spec: DocSpec, md: str, *, figures=None, tables=None) -> None:
+    """The report body, then each appendix, with numbering carried across."""
+    n_fig, n_tab = render_markdown(
+        doc, md, captions=[], style=spec.style, figures=figures, tables=tables,
+    )
+    for title, source, caption_set in spec.appendices:
+        doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+        heading = doc.add_heading(level=1)
+        for run in heading.runs:
+            run.text = ""
+        add_inline(heading, title, size=spec.style.h2, bold_all=True)
+        for run in heading.runs:
+            run.font.color.rgb = INK
+
+        captions = DESIGN_CAPTIONS if caption_set == "design" else []
+        n_fig, n_tab = render_markdown(
+            doc,
+            (DOCS / source).read_text(encoding="utf-8"),
+            captions=captions,
+            style=spec.style,
+            figures=figures,
+            tables=tables,
+            figure_start=n_fig,
+            table_start=n_tab,
+        )
+
+
+def build(spec: DocSpec) -> Path:
+    if spec.kind == "report":
+        return _build_report(spec)
+
+    md = (DOCS / spec.source).read_text(encoding="utf-8")
+
+    PAGE_FURNITURE["footer_align"] = WD_ALIGN_PARAGRAPH.CENTER
+    PAGE_FURNITURE["header_left"] = ""
+    PAGE_FURNITURE["header_right"] = ""
 
     doc = Document()
     style = doc.styles["Normal"]

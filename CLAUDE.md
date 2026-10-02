@@ -12,9 +12,25 @@ apix scan                         # discover, classify, explain
 apix impact                       # dependency graph + removal gate
 apix benchmark                    # comparative before/after evaluation
 apix train --estates 120 --save   # train the model, compare against rules
-pytest                            # 85 tests
+apix safekill --approve-as NAME   # shadow, approval, canary, rollback
+apix safekill --evaluate          # Safe Kill vs the gate alone, shadow sweep
+pytest                            # 108 tests
 ruff check . && mypy              # lint + strict types
+
+python docs/render_diagrams.py    # mermaid -> png (run before the two below)
+python docs/build_docx.py         # literature review, design doc, interim report
+python docs/build_pptx.py         # the review presentation
+python docs/finalise_docx.py docs/*.docx   # update TOC + figure/table page nos
+python docs/verify_claims.py      # documented figures vs the running code
 ```
+
+`finalise_docx.py` drives Word itself, because python-docx writes a TOC *field*
+and cannot compute the page numbers inside it. Run it last, after build_docx.
+Office here needs late-bound COM (`win32com.client.dynamic`); early binding
+fails with TYPE_E_CANTLOADLIBRARY.
+
+Submission artefacts (`docs/*.docx`, `docs/*.pptx`) are generated and gitignored.
+The Markdown and the builders are the source of truth.
 
 ## Reproducing CI before you push
 
@@ -44,7 +60,9 @@ bank data."* Every README, paper section and demo script says which is which.
 `decay_story` are forbidden inputs to connectors, the correlator, feature
 extraction and the classifier. Two guards enforce this:
 
-- `engine/` and `inventory/` must not *import* `simulated_env` at all (AST check)
+- `engine/`, `inventory/` and `safekill/` must not *import* `simulated_env` at all
+  (AST check). For `safekill/` this is sharper still: a controller that could read
+  the estate could "detect" a hidden caller by reading the answer.
 - `connectors/` and `dataset/` may import it — in simulation mode it is their
   data source — but must never reference the answer-key fields (token check)
 
@@ -116,7 +134,9 @@ src/apix/
   ingestion/       LocalBus (default) / Kafka / Elasticsearch
   inventory/       multi-source correlation -> unified inventory + 14 flags
   engine/          verdict types, rule classifier, explanations
-  evaluation/      metrics + the comparative benchmark
+  graph/           dependency graph, blast radius, removal gate
+  safekill/        shadow, approval, canary, rollback, hash-chained audit
+  evaluation/      metrics, the comparative benchmark, Safe Kill evaluation
   dataset/         labelled dataset for the ML engine
   simulated_env/   the estate and its ground truth (the answer key)
 docs/              literature review, design document, source papers

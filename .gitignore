@@ -27,6 +27,7 @@ credentials.json
 
 # Generated run artefacts (regenerate with `python pipeline.py`)
 data/*.json
+data/*.jsonl
 data/*.csv
 !data/.gitkeep
 
@@ -44,6 +45,10 @@ docs/papers/*.pdf
 # committing them churns history for no benefit — the .md files are the source
 # of truth and they diff properly.
 docs/*.docx
+
+# Generated presentation. Regenerate with `python docs/build_pptx.py`.
+# Same reasoning as the .docx files: the builder is the source of truth.
+docs/*.pptx
 
 # Repositories cloned for the demo. Fetched by demo/prepare.ps1, never committed.
 demo/repos/

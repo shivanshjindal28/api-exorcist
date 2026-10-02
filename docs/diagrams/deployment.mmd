@@ -1,5 +1,5 @@
 flowchart TB
-    subgraph CUST["Customer environment — read-only access"]
+    subgraph CUST["Customer environment: read-only access"]
         direction LR
         C1["Kong Admin API"]
         C2["GitHub org<br/>repos + Actions"]
@@ -7,7 +7,7 @@ flowchart TB
         C4["CoreDNS / mesh"]
     end
 
-    subgraph HOST["API Exorcist — self-hosted, single tenant"]
+    subgraph HOST["API Exorcist: self-hosted, single tenant"]
         direction TB
         subgraph POD1["Scanner workload"]
             W1["Connector workers"]

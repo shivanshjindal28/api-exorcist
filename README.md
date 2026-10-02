@@ -81,8 +81,8 @@ in under a second.
 | 1 | Real GitHub scanning — Semgrep AST, git history, CODEOWNERS | ✅ done |
 | 2 | Dependency graph, blast radius, removal gate | ✅ done |
 | 3 | Scaled dataset, trained model, SHAP attribution | ✅ done |
-| 4 | Safe Kill Simulation — canary, rollback, audit log | ⬜ next |
-| 5 | REST API and dashboard | ⬜ |
+| 4 | Safe Kill Simulation — shadow, canary, rollback, audit log | ✅ done |
+| 5 | REST API and dashboard | ⬜ next |
 | 6 | CI/CD enforcement plugin | ⬜ |
 | 7–8 | Security hardening, deployment, observability | ⬜ |
 
@@ -102,13 +102,15 @@ in under a second.
 | Removal gate — classifier and graph must both agree | ✅ |
 | Labelled dataset — schema, scaled by generated estates | ✅ |
 | Trained model with SHAP attribution, used as a veto over removals | ✅ |
-| 85 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
-| Safe Kill Simulation — canary, rollback, audit log | ⬜ |
+| Safe Kill: rule-of-three shadow window, named approval, 5/25/100 canary | ✅ |
+| Automatic rollback on breach, hash-chained append-only audit log | ✅ |
+| 108 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
 | CI/CD enforcement plugin, REST API, dashboard | ⬜ |
 
-**Next: Phase 4 — Safe Kill.** Progressive canary rollout, automatic rollback on
-error-rate breach, and a hash-chained append-only audit log. Its two preconditions —
-the dependency graph and the removal gate — are already in place.
+**Next: Phase 5, the REST API and dashboard.** Every verdict, blast radius and Safe
+Kill outcome already serialises to JSON, and the audit log is already a stream of
+self-verifying records, so the API exposes data that exists rather than inventing
+new shapes.
 
 ---
 
@@ -237,6 +239,11 @@ Consequences, all enforced in code:
 | `apix scan --json` | Machine-readable inventory |
 | `apix impact` | Dependency graph and the removal gate |
 | `apix impact "GET /v2/accounts/{id}"` | Blast radius for one endpoint |
+| `apix safekill` | Shadow every removal candidate; stops at approval |
+| `apix safekill --approve-as NAME` | Approve clean candidates; canary, rollback, retire |
+| `apix safekill --hidden-caller EP` | What-if: a month-end caller the capture never saw |
+| `apix safekill --evaluate` | Measure Safe Kill across 120 generated estates |
+| `apix safekill --verify PATH` | Verify an audit log's hash chain |
 | `apix benchmark` | The comparative before/after study |
 | `apix train --estates 120 --save` | Train the model and compare it against the rules |
 | `apix dataset` | Build the labelled dataset |
@@ -246,7 +253,8 @@ Consequences, all enforced in code:
 is what lets `apix scan` be dropped into a pipeline as a gate.
 
 Outputs land in `./data/` — `inventory.json`, `verdicts.json` (audit-shaped),
-`benchmark.json` (paper-ready figures), `training-report.json`, `dataset.csv`.
+`benchmark.json` (paper-ready figures), `training-report.json`, `dataset.csv`,
+`safekill-audit.jsonl` (the hash-chained audit log), `safekill-eval.json`.
 
 ---
 
@@ -342,6 +350,135 @@ a gate and not a proof, and why approval and canary rollout still follow it.
 
 ---
 
+## Safe Kill
+
+The removal gate ends with a candidate two independent systems agree is dead. That
+agreement is still not proof: a caller that was silent while traffic was captured is
+invisible to both. Safe Kill is what happens next.
+
+```
+NOMINATED -> BLAST_RADIUS -> BLOCKED
+                          -> SHADOW -> REJECTED
+                                    -> AWAITING_APPROVAL -> DENIED
+                                                         -> CANARY 5% -> 25% -> 100%
+                                                               -> ROLLED_BACK
+                                                               -> RETIRED
+```
+
+The transition table is the design document's state diagram made executable: a move
+the design does not contain raises instead of being recorded. Every transition, the
+failures included, is written to an append-only, hash-chained audit log.
+
+### Why the gate is not enough, measured
+
+Across 120 generated estates the rules wrongly call **49 live endpoints the gate
+clears** ZOMBIE, and the graph blocks **none** of them. They carry 1 to 9 calls a day,
+too few for the traffic sensor to record a caller edge, so the graph sees nothing
+depending on them. Removed on the gate's word alone, every one is an outage.
+
+### Why the design's canary became a shadow first
+
+The design drew 5% -> 25% -> 100%. On a busy endpoint that is right. On the endpoints
+Safe Kill actually receives it is blind: a 5% canary on a one-call-a-day endpoint
+refuses an expected 0.05 requests a day and almost always sees nothing.
+
+So the design's "Simulated" stage is a **shadow kill**: nothing is refused, every
+request that *would* have been is recorded with its caller. It harms nobody, so it can
+run as long as the statistics require, and that length is derived rather than chosen.
+To be 95% sure of catching a caller that calls once every 30 days (the month-end batch
+job, the textbook hidden dependency), watch for ln(20) x 30 = **90 days**: the rule of
+three.
+
+### What the shadow is worth
+
+Same candidates, same estates, only the shadow length changes. Zero is the design as
+originally drawn.
+
+| Shadow | Live: caught in shadow | Live: rolled back | Live: outage | Real requests refused | Dead: wrongly kept |
+|---:|---:|---:|---:|---:|---:|
+| 0 days | 0 | 49 | 0 | 67 | 118 |
+| 3 days | 26 | 20 | 3 | 43 | 15 |
+| 7 days | 35 | 8 | 6 | 12 | 4 |
+| 30 days | 45 | 0 | 4 | 0 | 0 |
+| **90 days** | **48** | **1** | **0** | **1** | **0** |
+
+Four things this table says, and one it does not:
+
+- **The canary-only design is trigger-happy, not discriminating.** Its zero outages
+  hide that 21 of its 49 catches were triggered by scanner noise rather than the real
+  caller. With no shadow there is no baseline for anonymous traffic, and the same
+  trigger wrongly keeps 118 dead endpoints running, which is 15% of the attack surface
+  the tool exists to close.
+- **A short shadow is worse than none on outages.** Three days is long enough to
+  calibrate the noise baseline, which switches off the lucky trigger, and too short to
+  catch slow callers.
+- **The result follows from the statistics, not from a world built to fit.** The
+  number of live endpoints each window should miss, predicted by exp(-rate x days),
+  matches the number measured to within sampling noise: 49.0/49, 19.7/23, 11.2/14,
+  1.9/4, 0.1/1.
+- **90 days is not a guarantee of zero.** At 90 days one live endpoint in 49 still
+  slipped past the shadow (0.1 expected). The 5% canary caught it and the
+  controller rolled back automatically, after one real request had been refused. The
+  shadow is the main defence; the canary is the backstop it was designed to be.
+- It does **not** say Safe Kill catches callers rarer than monthly. A quarterly or
+  annual job needs a longer window (`--slowest-caller-days 90` gives 270 days) or a
+  business-calendar check. The guarantee is exactly as strong as that parameter.
+
+```bash
+apix safekill --evaluate     # reproduces this table
+```
+
+### See it decide
+
+```bash
+apix safekill                                   # shadows everything, removes nothing
+apix safekill --approve-as shivansh             # 7 retired, 1 declined, 0 requests refused
+apix safekill "GET /v1/cards/{id}/pin" --approve-as shivansh --hidden-caller "GET /v1/cards/{id}/pin"
+```
+
+The last one injects, on the world's side only, a month-end batch job the traffic
+capture never saw. The controller has to discover it, and the 90-day shadow names it
+three times and rejects the removal with nothing refused. Shorten the window with
+`--slowest-caller-days 3` and the same scenario either rolls back automatically after
+refusing a real request (`--seed 3`) or retires the endpoint into an outage
+(`--seed 1`): at that window, 15 runs in 40.
+
+### The one case automation cannot settle
+
+`POST /v1/debug/payments/replay` is the most dangerous endpoint in the estate:
+unauthenticated, able to replay financial transactions, and receiving three anonymous
+requests a day. Safe Kill declines it. On an unauthenticated endpoint a forgotten
+partner integration and an attacker's scanner are indistinguishable on the wire, so
+the decision goes to a named human, along with the recommendation that resolves it:
+put authentication in front of it and re-run the shadow, and legitimate callers will
+identify themselves.
+
+### The audit log
+
+Each entry carries the SHA-256 of its canonical content and of the entry before it.
+Editing, deleting or reordering any entry breaks every hash after it.
+
+```bash
+apix safekill --verify data/safekill-audit.jsonl
+```
+
+This makes tampering detectable, not impossible: whoever can rewrite the whole file
+can recompute the whole chain. The deployment answer is to anchor the latest hash
+somewhere the operator cannot write (a WORM bucket, the bank's SIEM), and the chain is
+what makes that one anchor vouch for every entry before it.
+
+### Boundaries
+
+The controller never sees the simulated world. It is forbidden from importing it, by
+the same AST guard that protects the classifier, and learns about traffic only through
+an `EnforcementBackend` protocol that a real gateway plugin (a Kong or Envoy filter
+answering 410 Gone) would implement identically. The simulated gateway's world model is
+stated as assumptions in `simulated_env/enforcement.py`, and a test asserts it never
+reads the answer key. Breaches are evaluated at the end of each window, so refused
+request counts are upper bounds on what a streaming detector would allow.
+
+---
+
 ## The learned model, and why it did not replace the rules
 
 25 endpoints cannot train anything, so `simulated_env/generator.py` produces many
@@ -360,12 +497,13 @@ biases, and splitting by endpoint would put those correlations on both sides.
 
 | On 36 held-out estates | Rules | Model |
 |---|---|---|
-| macro-F1 | 0.842 | 0.844 |
-| ZOMBIE false positives | 17 | **0** |
-| DEPRECATED F1 | 0.674 | 0.514 |
+| macro-F1 | 0.843 | 0.861 |
+| ZOMBIE false positives | 14 | **0** |
+| DEPRECATED F1 | 0.681 | 0.587 |
 
-**Aggregate: indistinguishable.** But the average hides what matters — the rules
-produce 17 false zombies on unseen estates and the model produces none. A false zombie
+**Aggregate: the model is slightly ahead, on one split.** But the average hides what
+matters — the rules produce 14 false zombies on unseen estates and the model produces
+none. A false zombie
 is an outage; a missed one is a line on a report. So the model is not a replacement,
 it is a **veto**:
 
@@ -500,6 +638,13 @@ State these; do not hide them.
    capture window is invisible.
 7. **The estate is synthetic.** The architecture is not — `apix scan --github` reads
    real repositories.
+8. **Safe Kill catches callers no rarer than its window assumes.** The default
+   catches a monthly caller with 95% confidence. Quarterly and annual jobs need a
+   longer window or a business-calendar check.
+9. **Safe Kill's traffic is simulated.** The controller and the protocol are real;
+   the gateway behind them is a model whose assumptions are written down in
+   `simulated_env/enforcement.py`. A real deployment replaces it with a gateway
+   plugin.
 
 ---
 
@@ -526,6 +671,12 @@ src/apix/
     memory.py              In-process graph (default; no infrastructure)
     neo4j_store.py         Neo4j backend, variable-length Cypher traversal
     build.py               Graph construction and the removal gate
+  safekill/
+    states.py              The design's state machine; illegal moves raise
+    policy.py              Rule-of-three shadow window, breach criteria
+    backend.py             EnforcementBackend: what a gateway plugin implements
+    controller.py          Shadow, approval, canary, automatic rollback
+    audit.py               Append-only, hash-chained audit log
   extractors/
     base.py                ExtractedRoute, path normalisation across frameworks
     semgrep_extractor.py   AST route extraction; router prefix composition
@@ -538,15 +689,18 @@ src/apix/
     metrics.py             Precision, recall, F1, confusion matrix
     benchmark.py           The comparative before/after study
     train.py               Model training and the honest rules-vs-model report
+    safekill_eval.py       Safe Kill against the gate alone; the shadow sweep
   dataset/build.py         Feature extraction + labelled dataset
   simulated_env/
     estate.py              The estate and its ground truth (the answer key)
     generator.py           Parameterised estates, generated by mechanism
+    enforcement.py         Simulated gateway for Safe Kill; its world model
 
-tests/                     85 tests, three ground-truth leakage guards
+tests/                     108 tests, three ground-truth leakage guards
 demo/                      Review runbook, paced demo runner, expected output
-docs/                      Literature review, design document, source papers,
-                           diagram renderer, Word builder, claims verifier
+docs/                      Literature review, design document, interim report,
+                           source papers, diagram renderer, Word and
+                           PowerPoint builders, claims verifier
 ```
 
 **Dependency direction is one-way.** Connectors know nothing of ingestion, and the
@@ -566,7 +720,7 @@ pip install -e ".[dev,live,ml]" && pre-commit install
 pytest && ruff check . && mypy && python docs/verify_claims.py
 ```
 
-**85 tests**, ruff clean, mypy `--strict` clean.
+**108 tests**, ruff clean, mypy `--strict` clean.
 
 ### Optional extras
 
@@ -623,13 +777,15 @@ APIX_BUS=kafka APIX_GRAPH=neo4j apix scan
 
 | Document | What it covers |
 |---|---|
-| [`docs/literature-review.md`](docs/literature-review.md) | Nine peer-reviewed sources, each verified against DBLP, with a traceability matrix mapping every paper to the module it justifies |
+| [`docs/literature-review.md`](docs/literature-review.md) | Twelve peer-reviewed sources, each verified against DBLP or Crossref, with a traceability matrix mapping every paper to the module it justifies |
 | [`docs/design-document.md`](docs/design-document.md) | Structural and behavioural design — 10 diagrams, measured results, known design limitations |
+| [`docs/interim-report.md`](docs/interim-report.md) | Interim report, Chapters 1–3 — introduction, literature survey, methodology and implementation, in the prescribed submission format |
+| [`docs/build_pptx.py`](docs/build_pptx.py) | Generates the review presentation from the same verified figures |
 | [`docs/papers/README.md`](docs/papers/README.md) | The source PDFs and their full-text verification status |
 | [`demo/DEMO.md`](demo/DEMO.md) | Review runbook — setup, six-step walkthrough, anticipated questions |
 | [`CLAUDE.md`](CLAUDE.md) | Working notes: the non-negotiable rules and environment gotchas |
 
-Nine of the ten paper PDFs are present; four have been checked against their full
+Nine of the twelve paper PDFs are present; five have been checked against their full
 text. **That checking mattered:** one paper turned out not to contain a result the
 review had attributed to it, and the claim was removed rather than softened.
 

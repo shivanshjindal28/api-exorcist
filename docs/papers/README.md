@@ -1,11 +1,12 @@
 # Source papers
 
-The ten peer-reviewed works cited in [`../literature-review.md`](../literature-review.md).
+The twelve peer-reviewed works cited in [`../literature-review.md`](../literature-review.md).
 
-Every entry below was verified against the DBLP computer science bibliography for
-exact title, author list, venue, year and DOI before being cited.
+Every entry below was verified for exact title, author list, venue, year and DOI
+before being cited — against the DBLP computer science bibliography, or against
+Crossref and Semantic Scholar where DBLP's API was unreachable.
 
-## Present in this folder (9 of 10)
+## Present in this folder (10 of 12)
 
 Each was confirmed by extracting page 1 and matching the title and author list against
 the DBLP record.
@@ -21,10 +22,11 @@ the DBLP record.
 | `08-lundberg-lee-2017-shap.pdf` | Lundberg & Lee, *A Unified Approach to Interpreting Model Predictions*, NIPS 2017 |
 | `09-gaspar-2024-xai-ids-lime-shap.pdf` | Gaspar et al., *Explainable AI for Intrusion Detection Systems: LIME and SHAP Applicability on Multi-Layer Perceptron*, IEEE Access 12 2024 |
 | `10-scheitle-2018-certificate-transparency.pdf` | Scheitle et al., *The Rise of Certificate Transparency and Its Implications on the Internet Ecosystem*, IMC 2018 |
+| `11-brito-2018-api-deprecation-replacement-messages.pdf` | Brito et al., *On the Use of Replacement Messages in API Deprecation: An Empirical Study*, Journal of Systems and Software 137, 2018 |
 
 ### Full-text verification status
 
-Three of the four papers flagged in §10 of the review have now been read in full.
+Four of the five papers flagged in §10 of the review have now been read in full.
 
 | Paper | Outcome |
 |---|---|
@@ -56,3 +58,29 @@ figure — and correct anything the full text does not bear out, as happened wit
 Only openly licensed copies belong in this folder. Do not use paper-piracy mirrors —
 a capstone that cites material obtained that way is a problem you do not want, and
 your library subscription makes it unnecessary.
+
+
+## Added after the midterm review
+
+Two further works were added to reach the fifteen-reference minimum the capstone
+guidelines set, and both were chosen because they close a real gap rather than pad a
+count.
+
+**[11] Brito, Hora, Valente and Robbes**, *On the Use of Replacement Messages in API
+Deprecation: An Empirical Study*, Journal of Systems and Software 137, pp. 306–321,
+2018, doi: 10.1016/j.jss.2017.12.007. Metadata confirmed against Crossref and
+Semantic Scholar (DBLP key `journals/jss/BritoHVR18`). **Full text read** — the
+author-hosted preprint is in this folder, and every figure quoted in the review comes
+from its abstract verbatim: 622 Java and 229 C# systems; medians of 66.7% and 77.8%;
+"there is no major effort to improve deprecation messages". This is the quantitative
+anchor that [2] could only supply qualitatively.
+
+**[12] Gortney, Harris, Cerný, Al Maruf, Bures, Taibi and Tisnovsky**, *Visualizing
+Microservice Architecture in the Dynamic Perspective: A Systematic Mapping Study*,
+IEEE Access 10, pp. 119999–120012, 2022, doi: 10.1109/ACCESS.2022.3221130. Metadata
+confirmed against Crossref and Semantic Scholar (DBLP key
+`journals/access/GortneyHCMBTT22`). **Abstract verified verbatim; full text not yet
+read** — IEEE Xplore is not reachable without an institutional login, so no
+quantitative claim is attributed to it. Only the static-versus-dynamic distinction is
+used, which the abstract states directly. Retrieve the PDF through the library and
+confirm before quoting any number from it.

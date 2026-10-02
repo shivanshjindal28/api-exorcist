@@ -1,7 +1,7 @@
 flowchart TB
     U(["Customer supplies<br/>https://api.example.com"]) --> T1
 
-    subgraph T1["Tier 1 — any URL, zero probing"]
+    subgraph T1["Tier 1: any URL, zero probing"]
         direction LR
         A1["Fetch published<br/>OpenAPI / Swagger"]
         A2["Mine Certificate<br/>Transparency logs"]
@@ -13,9 +13,9 @@ flowchart TB
     INV --> Q{"Domain ownership<br/>proven?"}
 
     Q -->|"No"| STOP["Report Tier 1 findings.<br/>Prompt for DNS TXT record."]
-    Q -->|"Yes — DNS TXT<br/>record verified"| T2
+    Q -->|"Yes: DNS TXT<br/>record verified"| T2
 
-    subgraph T2["Tier 2 — authorised active scanning"]
+    subgraph T2["Tier 2: authorised active scanning"]
         direction LR
         B1["Active endpoint probing"]
         B2["Auth posture checks"]
