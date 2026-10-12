@@ -37,13 +37,20 @@ code, .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; f
 
 /* ---- layout ---------------------------------------------------------- */
 .topbar {
-  display: flex; align-items: center; gap: 1.5rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.5rem;
   padding: 0.6rem 1.5rem; background: var(--ink); color: #fff;
 }
-.brand { font-weight: 700; border-left: 4px solid var(--brand); padding-left: 0.6rem; }
-.topbar nav { display: flex; gap: 0.25rem; flex: 1; }
+.brand { font-weight: 700; border-left: 4px solid var(--brand); padding-left: 0.6rem; white-space: nowrap; }
+.topbar nav { display: flex; flex-wrap: wrap; gap: 0.25rem; flex: 1; }
 .topbar nav a {
   color: #cfd3da; text-decoration: none; padding: 0.35rem 0.7rem; border-radius: 6px;
+  white-space: nowrap;
+}
+/* Narrow windows: brand and signed-in user share the first row, sections the second. */
+@media (max-width: 860px) {
+  .topbar { padding: 0.6rem 1rem; }
+  .topbar nav { order: 3; flex-basis: 100%; }
+  .who { margin-left: auto; }
 }
 .topbar nav a:hover { background: #2c313b; color: #fff; }
 .topbar nav a[aria-current="page"] { background: #353b47; color: #fff; }
@@ -58,9 +65,9 @@ code, .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; f
   padding: 0.4rem 1.5rem; font-size: 0.85rem;
 }
 .content { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
-.stack { display: grid; gap: 1rem; }
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 .split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1rem; align-items: start; }
-@media (max-width: 1000px) { .split { grid-template-columns: 1fr; } }
+@media (max-width: 1000px) { .split { grid-template-columns: minmax(0, 1fr); } }
 
 .card {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
