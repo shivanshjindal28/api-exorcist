@@ -100,6 +100,7 @@ export function SafeKill() {
                       <button
                         className="small"
                         disabled={busy === c.endpoint_id}
+                        aria-label={`Start shadow for ${c.endpoint_id}`}
                         onClick={() => act(c.endpoint_id, () => api.startShadow(c.endpoint_id))}
                       >
                         Start shadow
@@ -175,10 +176,19 @@ function PendingCard({
             onChange={(e) => setNote(e.target.value)}
           />
           <div className="buttons">
-            <button disabled={busy || (warned && !accept)} onClick={() => onDecide(true, accept, note)}>
+            <button
+              disabled={busy || (warned && !accept)}
+              aria-label={`Approve removal of ${p.endpoint_id}: start the canary`}
+              onClick={() => onDecide(true, accept, note)}
+            >
               Approve: start the canary
             </button>
-            <button className="secondary" disabled={busy} onClick={() => onDecide(false, false, note)}>
+            <button
+              className="secondary"
+              disabled={busy}
+              aria-label={`Decline removal of ${p.endpoint_id}`}
+              onClick={() => onDecide(false, false, note)}
+            >
               Decline
             </button>
           </div>

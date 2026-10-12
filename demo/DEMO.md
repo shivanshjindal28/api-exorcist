@@ -1,4 +1,4 @@
-# 50% Review — Demonstration Script
+# Final Presentation: Demonstration Script
 
 API Exorcist · B.Tech CSE (Cyber Security), MPSTME/NMIMS
 
@@ -12,11 +12,17 @@ Open PowerShell in the project folder and run:
 powershell -ExecutionPolicy Bypass -File demo\prepare.ps1
 ```
 
-This installs the package, checks `git` / `semgrep` / `apix` are on PATH,
-**pre-clones the demo repository so the live scan needs no network**, warms the
-Semgrep cache, and dry-runs every command with timings.
+This installs the package with the API, checks `git` / `semgrep` / `apix` and
+the dashboard build, **pre-clones the demo repository so the live scan needs no
+network**, warms the Semgrep cache, dry-runs every command with timings, checks
+enforcement gives its scripted result, **moves the old audit log into
+`data\archive\` so the demo starts with an empty one**, checks port 8600 is
+free, and runs the full test suite. About three minutes.
 
-If any line prints `!!` in red, fix it now, not in the room.
+If any line prints `!!` in red, fix it now, not in the room. Run it again an hour
+before presenting if you rehearsed in between: it resets the audit log each time.
+Red pip lines about *other* packages (transformers, huggingface-hub) are your
+Python environment, not this project, and are harmless.
 
 **Why pre-clone matters.** `apix scan --github …` takes **~99 seconds**, almost
 all of it cloning. The same scan against the pre-cloned copy takes **~9 seconds**
@@ -59,9 +65,17 @@ terminal.
 powershell -ExecutionPolicy Bypass -File demo\run.ps1
 ```
 
-Six steps, each waiting for **Enter**. Nothing executes until you press it, so
-you can talk for as long as you like on each screen. Total runtime under a
-minute; the talking is what fills the slot.
+Ten slides, each waiting for **Enter**. Nothing executes until you press it, so
+you can talk for as long as you like on each screen.
+
+| Slide | Runbook step below |
+|---|---|
+| 1 Benchmark, 2 Scan, 3 Blast radius, 4 Gate | Steps 1 to 4 |
+| 5 Safe Kill, three runs | Step 4b |
+| 6 Dashboard | Step 4c. The server opens in its own window and the browser opens by itself; the sign-in token is **already on your clipboard**, so press `Ctrl+V` in the sign-in box |
+| 7 Enforcement | Step 4d |
+| 8 Metrics | Step 4e, read with the same token, no copying |
+| 9 Real repository; 10 the test suite | Steps 5 and 6 |
 
 If you would rather type the commands yourself, they are below in order.
 
@@ -298,13 +312,19 @@ straight from GitHub; it takes about 99 seconds, nearly all of it cloning.
 ### Step 6 — It is tested
 
 ```powershell
-python -m pytest -q
+python -m pytest
 ```
+
+(Not `pytest -q`: the configuration already adds `-q`, and doubling it hides the
+summary line. The runner leaves out the two tests that drive real Semgrep, which
+take 45 seconds on their own; `prepare.ps1` and CI run all of them.)
 
 > **153 tests.** Including the ground-truth leakage guards, the removal gate, a
 > test asserting no live endpoint is ever cleared for removal, and every Safe Kill
 > safety path forced and asserted: rejection, denial, automatic rollback, and
-> tamper detection in the audit chain.
+> tamper detection in the audit chain, plus every API route checked for
+authentication, a pull request that tries to exempt itself, and four processes
+writing the audit log at once.
 
 **Then, if there is time,** click to `src/apix/engine/rules.py` in VS Code and
 scroll to `RULES`. Say: *"Fifteen evidence rules. The weights were set from the
@@ -319,25 +339,26 @@ against the answer key — otherwise the number would mean nothing."*
 
 | # | Concern | Status | Where to show it |
 |---|---|---|---|
-| 1 | Identify the dataset for the ML engine | **Delivered** (schema; volume is open) | `apix dataset` — 16 features, 4 classes, leakage-guarded |
+| 1 | Identify the dataset for the ML engine | **Delivered**, and a model trained on it | `apix dataset`; README, "The learned model" |
 | 2 | Can it use explainable AI | **Delivered and running** | Step 2 — every verdict carries signed evidence |
 | 3 | Comparative before/after study | **Delivered** | Step 1 — `apix benchmark`, reproducible figures |
 
-**On concern 1, be precise and do not overclaim.** The dataset is *identified*,
-schema-complete, and leakage-guarded — but it is **25 rows**, and `ORPHANED` has
-two examples. That cannot train a model. What exists is the schema, the
-provenance, and the labelling method; the volume is the open item, and a
-parameterised estate generator closes it. **No model has been trained yet** —
-the 0.960 accuracy is the *rule* classifier, not machine learning. Say that
-plainly; the distinction is one a panel will probe.
+**On concern 1, be precise and do not overclaim.** The hand-written estate is
+**25 rows**, too few to train anything; the volume comes from the estate
+generator (120 estates), and the model is trained on that. Two numbers are easy
+to confuse, so keep them apart: **0.960 accuracy is the rule classifier** on the
+25-endpoint estate. On 120 generated estates the trained model edges the rules on
+macro-F1 (0.861 against 0.843) and, more importantly, produces no false zombies
+where the rules produce 14, which is why it is used as a **veto** over removals
+rather than as the decision-maker. All of it is synthetic; say so.
 
-### The three 50% deliverables
+### The documents
 
 | Deliverable | Status |
 |---|---|
-| Literature review, 5+ papers, shown utilised in the implementation | **Done** — 9 peer-reviewed sources, all verified against DBLP, with a traceability matrix mapping each to the module it justifies |
-| Design document, structural and behavioural | **Done** — 9 sections, 9 diagrams (component, class, deployment, sequence, two state machines, decision logic, DFD, interface) |
-| ~50% of implementation | **Done** — see below |
+| Literature review, shown utilised in the implementation | **Done**: peer-reviewed sources verified against DBLP, with a traceability matrix mapping each to the module it justifies |
+| Design document, structural and behavioural | **Done**, with an as-built note for every phase where the build departed from the design, and why |
+| Implementation | **All eight phases built**: see below |
 
 ### What is actually built
 
@@ -356,14 +377,20 @@ plainly; the distinction is one a panel will probe.
 | **Removal gate** — classifier and graph must both agree | Done |
 | **Safe Kill**: rule-of-three shadow, named approval, canary, automatic rollback | Done |
 | **Hash-chained audit log**, tamper-evident, every transition recorded | Done |
+| **REST API**: hashed tokens, viewer and approver roles, approval over HTTP | Done |
+| **Dashboard**: React + TypeScript, strict CSP, named approval | Done |
+| **CI/CD enforcement**: a GitHub Action that judges only what a pull request changes | Done |
+| **Container image**, Prometheus metrics, JSON logs, a security review with its fixes | Done |
 | Packaging, CLI, CI on 3.10/3.12, mypy strict, 153 tests | Done |
 
-### What is left
+### What is left, and why it is not in the repository
 
-| Remaining | Phase | Notes |
-|---|---|---|
-| Security hardening, deployment, observability | 7–8 | |
-| Paper [2] Cassieri | — | Last one outstanding; 9 of 10 now in `docs/papers/` |
+| Remaining | Why |
+|---|---|
+| A gateway plugin implementing `EnforcementBackend` for a real gateway | Needs a bank's gateway to plug into; the interface it implements is built and tested |
+| An approval queue in a database, so the API can run as more than one replica | One replica is enough for a deployment of this size; stated as a limitation |
+| Anchoring the audit chain's head outside the operator's control | A deployment decision (WORM bucket, SIEM); the chain is what makes one small anchor sufficient |
+| Paper [2] Cassieri | Cited and used; the PDF is the one not yet in `docs/papers/` |
 
 ---
 
@@ -405,6 +432,18 @@ and generates the labels the model later learns from. In deployment the audit
 log becomes the training set — every approved kill and every rollback is a
 human-verified label.
 
+**"Is this production-ready?"**
+The software is built the way a bank would need it: tokens stored hashed, every
+route authenticated, a tamper-evident audit log, a hardened container, metrics,
+and a security review whose findings were fixed with tests. What it has not done
+is run against a real bank's traffic, and nothing here claims it has. The three
+items under "What is left" are what stands between this and a pilot.
+
+**"What stops a developer exempting their own endpoint?"**
+The policy is read from `main`, never from the pull request being judged. The
+first version read it from the pull request; the security review found that and
+it was fixed, with a test that fails if it ever comes back.
+
 **"How much of this did AI write?"**
 Answer honestly and specifically. The value you add is the review, the
 architectural decisions, and being able to defend every one of them — which is
@@ -416,7 +455,9 @@ what this document exists to let you do.
 
 | Symptom | Fix |
 |---|---|
-| `apix` not recognised | `pip install -e ".[dev,live]"`, then reopen the terminal |
+| `apix` not recognised | `pip install -e ".[dev,live,api]"`, then reopen the terminal |
+| Dashboard: "port 8600 in use" | Close the previous server window (or any other `apix serve`), then rerun `run.ps1` |
+| Dashboard sign-in rejected | The token on the clipboard was replaced. Close the server window and rerun slide 6; a fresh token is minted each time |
 | `apix scan` "fails" with exit code 1 | **That is correct.** Exit 1 means zombies were found, so it works as a CI gate |
 | Semgrep slow or missing | Skip Step 5. Everything else needs no Semgrep |
 | No network | Irrelevant — the whole demo runs offline after `prepare.ps1` |
@@ -438,7 +479,8 @@ what this document exists to let you do.
 | 4d Enforcement | 10s | 3 min |
 | 4e As a service | 1s | 2 min |
 | 5 Real repository | 9s | 4 min |
-| 6 Tests | 2s | 2 min |
+| 6 Tests | 60s | 1 min, talk over it |
 
-**Under 15 seconds of execution.** Everything else is you talking, which is what
+**About 25 seconds of execution, plus a minute of tests.** Talk over the test run,
+or skip slide 10 if time is short. Everything else is you talking, which is what
 is being assessed. Do not rush the explanations to reach the next command.

@@ -29,6 +29,8 @@ credentials.json
 data/*.json
 data/*.jsonl
 data/*.csv
+data/*.lock
+data/archive/
 !data/.gitkeep
 
 # Trained model artefacts (tracked via the model registry, not git)

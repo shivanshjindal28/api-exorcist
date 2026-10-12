@@ -66,7 +66,11 @@ describe("Safe Kill view", () => {
   it("lets an approver decline without accepting anything", async () => {
     const user = userEvent.setup();
     const { decide } = renderSafeKill("approver", vi.fn(async () => ({})));
-    await user.click(await screen.findByRole("button", { name: "Decline" }));
+    // The accessible name carries the endpoint, so a screen reader (or a test)
+    // can tell one row's Decline from another's.
+    await user.click(
+      await screen.findByRole("button", { name: "Decline removal of POST /v1/debug/payments/replay" }),
+    );
     expect(decide).toHaveBeenCalledWith("POST /v1/debug/payments/replay", false, false, "");
   });
 });
