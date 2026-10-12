@@ -62,3 +62,8 @@ desktop.ini
 
 # Local reproduction of the CI environment
 .ci-venv/
+
+# Dashboard dependencies and Vite caches. The BUILD is committed
+# (src/apix/api/dashboard/) so pip users need no Node; node_modules never is.
+dashboard/node_modules/
+dashboard/.vite/

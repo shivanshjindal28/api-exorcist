@@ -112,6 +112,7 @@ def live_values() -> dict[str, float]:
         "deprecated": float(counts.get("DEPRECATED", 0)),
         "connectors": 6.0,
         "tests": float(_count_tests()),
+        "vitest": float(_count_vitest()),
         **_safekill_figures(),
     }
 
@@ -155,6 +156,18 @@ def _blast_radius_of(endpoint_id: str) -> tuple[float, float, float, float]:
         float(len(radius.direct_services)),
         float(len(radius.affected_endpoints)),
     )
+
+
+def _count_vitest() -> int:
+    """Dashboard tests, counted from source: every `it(` in a test file.
+
+    Counted rather than run, so this script needs no Node. The README and
+    CLAUDE.md quote it, and a count that was only ever typed in by hand drifts.
+    """
+    total = 0
+    for path in (ROOT / "dashboard" / "src").rglob("*.test.ts*"):
+        total += len(re.findall(r"^\s*it\(", path.read_text(encoding="utf-8"), re.M))
+    return total
 
 
 def _count_tests() -> int:
@@ -204,6 +217,7 @@ def build_claims(live: dict[str, float]) -> list[Claim]:
         # Two digits or more: a single-digit "6 Tests" is a step number in the
         # demo timing table, not a claim about the suite.
         Claim("test count", r"(\d{2,}) tests\b", live["tests"]),
+        Claim("dashboard test count", r"(\d+) Vitest\s+tests", live["vitest"]),
         # Safe Kill. The gate's mistakes, and what the canary-only design costs.
         Claim("safekill live candidates", r"(\d+) live endpoints", live["sk_live"]),
         Claim("canary-only dead kept", r"keeps (\d+) dead endpoints",

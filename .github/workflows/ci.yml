@@ -142,3 +142,47 @@ jobs:
         with:
           name: benchmark-results
           path: data/benchmark.json
+
+  dashboard:
+    name: dashboard (types, tests, committed build is current)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install (exact versions from the lockfile)
+        run: npm ci
+
+      - name: Types (TypeScript strict)
+        run: npm run typecheck
+
+      - name: Tests (Vitest)
+        run: npm test
+
+      # The build is committed so that `pip install` ships a working dashboard
+      # with no Node on the machine. A committed artefact can silently fall
+      # behind its source, so rebuild it here and fail if anything differs,
+      # including a renamed or added file that `git diff` alone would miss.
+      - name: Rebuild
+        run: npm run build
+
+      - name: Committed build matches the source
+        working-directory: .
+        run: |
+          stale="$(git status --porcelain -- src/apix/api/dashboard)"
+          if [ -n "$stale" ]; then
+            echo "$stale"
+            echo "::error::src/apix/api/dashboard is stale. Run 'npm run build' in dashboard/ and commit the result."
+            exit 1
+          fi
+          echo "Committed dashboard build matches the source."
+
+      - name: No known-vulnerable runtime dependencies
+        run: npm audit --omit=dev --audit-level=high

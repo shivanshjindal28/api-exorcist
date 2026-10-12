@@ -282,7 +282,6 @@ plainly; the distinction is one a panel will probe.
 
 | Remaining | Phase | Notes |
 |---|---|---|
-| Dashboard | 5b | Next; a client of the REST API, which is built |
 | CI/CD enforcement plugin | 6 | The prevention half |
 | Security hardening, deployment, observability | 7–8 | |
 | Paper [2] Cassieri | — | Last one outstanding; 9 of 10 now in `docs/papers/` |

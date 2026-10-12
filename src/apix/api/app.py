@@ -34,6 +34,7 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from apix import __version__
@@ -102,6 +103,30 @@ Approver = Annotated[Principal, Depends(_approver)]
 
 
 # ---------------------------------------------------------------------------
+# The dashboard and its Content-Security-Policy.
+#
+# The dashboard (dashboard/, built into this package) is served from the same
+# origin as the API, so there is no CORS to configure and nothing to get wrong.
+# Its HTML and JavaScript are public code; every byte of data still needs a
+# token. The CSP allows scripts, styles and connections to this origin only,
+# with no inline script anywhere: the build contains none, which is what makes
+# this policy possible. A stored token is only as safe as the page holding it,
+# and this is what keeps a script injected from elsewhere from running at all.
+#
+# FastAPI's /docs and /redoc pages load Swagger UI from a CDN with an inline
+# script, so they are exempt rather than broken. A deployment with no internet
+# access should serve those assets locally or disable the pages.
+# ---------------------------------------------------------------------------
+DASHBOARD_DIR = Path(__file__).resolve().parent / "dashboard"
+CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; "
+    "connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; "
+    "form-action 'self'; frame-ancestors 'none'"
+)
+_SWAGGER_PATHS = frozenset({"/docs", "/redoc", "/docs/oauth2-redirect"})
+
+
+# ---------------------------------------------------------------------------
 def create_app(workspace: Workspace, tokens: TokenStore) -> FastAPI:
     if not tokens:
         # Refuse to start rather than serve an unauthenticated inventory.
@@ -125,6 +150,8 @@ def create_app(workspace: Workspace, tokens: TokenStore) -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
+        if request.url.path not in _SWAGGER_PATHS:
+            response.headers["Content-Security-Policy"] = CSP
         return response
 
     app.state.tokens = tokens
@@ -231,6 +258,10 @@ def create_app(workspace: Workspace, tokens: TokenStore) -> FastAPI:
                 "risk, or approve=false to decline.",
             ) from None
         return outcome.to_dict()
+
+    # Mounted last, so every /v1 route above takes precedence over it.
+    if (DASHBOARD_DIR / "index.html").exists():
+        app.mount("/", StaticFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")
 
     return app
 

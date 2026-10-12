@@ -14,3 +14,7 @@
 *.docx binary
 *.pkl binary
 *.joblib binary
+
+# The built dashboard is committed and CI rebuilds it to check it is current.
+# Byte-for-byte comparison only works if git never rewrites its line endings.
+src/apix/api/dashboard/** -text
