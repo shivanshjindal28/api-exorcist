@@ -39,6 +39,7 @@ the architecture, and explains the system's most important behaviour — see
 ## Contents
 
 - [Quick start](#quick-start)
+- [Scanning a project in the browser](#scanning-a-project-in-the-browser)
 - [Progress](#progress)
 - [Headline results](#headline-results)
 - [How it works](#how-it-works)
@@ -58,19 +59,24 @@ the architecture, and explains the system's most important behaviour — see
 
 ## Quick start
 
-Python 3.10+. The pipeline, classifier, graph and evaluation run on the **standard
-library alone** — no infrastructure, no services, no network.
+Python 3.10+, git, and Semgrep for reading routes out of code.
 
 ```bash
-pip install -e .
+pip install -e ".[api,live]"
 ```
+
+Then, in VS Code, press **F5** ("API Exorcist: open the app"), or run:
 
 ```bash
-apix scan
+apix serve
 ```
 
-That is the whole demo: six sources collected, correlated, classified and explained,
-in under a second.
+Your browser opens on API Exorcist, already signed in. Everything from there is in
+the browser: scan a project, read its report, and explore the demo bank. Stop it
+with Shift+F5 in VS Code, or Ctrl+C in the terminal.
+
+The command line is still there for scripting and CI (see the
+[command reference](#command-reference)); nothing needs it.
 
 ---
 
@@ -87,6 +93,8 @@ in under a second.
 | 5b | Dashboard: React + TypeScript, served by the API | ✅ done |
 | 6 | CI/CD enforcement: GitHub Action, judges only what a PR changes | ✅ done |
 | 7–8 | Deployment: container image, observability, security review | ✅ done |
+| 9 | Browser scans: upload a project folder or paste a GitHub link | ✅ done |
+| — | Live website scanning | ⬜ not in this version |
 
 ### What is built
 
@@ -106,14 +114,17 @@ in under a second.
 | Trained model with SHAP attribution, used as a veto over removals | ✅ |
 | Safe Kill: rule-of-three shadow window, named approval, 5/25/100 canary | ✅ |
 | Automatic rollback on breach, hash-chained append-only audit log | ✅ |
-| 153 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
+| 186 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
 | REST API: hashed bearer tokens, viewer and approver roles, approval over HTTP | ✅ |
 | Dashboard: React + TypeScript, same origin, strict CSP | ✅ |
 | CI/CD enforcement: undocumented, unowned and zombie-in-the-making endpoints | ✅ |
 | Container image: non-root, read-only filesystem, digest-pinned base, no pip | ✅ |
 | Observability: Prometheus metrics, JSON logs, request ids | ✅ |
+| Browser scans of an uploaded folder or a GitHub link, with a report of what could not be checked and why | ✅ |
 
-**All eight phases are built.** What remains is outside this repository's
+**All eight phases are built, and the browser is now the way in.** Live
+website scanning is shown in the app but is not available in this version. What
+remains is outside this repository's
 reach rather than unbuilt: a gateway plugin implementing `EnforcementBackend`
 against a real gateway, an approval queue that outlives the process so the API
 can run as more than one replica, and anchoring the audit chain's head in a
@@ -515,7 +526,10 @@ export APIX_API_TOKENS="alice:approver:<sha256>;bob:viewer:<sha256>"
 | `GET /v1/safekill`, `/v1/audit`, `/v1/audit/verify` | viewer | Safe Kill state, the audit chain, its verification |
 | `POST /v1/safekill/shadow` | approver | run the gate and the shadow window for one candidate |
 | `POST /v1/safekill/decision` | approver | approve or decline; the canary and rollback follow |
-| `POST /v1/scans` | approver | re-run discovery |
+| `POST /v1/demo/rescan` | approver | re-run discovery on the demo bank |
+| `GET /v1/capabilities` | viewer | which scan inputs work on this machine, and why not |
+| `POST /v1/scans/upload`, `POST /v1/scans/github` | approver | start a scan of an uploaded folder or a GitHub link |
+| `GET /v1/scans`, `GET /v1/scans/{id}` | viewer | every scan; one scan's progress, then its report |
 | `GET /metrics` | viewer | Prometheus text format: requests, latency, auth failures, estate gauges |
 
 Four decisions, each made for a security reason:
@@ -629,10 +643,52 @@ change could edit the workflow itself; review of those paths is what closes that
 
 ---
 
+## Scanning a project in the browser
+
+The app opens on **New scan**, with three ways in:
+
+| Input | What happens | Needs |
+|---|---|---|
+| **Upload a project folder** | Pick the project's top folder. Dependency and build folders (`node_modules`, `.git`, `dist`...), images and files over 2 MB are left out in the browser, and the page says how many and why. The rest is copied to a temporary folder, scanned, and deleted. | Semgrep |
+| **Paste a GitHub link** | Any form: `https://github.com/owner/repo`, with `.git` or a `/tree/...` path, or just `owner/repo`. The repository is downloaded with its commit history. Public repositories only; a private or missing one fails at once with that reason. | git, Semgrep |
+| **Scan a live website** | Shown, but not available in this version; the page says so. | |
+
+A scan runs in the background and its page shows each stage as it happens.
+GitHub scans take ten seconds to a couple of minutes, mostly downloading. The
+report has four parts:
+
+- **Headline counts**: endpoints found, undocumented, without an owner, unchanged
+  for over a year, deprecated in the specification.
+- **What was checked**: every stage, marked *worked*, *partly*, *not available* or
+  *failed*, each with its reason. For example: an uploaded folder has no git
+  history, so staleness is "unknown", never zero; no `CODEOWNERS` file means no
+  endpoint has an owner; routes mounted under `prefix=settings.API_V1_STR` are shown
+  without that prefix, because its value is only known by running the project.
+- **True of the whole project**: findings every endpoint shares, listed once.
+- **Endpoints**: method and path, file and line, documented or not, owner, when the
+  code last changed, and the findings behind each. Download the report as JSON.
+
+No endpoint in a project scan is called a zombie. Active, deprecated, orphaned
+and zombie are all defined by *use*, and a project's files cannot show use; the
+report says this rather than guessing. The **Demo bank** pages show the full
+classification and Safe Kill on the simulated estate, where usage data exists.
+
+Reports are kept in `data/scans/` and listed under **Scan results**. Nothing from a
+scanned project is ever run: routes are read by static analysis and
+specifications are parsed as data. Uploaded file names that could point outside
+the upload (`../../x`, absolute paths, drive letters) are refused.
+
+---
+
 ## Dashboard
 
-`apix serve` also serves the dashboard at `http://127.0.0.1:8600/`. Sign in with
-the token it prints.
+`apix serve` opens the dashboard at `http://127.0.0.1:8600/`, signed in. The
+one-time token it mints is handed to the browser in the URL *fragment*
+(`#signin=...`), which browsers never send to a server or put in a Referer
+header; the page reads it and erases it from the address bar and history at once.
+With `--no-browser`, or with configured tokens, sign in by pasting a token.
+
+Besides the scanning pages above, the **Demo bank** section holds:
 
 | View | What it shows |
 |---|---|
@@ -663,7 +719,7 @@ Security, in the browser as on the server:
 
 ```bash
 cd dashboard && npm ci && npm run dev      # hot-reload against a running `apix serve`
-npm test && npm run build                  # 10 Vitest tests; build into src/apix/api/dashboard
+npm test && npm run build                  # 19 Vitest tests; build into src/apix/api/dashboard
 ```
 
 ---
@@ -935,6 +991,13 @@ State these; do not hide them.
     Someone who can rewrite the whole file can recompute the whole chain.
     `apix_audit_chain_ok` catches an edit, not a rewrite; the deployment answer
     is to ship the head hash to a store the operator does not control.
+13. **Live website scanning is not available in this version.** The app shows
+    the option and says so; scan the project's folder or repository instead.
+14. **An uploaded folder has no history.** `.git` is left out of uploads, so
+    staleness is reported as unknown. A GitHub scan includes it.
+15. **The container image has neither git nor Semgrep.** Scans started inside it
+    report both as unavailable, with the reason; install them, or run the app
+    directly, to scan.
 ---
 
 ## Project layout
@@ -965,6 +1028,10 @@ src/apix/
     workspace.py           The served state: a scan, its gate, a Safe Kill controller
     app.py                 FastAPI routes over the workspace; limits, request ids
     observe.py             Prometheus metrics and JSON logs, no client library
+  scanning/
+    jobs.py                Background scans, GitHub link parsing, kept reports
+    report.py              One report shape: counts, what was checked and why, endpoints
+    upload.py              Saving an uploaded folder without letting a name escape it
   enforce/
     config.py              Rules, severities, and exemptions that must give a reason
     snapshot.py            One commit's API surface: routes, spec entries, owners
@@ -999,7 +1066,7 @@ src/apix/
 dashboard/                 React + TypeScript source; builds into src/apix/api/dashboard
 Dockerfile                 The deployable image: API and dashboard, non-root, read-only
 action.yml                 The GitHub Action; action-constraints.txt pins what it installs
-tests/                     153 tests, three ground-truth leakage guards
+tests/                     186 tests, three ground-truth leakage guards
 demo/                      Review runbook, paced demo runner, expected output
 docs/                      Literature review, design document, interim report,
                            source papers, diagram renderer, Word and
@@ -1023,7 +1090,7 @@ pip install -e ".[dev,live,ml]" && pre-commit install
 pytest && ruff check . && mypy && python docs/verify_claims.py
 ```
 
-**153 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 10 Vitest
+**186 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 19 Vitest
 tests under TypeScript strict mode (`cd dashboard && npm test`).
 
 ### Optional extras

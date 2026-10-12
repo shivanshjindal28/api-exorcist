@@ -105,6 +105,10 @@ class SemgrepExtractor:
         self.last_error: str | None = None
         self.rejected: list[str] = []
         self.mount_prefixes: list[str] = []
+        #: Mounts whose prefix is an expression, e.g. settings.API_V1_STR. Its
+        #: value is only known by running the project's configuration, which a
+        #: scanner must never do, so routes under it are marked unresolved.
+        self.variable_mounts: list[str] = []
 
     # ------------------------------------------------------------------
     def available(self) -> bool:
@@ -159,7 +163,9 @@ class SemgrepExtractor:
         seen: set[tuple[str, str]] = set()
 
         results = data.get("results", [])
-        file_prefix, mount_prefixes = self._collect_prefixes(results, repo_root)
+        file_prefix, mount_prefixes, variable_mounts = self._collect_prefixes(
+            results, repo_root)
+        self.variable_mounts = sorted(variable_mounts)
         # A single mount prefix used consistently across the application (the
         # overwhelmingly common case, e.g. everything under /api/v1) can be
         # applied with confidence. Several different ones cannot be attributed
@@ -195,7 +201,12 @@ class SemgrepExtractor:
             router_prefix = file_prefix.get(rel_for_prefix, "")
             composed = f"{global_mount}{router_prefix}/{declared.lstrip('/')}"
             path = normalise_path(composed)
-            resolved = bool(global_mount) or not mount_prefixes
+            # Unresolved when several literal mounts compete, or when the only
+            # mounts are expressions whose value the scan cannot know. Before
+            # the second case was tracked, a project mounting everything under
+            # prefix=settings.API_V1_STR looked fully resolved: the web report
+            # showed /users where the deployed path is /api/v1/users.
+            resolved = bool(global_mount) or not (mount_prefixes or variable_mounts)
 
             # Flask carries its methods as an argument rather than in the
             # decorator name, so recover them from the matched source lines.
@@ -235,10 +246,11 @@ class SemgrepExtractor:
     # ------------------------------------------------------------------
     def _collect_prefixes(
         self, results: list[dict[str, Any]], repo_root: Path
-    ) -> tuple[dict[str, str], set[str]]:
-        """Router prefixes per file, and every mount prefix seen anywhere."""
+    ) -> tuple[dict[str, str], set[str], set[str]]:
+        """Router prefixes per file, literal mount prefixes, and variable ones."""
         per_file: dict[str, str] = {}
         mounts: set[str] = set()
+        variables: set[str] = set()
 
         for res in results:
             rule_id = str(res.get("check_id", "")).split(".")[-1]
@@ -263,8 +275,11 @@ class SemgrepExtractor:
                 m = _MOUNT_MSG.search(msg)
                 if not m:
                     continue
-                prefix = _clean(m.group("prefix"))
+                raw = m.group("prefix").strip()
+                prefix = _clean(raw)
                 if prefix.startswith("/"):
                     mounts.add(prefix.rstrip("/"))
+                elif raw and raw[0] not in "\"'" and len(raw) <= 120:
+                    variables.add(raw)
 
-        return per_file, mounts
+        return per_file, mounts, variables

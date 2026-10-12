@@ -282,6 +282,16 @@ CAPABILITIES: dict[str, tuple[str, list[str]]] = {
         "src/apix/api/observe.py",
         [r"\bobservability\b"],
     ),
+    "browser scans": (
+        "src/apix/scanning/jobs.py",
+        [r"Browser scans"],
+    ),
+    # Shown in the app as unavailable. If this module ever exists, documents
+    # marking it unbuilt fail; until then, any marking it done fails.
+    "live website scanning": (
+        "src/apix/webscan/__init__.py",
+        [r"Live website scanning"],
+    ),
 }
 
 _NOT_BUILT = ("⬜", "🔵")

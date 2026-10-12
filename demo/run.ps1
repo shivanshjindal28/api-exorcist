@@ -92,7 +92,7 @@ if ($busy) {
     $minted = (apix token shivansh --role approver) -join "`n"
     $token = [regex]::Match($minted, 'apx_[A-Za-z0-9_-]+').Value
     $entry = [regex]::Match($minted, 'shivansh:approver:[0-9a-f]+').Value
-    $serve = "`$env:APIX_API_TOKENS='$entry'; Set-Location '$root'; apix serve"
+    $serve = "`$env:APIX_API_TOKENS='$entry'; Set-Location '$root'; apix serve --no-browser"
     Start-Process powershell -ArgumentList "-NoExit", "-Command", $serve | Out-Null
 
     $up = $false

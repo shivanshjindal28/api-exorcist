@@ -370,6 +370,25 @@ applies only after it merges. Second, the concurrent audit writers above. It als
 pinned every GitHub Action to a commit and the Action's scanner to exact versions,
 removed pip from the image, and capped request bodies at 64 KiB.
 
+#### As built: the browser as the way in (Phase 9)
+
+The dashboard became the product's front door. `apix serve` (or F5 in VS Code)
+opens it already signed in, the one-time token handed over in the URL fragment,
+which no server or Referer header ever sees. The first screen offers three inputs:
+an uploaded project folder, a GitHub link, and a live website. The first two run
+the repository scanner of Phase 1 as background jobs whose stages the page shows as
+they happen; the third is shown as not available in this version, with that
+reason.
+
+Every report carries a "what was checked" list in which each stage says whether it
+worked and, if not, why: an upload has no git history, so staleness is unknown; a
+route prefix set by a variable cannot be resolved without running the project; a
+repository has no traffic, so no endpoint is labelled a zombie. Upload names are
+rebuilt from their parts and any that could escape the upload directory are
+refused; GitHub links are reduced to an owner and a name before git ever sees
+them, and git is never allowed to prompt, so a private repository fails at once
+with its reason.
+
 ---
 
 ## 3. Behavioural view

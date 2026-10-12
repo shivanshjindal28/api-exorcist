@@ -165,3 +165,76 @@ export interface BenchmarkRow {
 }
 
 export type Benchmark = Record<string, BenchmarkRow>;
+
+// ---------------------------------------------------------------------------
+// Scans a person starts: an uploaded folder or a GitHub link.
+
+export type CheckStatus = "ok" | "partial" | "unavailable" | "failed";
+
+export interface ScanCheck {
+  name: string;
+  status: CheckStatus;
+  detail: string;
+}
+
+export interface SummaryItem {
+  label: string;
+  value: number | string;
+}
+
+export interface ScanEndpoint {
+  id: string;
+  method: string;
+  path: string;
+  file: string | null;
+  line: number | null;
+  framework: string | null;
+  owner: string | null;
+  last_change_days: number | null;
+  documented: boolean;
+  deprecated_in_spec: boolean;
+  seen_by: string[];
+  flags: string[];
+  findings: string[];
+  risk: number;
+}
+
+export interface ScanReport {
+  summary: SummaryItem[];
+  checks: ScanCheck[];
+  endpoints: ScanEndpoint[];
+  repository_findings: string[];
+  lifecycle: { available: boolean; why: string };
+  details: { commit: string | null; specifications: string[]; mount_prefixes: string[] };
+}
+
+export type ScanKind = "github" | "folder";
+export type ScanStatus = "queued" | "running" | "done" | "failed";
+
+export interface ScanJob {
+  id: string;
+  kind: ScanKind;
+  target: string;
+  requested_by: string;
+  status: ScanStatus;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_s: number | null;
+  error: string | null;
+  progress: { at: string; message: string }[];
+  summary?: SummaryItem[];
+  report?: ScanReport;
+}
+
+export interface InputOption {
+  available: boolean;
+  warning?: string | null;
+  reason?: string | null;
+}
+
+export interface Capabilities {
+  folder: InputOption;
+  github: InputOption;
+  website: InputOption;
+}

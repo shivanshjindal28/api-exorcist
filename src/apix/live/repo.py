@@ -22,6 +22,7 @@ clone would be faster but would destroy exactly the signal we came for.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -79,7 +80,8 @@ class RepoScan:
 
     # ------------------------------------------------------------------
     @classmethod
-    def clone(cls, slug: str, *, depth: int | None = None) -> RepoScan:
+    def clone(cls, slug: str, *, depth: int | None = None,
+              timeout: int = 900) -> RepoScan:
         """Clone `owner/name` from GitHub into a temporary directory."""
         if not re.fullmatch(r"[\w.-]+/[\w.-]+", slug):
             raise RepoError(
@@ -97,12 +99,28 @@ class RepoScan:
             cmd += ["--depth", str(depth)]
         cmd += [url, str(dest)]
 
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        # Never wait for a password: a private or missing repository must fail
+        # at once with a reason, not hang a background job on a prompt nobody
+        # can see. Only public repositories are scanned without credentials.
+        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"}
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=timeout, env=env)
+        except subprocess.TimeoutExpired:
+            td.cleanup()
+            raise RepoError(
+                f"downloading {slug} took longer than {timeout // 60} minutes; "
+                "the repository may be very large"
+            ) from None
         if proc.returncode != 0:
             td.cleanup()
             err = (proc.stderr or "").strip().splitlines()
             detail = err[-1] if err else "unknown error"
-            raise RepoError(f"could not clone {slug}: {detail}")
+            if "not found" in detail.lower() or "could not read username" in detail.lower() \
+                    or "authentication" in detail.lower():
+                detail = ("the repository does not exist, or it is private. Only "
+                          "public repositories can be scanned without a GitHub token")
+            raise RepoError(f"could not download {slug}: {detail}")
 
         scan = cls(slug=slug, root=dest, _tempdir=td)
         scan._gather()

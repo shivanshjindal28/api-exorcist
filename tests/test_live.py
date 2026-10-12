@@ -162,6 +162,31 @@ def test_ambiguous_mount_prefixes_are_not_guessed() -> None:
     )
 
 
+def test_a_prefix_set_by_a_variable_marks_routes_unresolved() -> None:
+    """`prefix=settings.API_V1_STR` has a value only the running project knows.
+
+    It used to be dropped silently, which left every route looking resolved:
+    the web report showed /users where the deployed path is /api/v1/users.
+    """
+    ex = SemgrepExtractor()
+    data = {
+        "results": [
+            _result("apix-py-include-router", "", "main.py",
+                    message="APIXMOUNT|prefix=settings.API_V1_STR"),
+            _result("apix-py-fastapi-get", '"/users"', "api/u.py", 5),
+        ]
+    }
+    routes = ex._parse(data, ROOT)
+    check(
+        "test_a_prefix_set_by_a_variable_marks_routes_unresolved",
+        len(routes) == 1
+        and routes[0].path == "/users"
+        and not routes[0].prefix_resolved
+        and ex.variable_mounts == ["settings.API_V1_STR"],
+        f"got {[(r.path, r.prefix_resolved) for r in routes]}, {ex.variable_mounts}",
+    )
+
+
 def test_flask_methods_are_read_from_the_decorator() -> None:
     """Methods come from the source file, because Semgrep now redacts it.
 
@@ -280,6 +305,7 @@ def main() -> None:
         test_router_prefix_is_composed_into_the_path,
         test_single_mount_prefix_is_applied,
         test_ambiguous_mount_prefixes_are_not_guessed,
+        test_a_prefix_set_by_a_variable_marks_routes_unresolved,
         test_flask_methods_are_read_from_the_decorator,
         test_declared_path_is_retained,
         test_repo_scan_declares_only_three_sources,

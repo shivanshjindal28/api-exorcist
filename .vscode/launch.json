@@ -1,0 +1,17 @@
+{
+  // Press F5 (or Run > Start Debugging) to start API Exorcist. The dashboard
+  // opens in your browser, already signed in. Stop it with Shift+F5.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "API Exorcist: open the app",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "apix",
+      "args": ["serve"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ]
+}

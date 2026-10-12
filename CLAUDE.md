@@ -14,12 +14,12 @@ apix benchmark                    # comparative before/after evaluation
 apix train --estates 120 --save   # train the model, compare against rules
 apix safekill --approve-as NAME   # shadow, approval, canary, rollback
 apix safekill --evaluate          # Safe Kill vs the gate alone, shadow sweep
-apix serve                        # REST API (needs .[api]); mints a session token
+apix serve                        # THE APP: opens the browser signed in (F5 in VS Code)
 apix token NAME --role approver   # mint an API token; stores only its hash
 apix enforce --base origin/main   # judge a change's API surface (Phase 6)
 docker build -t api-exorcist .    # the deployable image (Phases 7-8)
-cd dashboard && npm ci && npm test && npm run build   # dashboard, 10 Vitest tests
-pytest                            # 153 tests
+cd dashboard && npm ci && npm test && npm run build   # dashboard, 19 Vitest tests
+pytest                            # 186 tests
 ruff check . && mypy              # lint + strict types
 
 python docs/render_diagrams.py    # mermaid -> png (run before the two below)
@@ -154,6 +154,7 @@ src/apix/
   safekill/        shadow, approval, canary, rollback, hash-chained audit
   api/             REST API: hashed bearer tokens, roles, approval over HTTP
   api/observe.py   Prometheus metrics and JSON logs; labels are route templates
+  scanning/        browser scans: uploaded folder or GitHub link, background jobs
   enforce/         CI enforcement; action.yml at the repo root runs it on PRs
   api/dashboard/   the BUILT dashboard (committed; CI checks it is current)
   evaluation/      metrics, the comparative benchmark, Safe Kill evaluation

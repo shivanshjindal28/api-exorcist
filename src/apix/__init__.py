@@ -19,6 +19,6 @@ engine never reaches back to a data source. `engine`, `inventory` and
 a test enforces this at the AST level.
 """
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 __all__ = ["__version__"]

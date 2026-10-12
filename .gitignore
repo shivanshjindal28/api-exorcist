@@ -31,6 +31,7 @@ data/*.jsonl
 data/*.csv
 data/*.lock
 data/archive/
+data/scans/
 !data/.gitkeep
 
 # Trained model artefacts (tracked via the model registry, not git)
@@ -56,7 +57,9 @@ docs/*.pptx
 demo/repos/
 
 # Editor / OS
-.vscode/
+# VS Code: only the launch configuration is shared (F5 starts the app).
+.vscode/*
+!.vscode/launch.json
 .idea/
 .DS_Store
 Thumbs.db

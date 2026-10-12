@@ -10,11 +10,13 @@ import type {
   AuditPage,
   Benchmark,
   BlastRadius,
+  Capabilities,
   ChainCheck,
   InventoryRecord,
   KillOutcome,
   Principal,
   SafeKillState,
+  ScanJob,
   Summary,
   Verdict,
   VerdictDetail,
@@ -132,7 +134,66 @@ export class ApiClient {
   }
 
   rescan(): Promise<Summary> {
-    return this.request("POST", "/v1/scans");
+    return this.request("POST", "/v1/demo/rescan");
+  }
+
+  // -- scans a person starts -----------------------------------------------
+
+  capabilities(): Promise<Capabilities> {
+    return this.request("GET", "/v1/capabilities");
+  }
+
+  scans(): Promise<ScanJob[]> {
+    return this.request("GET", "/v1/scans");
+  }
+
+  scan(id: string): Promise<ScanJob> {
+    return this.request("GET", `/v1/scans/${encodeURIComponent(id)}`);
+  }
+
+  scanGithub(url: string): Promise<ScanJob> {
+    return this.request("POST", "/v1/scans/github", { url });
+  }
+
+  /**
+   * Upload a project folder. XMLHttpRequest rather than fetch, because fetch
+   * cannot report upload progress and a large folder takes long enough that a
+   * progress bar matters. The token still travels only in the header.
+   */
+  uploadFolder(
+    files: { file: Blob; path: string }[],
+    onProgress?: (fraction: number) => void,
+  ): Promise<ScanJob> {
+    const form = new FormData();
+    for (const f of files) form.append("files", f.file, f.path);
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/v1/scans/upload");
+      xhr.setRequestHeader("Authorization", `Bearer ${this.token}`);
+      xhr.withCredentials = false;
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+      };
+      xhr.onerror = () => reject(new ApiError(0, "the upload could not reach API Exorcist"));
+      xhr.onload = () => {
+        let data: unknown = null;
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch {
+          // Non-JSON body: fall through with the status text.
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(data as ScanJob);
+          return;
+        }
+        const detail =
+          data && typeof data === "object" && "detail" in data
+            ? String((data as { detail: unknown }).detail)
+            : xhr.statusText || `HTTP ${xhr.status}`;
+        reject(new ApiError(xhr.status, detail));
+      };
+      xhr.send(form);
+    });
   }
 }
 

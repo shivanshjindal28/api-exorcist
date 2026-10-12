@@ -38,8 +38,9 @@ export function Login({ onSignIn, makeClient = (t) => new ApiClient(t) }: Props)
       <form className="card login-card" onSubmit={submit}>
         <h1>API Exorcist</h1>
         <p className="muted">
-          Sign in with an API token. <code>apix serve</code> prints a one-time token when none
-          are configured; <code>apix token NAME</code> mints a named one.
+          Started from VS Code (F5) or with <code>apix serve</code>, API Exorcist opens this
+          page already signed in. If you see this instead, paste the token printed in the
+          terminal where it is running.
         </p>
         <label htmlFor="token">Token</label>
         <input

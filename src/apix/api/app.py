@@ -15,7 +15,13 @@ The REST API: FastAPI over a Workspace.
     GET  /v1/audit/verify                  recompute the whole chain
     GET  /metrics                          Prometheus text format (needs a token)
 
-    POST /v1/scans                         approver: re-run discovery
+    POST /v1/demo/rescan                   approver: re-run discovery on the demo bank
+
+    GET  /v1/capabilities                  which scan inputs work on this machine
+    POST /v1/scans/github                  approver: scan a public GitHub repository
+    POST /v1/scans/upload                  approver: scan an uploaded project folder
+    GET  /v1/scans                         every scan, newest first
+    GET  /v1/scans/{id}                    one scan: progress while running, then its report
     POST /v1/safekill/shadow               approver: gate + shadow window
     POST /v1/safekill/decision             approver: approve or decline
 
@@ -36,6 +42,8 @@ with a 1000-character note.
 from __future__ import annotations
 
 import re
+import shutil
+import tempfile
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -43,6 +51,8 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi import Path as PathParam
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
@@ -59,9 +69,15 @@ from apix.api.workspace import (
 )
 from apix.engine.explain import audit_entry
 from apix.safekill.controller import NotAwaitingApproval
+from apix.scanning import JobManager, ScanRefused, UploadRejected, save_files
+from apix.scanning.upload import MAX_FILES, MAX_TOTAL_BYTES
 
 _bearer = HTTPBearer(auto_error=False)
 MAX_BODY_BYTES = 64 * 1024
+#: The one route that takes a large body: a project folder. Its own cap, set by
+#: the upload module, plus room for the multipart framing around the files.
+UPLOAD_PATH = "/v1/scans/upload"
+MAX_UPLOAD_BODY = MAX_TOTAL_BYTES + 16 * 1024 * 1024
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
@@ -72,6 +88,11 @@ _REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 class ShadowRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     endpoint_id: str = Field(min_length=1, max_length=512)
+
+
+class GithubScanRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: str = Field(min_length=1, max_length=500)
 
 
 class DecisionRequest(BaseModel):
@@ -157,7 +178,8 @@ def _route_label(request: Request) -> str:
     return getattr(route, "path", None) or "other"
 
 
-def create_app(workspace: Workspace, tokens: TokenStore, *, docs: bool = True) -> FastAPI:
+def create_app(workspace: Workspace, tokens: TokenStore, *, docs: bool = True,
+               jobs: JobManager | None = None) -> FastAPI:
     """`docs=False` removes /docs and /redoc, which load Swagger UI from a CDN."""
     if not tokens:
         # Refuse to start rather than serve an unauthenticated inventory.
@@ -190,9 +212,11 @@ def create_app(workspace: Workspace, tokens: TokenStore, *, docs: bool = True) -
             length = request.headers.get("content-length")
             if length is None:
                 response = JSONResponse({"detail": "Content-Length is required"}, 411)
-            elif not length.isdigit() or int(length) > MAX_BODY_BYTES:
-                response = JSONResponse(
-                    {"detail": f"request body over {MAX_BODY_BYTES} bytes"}, 413)
+            else:
+                cap = MAX_UPLOAD_BODY if request.url.path == UPLOAD_PATH else MAX_BODY_BYTES
+                if not length.isdigit() or int(length) > cap:
+                    response = JSONResponse(
+                        {"detail": f"request body over {cap // 1024} KiB"}, 413)
         status = 500
         try:
             if response is None:
@@ -295,7 +319,7 @@ def create_app(workspace: Workspace, tokens: TokenStore, *, docs: bool = True) -
         )
 
     # -- actions ------------------------------------------------------------
-    @app.post("/v1/scans")
+    @app.post("/v1/demo/rescan")
     def rescan(who: Approver) -> dict[str, Any]:
         workspace.refresh()
         return workspace.summary()
@@ -347,6 +371,91 @@ def create_app(workspace: Workspace, tokens: TokenStore, *, docs: bool = True) -
         }})
         return result
 
+    # -- scans a person starts: an uploaded folder or a GitHub link -----------
+    scans = jobs or JobManager()
+    app.state.jobs = scans
+
+    @app.get("/v1/capabilities")
+    def capabilities(who: Viewer) -> dict[str, Any]:
+        """What works on this machine, so the page can say so before a scan."""
+        semgrep = shutil.which("semgrep") is not None
+        git = shutil.which("git") is not None
+        code_note = None if semgrep else (
+            "Semgrep is not installed here, so routes cannot be read from code. "
+            "Install it with `pip install semgrep`, then restart.")
+        return {
+            "folder": {"available": True, "warning": code_note},
+            "github": {
+                "available": git,
+                "warning": code_note if git else None,
+                "reason": None if git else "git is not installed on this machine",
+            },
+            "website": {
+                "available": False,
+                "reason": (
+                    "Scanning a live website is not available in this version. "
+                    "Upload the project's folder, or give its GitHub link, to scan "
+                    "the code behind the site instead."
+                ),
+            },
+        }
+
+    @app.post("/v1/scans/github", status_code=202)
+    def scan_github(body: GithubScanRequest, who: Approver) -> dict[str, Any]:
+        try:
+            job = scans.submit_github(body.url, who.name)
+        except ScanRefused as exc:
+            raise HTTPException(422, str(exc)) from None
+        metrics.action("scan_github", "started")
+        log.info("scan.start", extra={"fields": {
+            "job": job["id"], "kind": "github", "target": job["target"],
+            "principal": who.name}})
+        return job
+
+    @app.post(UPLOAD_PATH, status_code=202)
+    async def scan_upload(request: Request, who: Approver) -> dict[str, Any]:
+        try:
+            form = await request.form(max_files=MAX_FILES + 1, max_fields=20)
+        except Exception as exc:  # any parse failure is the client's
+            raise HTTPException(400, f"could not read the upload: {exc}") from None
+        files: list[tuple[str, bytes]] = []
+        try:
+            for item in form.getlist("files"):
+                if isinstance(item, str):
+                    continue
+                files.append((item.filename or "", await item.read()))
+        finally:
+            await form.close()
+        workdir = tempfile.TemporaryDirectory(prefix="apix-upload-")
+        try:
+            saved = await run_in_threadpool(save_files, Path(workdir.name), files)
+        except UploadRejected as exc:
+            workdir.cleanup()
+            raise HTTPException(422, str(exc)) from None
+        try:
+            job = scans.submit_folder(saved, workdir, who.name)
+        except ScanRefused as exc:
+            raise HTTPException(422, str(exc)) from None
+        metrics.action("scan_folder", "started")
+        log.info("scan.start", extra={"fields": {
+            "job": job["id"], "kind": "folder", "files": saved.files,
+            "principal": who.name}})
+        return job
+
+    @app.get("/v1/scans")
+    def list_scans(who: Viewer) -> list[dict[str, Any]]:
+        return scans.list()
+
+    @app.get("/v1/scans/{job_id}")
+    def get_scan(
+        who: Viewer,
+        job_id: Annotated[str, PathParam(pattern="^[0-9a-f]{12}$")],
+    ) -> dict[str, Any]:
+        job = scans.get(job_id)
+        if job is None:
+            raise HTTPException(404, f"no scan {job_id}")
+        return job
+
     # Mounted last, so every /v1 route above takes precedence over it.
     if (DASHBOARD_DIR / "index.html").exists():
         app.mount("/", StaticFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")
@@ -356,5 +465,6 @@ def create_app(workspace: Workspace, tokens: TokenStore, *, docs: bool = True) -
 
 def default_app(audit_path: Path, tokens: TokenStore, *, seed: int = 7,
                 use_model: bool = False, docs: bool = True) -> FastAPI:
+    # Scan reports live beside the audit log, so one data directory holds both.
     return create_app(Workspace(audit_path, seed=seed, use_model=use_model), tokens,
-                      docs=docs)
+                      docs=docs, jobs=JobManager(store=audit_path.parent / "scans"))

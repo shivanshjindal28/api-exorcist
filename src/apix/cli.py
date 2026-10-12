@@ -620,9 +620,44 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     else:
         print(f"  principals: {len(tokens.entries)} from APIX_API_TOKENS")
     print()
+    if not args.no_browser:
+        _open_dashboard_when_ready(args.host, args.port, session_token)
+        print("  Opening the dashboard in your browser. Leave this terminal open;")
+        print("  closing it (or Ctrl+C) stops API Exorcist.")
+        print()
     uvicorn.run(app, host=args.host, port=args.port, log_config=log_config,
                 server_header=False)
     return EXIT_OK
+
+
+def _open_dashboard_when_ready(host: str, port: int, token: str | None) -> None:
+    """Open the dashboard once the server answers, signed in if we minted a token.
+
+    The one-time token travels in the URL *fragment* (`#signin=`). Browsers
+    never send a fragment to any server, nor put it in a Referer header, so it
+    reaches no log; the page reads it, signs in and erases it from the address
+    bar and history at once. It is only done for a loopback bind and a token
+    this process minted, which is the "run it on my own machine" case.
+    """
+    import threading
+    import time
+    import urllib.request
+    import webbrowser
+
+    shown = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    base = f"http://{shown}:{port}/"
+    url = base + (f"#signin={token}" if token else "")
+
+    def wait_then_open() -> None:
+        for _ in range(120):
+            try:
+                with urllib.request.urlopen(base + "v1/health", timeout=1):
+                    break
+            except OSError:
+                time.sleep(0.5)
+        webbrowser.open(url)
+
+    threading.Thread(target=wait_then_open, daemon=True).start()
 
 
 def _cmd_token(args: argparse.Namespace) -> int:
@@ -854,6 +889,10 @@ def build_parser() -> argparse.ArgumentParser:
     srv.add_argument(
         "--no-docs", action="store_true",
         help="disable /docs and /redoc, which load Swagger UI from a CDN",
+    )
+    srv.add_argument(
+        "--no-browser", action="store_true",
+        help="do not open the dashboard in a browser on start",
     )
     srv.set_defaults(func=_cmd_serve)
 

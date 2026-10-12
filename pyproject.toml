@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "apix"
-version = "0.8.0"
+version = "0.9.0"
 description = "Autonomous discovery and safe elimination of zombie, shadow and orphaned APIs"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -49,6 +49,9 @@ stream = [
 api = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
+    # Folder uploads arrive as multipart form data, which Starlette parses
+    # with this package.
+    "python-multipart>=0.0.18",
 ]
 # Phase 3: the trained model layer and SHAP attribution.
 ml = [
@@ -73,6 +76,7 @@ dev = [
     # version a given install resolves; CI found this, a local run did not.
     "httpx>=0.27",
     "httpx2>=2.13",
+    "python-multipart>=0.0.18",
 ]
 
 [project.scripts]

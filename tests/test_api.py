@@ -102,7 +102,7 @@ def _routes(client: Any) -> list[tuple[str, str]]:
 def _call(client: Any, method: str, path: str, headers: dict[str, str] | None = None) -> Any:
     url = path.replace("{endpoint_id:path}", quote(PIN, safe="")).replace(
         "{endpoint_id}", quote(PIN, safe="")
-    )
+    ).replace("{job_id}", "0123456789ab")       # well formed; no such scan exists
     if method == "POST":
         return client.post(url, json={"endpoint_id": PIN, "approve": False},
                            headers=headers or {})
@@ -192,7 +192,9 @@ def test_viewer_can_read_but_not_act() -> None:
                 for m, p in _routes(client) if m == "POST"}
     check("test_viewer_can_read_but_not_act",
           acts and all(c == 403 for c in acts.values())
-          and all(c == 200 for c in reads.values()),
+          # A scan id that does not exist is a 404, which is still an answer
+          # given to the viewer, not a refusal of them.
+          and all(c == 200 or (c == 404 and "{job_id}" in p) for p, c in reads.items()),
           f"reads {reads}, acts {acts}")
 
 
@@ -380,7 +382,7 @@ def test_auth_failures_are_counted_by_reason() -> None:
     with _client() as (client, _, viewer):
         client.get("/v1/summary")
         client.get("/v1/summary", headers={"Authorization": "Bearer apx_wrong"})
-        client.post("/v1/scans", headers=viewer)
+        client.post("/v1/demo/rescan", headers=viewer)
         text = client.get("/metrics", headers=viewer).text
     got = {r: _metric(text, f'apix_auth_failures_total{{reason="{r}"}}')
            for r in ("missing", "unrecognised", "forbidden")}

@@ -8,6 +8,7 @@ speak for are declared to the classifier.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -45,6 +46,7 @@ class RepoScanResult:
     #: variable (`prefix=settings.API_V1_STR`) this comes back empty, and the
     #: reported paths are relative to the API root rather than absolute.
     mount_prefixes: list[str] = field(default_factory=list)
+    variable_mounts: list[str] = field(default_factory=list)
     unresolved_prefix_routes: int = 0
 
     @property
@@ -61,13 +63,24 @@ def scan_repository(
     *,
     local_path: str | Path | None = None,
     verbose: bool = True,
+    progress: Callable[[str], None] | None = None,
 ) -> RepoScanResult:
-    """Scan a GitHub repository (or a local checkout) end to end."""
+    """Scan a GitHub repository (or a local checkout) end to end.
+
+    `progress` receives one short sentence per stage, for a caller (the web
+    app) that shows a scan as it runs rather than only when it ends.
+    """
+    def say(message: str) -> None:
+        if progress is not None:
+            progress(message)
+
     if local_path is not None:
+        say("Reading the project files")
         scan = RepoScan.from_path(local_path, slug=target)
     else:
         if verbose:
             print(f"Cloning {target} ...")
+        say(f"Downloading {target} from GitHub (with its commit history)")
         scan = RepoScan.clone(target)
 
     try:
@@ -75,9 +88,13 @@ def scan_repository(
         spec = RepoOpenAPIConnector(scan)
         # CI/CD reports per route, so it must run after code extraction.
         signals: list[DiscoverySignal] = []
+        say("Finding API routes in the source code (Semgrep)")
         signals += code.run()
+        say("Reading OpenAPI / Swagger specifications")
         signals += spec.run()
+        say("Reading CI/CD pipelines and ownership")
         signals += RepoCICDConnector(scan, code).run()
+        say("Correlating and classifying")
 
         correlator = Correlator()
         correlator.ingest(signals)
@@ -110,6 +127,7 @@ def scan_repository(
             extractor_error=getattr(code.extractor, "last_error", None),
             rejected_paths=list(getattr(code.extractor, "rejected", []))[:20],
             mount_prefixes=list(getattr(code.extractor, "mount_prefixes", [])),
+            variable_mounts=list(getattr(code.extractor, "variable_mounts", [])),
             unresolved_prefix_routes=sum(
                 1 for r in code.routes if not r.prefix_resolved
             ),
