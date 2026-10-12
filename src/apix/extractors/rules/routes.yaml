@@ -145,34 +145,79 @@ rules:
     pattern: $APP.delete($PATH, ...)
 
   # ------------------------------------------------------------- Spring MVC
+  # Each rule finds a mapped method in any form: bare (@PostMapping), with a
+  # positional path, or with value= / path=. The path itself, and the
+  # class-level @RequestMapping prefix it sits under, are read from the source
+  # by apix/extractors/spring.py: a structural pattern cannot see the class
+  # annotation, and matching only @XMapping($PATH) missed every bare mapping.
   - id: apix-java-spring-get
     languages: [java]
     severity: INFO
-    message: "APIX|path=$PATH|func=$FUNC"
-    pattern: |
-      @GetMapping($PATH)
-      $RET $FUNC(...) { ... }
+    message: "APIX|path=|func=$FUNC"
+    pattern-either:
+      - pattern: |
+          @GetMapping
+          $RET $FUNC(...) { ... }
+      - pattern: |
+          @GetMapping(...)
+          $RET $FUNC(...) { ... }
 
   - id: apix-java-spring-post
     languages: [java]
     severity: INFO
-    message: "APIX|path=$PATH|func=$FUNC"
-    pattern: |
-      @PostMapping($PATH)
-      $RET $FUNC(...) { ... }
+    message: "APIX|path=|func=$FUNC"
+    pattern-either:
+      - pattern: |
+          @PostMapping
+          $RET $FUNC(...) { ... }
+      - pattern: |
+          @PostMapping(...)
+          $RET $FUNC(...) { ... }
 
   - id: apix-java-spring-put
     languages: [java]
     severity: INFO
-    message: "APIX|path=$PATH|func=$FUNC"
-    pattern: |
-      @PutMapping($PATH)
-      $RET $FUNC(...) { ... }
+    message: "APIX|path=|func=$FUNC"
+    pattern-either:
+      - pattern: |
+          @PutMapping
+          $RET $FUNC(...) { ... }
+      - pattern: |
+          @PutMapping(...)
+          $RET $FUNC(...) { ... }
 
   - id: apix-java-spring-delete
     languages: [java]
     severity: INFO
-    message: "APIX|path=$PATH|func=$FUNC"
-    pattern: |
-      @DeleteMapping($PATH)
-      $RET $FUNC(...) { ... }
+    message: "APIX|path=|func=$FUNC"
+    pattern-either:
+      - pattern: |
+          @DeleteMapping
+          $RET $FUNC(...) { ... }
+      - pattern: |
+          @DeleteMapping(...)
+          $RET $FUNC(...) { ... }
+
+  - id: apix-java-spring-patch
+    languages: [java]
+    severity: INFO
+    message: "APIX|path=|func=$FUNC"
+    pattern-either:
+      - pattern: |
+          @PatchMapping
+          $RET $FUNC(...) { ... }
+      - pattern: |
+          @PatchMapping(...)
+          $RET $FUNC(...) { ... }
+
+  - id: apix-java-spring-request
+    languages: [java]
+    severity: INFO
+    message: "APIX|path=|func=$FUNC"
+    pattern-either:
+      - pattern: |
+          @RequestMapping
+          $RET $FUNC(...) { ... }
+      - pattern: |
+          @RequestMapping(...)
+          $RET $FUNC(...) { ... }

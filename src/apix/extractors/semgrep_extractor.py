@@ -58,6 +58,8 @@ _RULE_MAP = {
     "apix-java-spring-post": ("POST", "spring"),
     "apix-java-spring-put": ("PUT", "spring"),
     "apix-java-spring-delete": ("DELETE", "spring"),
+    "apix-java-spring-patch": ("PATCH", "spring"),
+    "apix-java-spring-request": ("ANY", "spring"),
 }
 
 _MSG = re.compile(r"APIX\|path=(?P<path>.*?)\|func=(?P<func>.*)$", re.S)
@@ -161,6 +163,7 @@ class SemgrepExtractor:
     ) -> list[ExtractedRoute]:
         out: list[ExtractedRoute] = []
         seen: set[tuple[str, str]] = set()
+        sources: dict[str, str] = {}
 
         results = data.get("results", [])
         file_prefix, mount_prefixes, variable_mounts = self._collect_prefixes(
@@ -182,6 +185,10 @@ class SemgrepExtractor:
 
             m = _MSG.search(res.get("extra", {}).get("message", ""))
             if not m:
+                continue
+            if framework == "spring":
+                self._add_spring(res, m.group("func").strip() or None,
+                                 repo_root, out, seen, sources)
                 continue
             raw_path = m.group("path").strip()
             func = m.group("func").strip() or None
@@ -244,6 +251,48 @@ class SemgrepExtractor:
         return sorted(out, key=lambda r: (r.path, r.method))
 
     # ------------------------------------------------------------------
+    def _add_spring(
+        self,
+        res: dict[str, Any],
+        func: str | None,
+        repo_root: Path,
+        out: list[ExtractedRoute],
+        seen: set[tuple[str, str]],
+        sources: dict[str, str],
+    ) -> None:
+        """Spring routes, with the class prefix read from the file itself."""
+        from apix.extractors.spring import routes_for
+
+        path = str(res.get("path", ""))
+        if path not in sources:
+            try:
+                sources[path] = Path(path).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                return
+        line = int((res.get("start") or {}).get("line", 0) or 0)
+        try:
+            rel = str(Path(path).resolve().relative_to(repo_root.resolve())).replace("\\", "/")
+        except ValueError:
+            rel = path.replace("\\", "/")
+        for r in routes_for(sources[path], line):
+            route_path = normalise_path(r.path)
+            if r.expression:
+                self.variable_mounts = sorted({*self.variable_mounts, r.expression})
+            key = (r.method, route_path)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(ExtractedRoute(
+                method=r.method,
+                path=route_path,
+                file=rel,
+                line=line,
+                function=func,
+                framework="spring",
+                declared_path=r.path,
+                prefix_resolved=r.resolved,
+            ))
+
     def _collect_prefixes(
         self, results: list[dict[str, Any]], repo_root: Path
     ) -> tuple[dict[str, str], set[str], set[str]]:
