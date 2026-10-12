@@ -114,7 +114,7 @@ The command line is still there for scripting and CI (see the
 | Trained model with SHAP attribution, used as a veto over removals | ✅ |
 | Safe Kill: rule-of-three shadow window, named approval, 5/25/100 canary | ✅ |
 | Automatic rollback on breach, hash-chained append-only audit log | ✅ |
-|  tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
+| 201 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
 | REST API: hashed bearer tokens, viewer and approver roles, approval over HTTP | ✅ |
 | Dashboard: React + TypeScript, same origin, strict CSP | ✅ |
 | CI/CD enforcement: undocumented, unowned and zombie-in-the-making endpoints | ✅ |
@@ -1066,7 +1066,7 @@ src/apix/
 dashboard/                 React + TypeScript source; builds into src/apix/api/dashboard
 Dockerfile                 The deployable image: API and dashboard, non-root, read-only
 action.yml                 The GitHub Action; action-constraints.txt pins what it installs
-tests/                      tests, three ground-truth leakage guards
+tests/                     201 tests, three ground-truth leakage guards
 demo/                      Review runbook, paced demo runner, expected output
 docs/                      Literature review, design document, interim report,
                            source papers, diagram renderer, Word and
@@ -1090,7 +1090,7 @@ pip install -e ".[dev,live,ml]" && pre-commit install
 pytest && ruff check . && mypy && python docs/verify_claims.py
 ```
 
-** tests**, ruff clean, mypy `--strict` clean. The dashboard adds 19 Vitest
+**201 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 19 Vitest
 tests under TypeScript strict mode (`cd dashboard && npm test`).
 
 ### Optional extras
