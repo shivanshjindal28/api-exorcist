@@ -1,0 +1,9 @@
+# Allow-list: the image needs the package and its metadata, nothing else.
+# In particular not .env, data/ (audit logs), models/, demo/ or .git.
+*
+!pyproject.toml
+!README.md
+!LICENSE
+!src/
+**/__pycache__
+**/*.pyc

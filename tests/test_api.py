@@ -325,6 +325,175 @@ def test_audit_chain_verifies_through_the_api() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Phase 7: observability and hardening
+# ---------------------------------------------------------------------------
+def _metric(text: str, name: str) -> float | None:
+    for line in text.splitlines():
+        if line.rsplit(" ", 1)[0] == name:
+            return float(line.rsplit(" ", 1)[1])
+    return None
+
+
+def test_metrics_need_a_token_and_describe_the_estate() -> None:
+    _skip_without_api("test_metrics_need_a_token_and_describe_the_estate")
+    with _client() as (client, approver, viewer):
+        anonymous = client.get("/metrics")
+        client.post("/v1/safekill/shadow", json={"endpoint_id": PIN}, headers=approver)
+        r = client.get("/metrics", headers=viewer)
+    text = r.text
+    check("test_metrics_need_a_token_and_describe_the_estate",
+          anonymous.status_code == 401 and r.status_code == 200
+          and r.headers["content-type"].startswith("text/plain; version=0.0.4")
+          and _metric(text, 'apix_endpoints{label="ZOMBIE"}') == 8
+          and _metric(text, "apix_audit_chain_ok") == 1
+          and _metric(text, "apix_safekill_awaiting_approval") == 1
+          and (_metric(text, "apix_audit_entries") or 0) > 0
+          and 'apix_safekill_actions_total{kind="shadow",result="started"} 1' in text,
+          f"anonymous={anonymous.status_code}\n{text[:1500]}")
+
+
+def test_metric_labels_stay_bounded_whatever_path_is_sent() -> None:
+    """Labels come from route templates. A raw-path label would let anyone mint
+    a new time series per request until the process ran out of memory."""
+    import secrets
+
+    _skip_without_api("test_metric_labels_stay_bounded_whatever_path_is_sent")
+    sent: list[str] = []
+    with _client() as (client, _, viewer):
+        for _ in range(30):
+            junk = secrets.token_hex(8)
+            sent.append(junk)
+            client.get(f"/v1/verdicts/GET%20/{junk}", headers=viewer)
+            client.get(f"/nowhere/{junk}")
+        text = client.get("/metrics", headers=viewer).text
+    routes = {
+        line.split('route="', 1)[1].split('"', 1)[0]
+        for line in text.splitlines() if line.startswith("apix_http_requests_total{")
+    }
+    check("test_metric_labels_stay_bounded_whatever_path_is_sent",
+          not any(j in text for j in sent) and len(routes) <= 4,
+          f"route labels: {sorted(routes)}")
+
+
+def test_auth_failures_are_counted_by_reason() -> None:
+    _skip_without_api("test_auth_failures_are_counted_by_reason")
+    with _client() as (client, _, viewer):
+        client.get("/v1/summary")
+        client.get("/v1/summary", headers={"Authorization": "Bearer apx_wrong"})
+        client.post("/v1/scans", headers=viewer)
+        text = client.get("/metrics", headers=viewer).text
+    got = {r: _metric(text, f'apix_auth_failures_total{{reason="{r}"}}')
+           for r in ("missing", "unrecognised", "forbidden")}
+    check("test_auth_failures_are_counted_by_reason",
+          got == {"missing": 1, "unrecognised": 1, "forbidden": 1}, str(got))
+
+
+def test_request_ids_are_echoed_only_when_well_formed() -> None:
+    _skip_without_api("test_request_ids_are_echoed_only_when_well_formed")
+    with _client() as (client, _, _viewer):
+        good = client.get("/v1/health", headers={"X-Request-ID": "trace-123.a_b"})
+        long = client.get("/v1/health", headers={"X-Request-ID": "x" * 200})
+        none = client.get("/v1/health")
+    check("test_request_ids_are_echoed_only_when_well_formed",
+          good.headers["x-request-id"] == "trace-123.a_b"
+          and len(long.headers["x-request-id"]) == 32
+          and len(none.headers["x-request-id"]) == 32,
+          f"{good.headers.get('x-request-id')} {long.headers.get('x-request-id')}")
+
+
+def test_oversized_and_unsized_bodies_are_refused() -> None:
+    _skip_without_api("test_oversized_and_unsized_bodies_are_refused")
+
+    def chunks() -> Iterator[bytes]:
+        yield b'{"endpoint_id": "x"}'
+
+    with _client() as (client, approver, _):
+        big = client.post("/v1/safekill/decision", headers=approver,
+                          content=b"{" + b" " * 70_000 + b"}")
+        unsized = client.post("/v1/safekill/shadow", headers=approver, content=chunks())
+        normal = client.post("/v1/safekill/shadow", headers=approver,
+                             json={"endpoint_id": PIN})
+    check("test_oversized_and_unsized_bodies_are_refused",
+          (big.status_code, unsized.status_code, normal.status_code) == (413, 411, 200),
+          f"{big.status_code} {unsized.status_code} {normal.status_code}")
+
+
+def test_swagger_pages_can_be_switched_off() -> None:
+    """They load Swagger UI from a CDN; a locked-down deployment turns them off."""
+    from apix.api.app import default_app
+
+    _skip_without_api("test_swagger_pages_can_be_switched_off")
+    token = new_token()
+    store = TokenStore.single("ops", Role.VIEWER, token)
+    with tempfile.TemporaryDirectory() as tmp:
+        on = TestClient(default_app(Path(tmp) / "a.jsonl", store))
+        off = TestClient(default_app(Path(tmp) / "b.jsonl", store, docs=False))
+        codes = (on.get("/docs").status_code, off.get("/docs").status_code,
+                 off.get("/redoc").status_code)
+    check("test_swagger_pages_can_be_switched_off", codes == (200, 404, 404), str(codes))
+
+
+def test_remote_bind_needs_configured_tokens() -> None:
+    """No one-time token on a served bind: stdout there is retained log storage."""
+    import io
+    import os
+
+    from apix.cli import main
+
+    _skip_without_api("test_remote_bind_needs_configured_tokens")
+    saved = os.environ.pop("APIX_API_TOKENS", None)
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            code = main(["serve", "--host", "0.0.0.0", "--allow-remote"])
+    finally:
+        if saved is not None:
+            os.environ["APIX_API_TOKENS"] = saved
+    check("test_remote_bind_needs_configured_tokens",
+          code == 2 and "refusing to mint" in out.getvalue() and "apx_" not in out.getvalue(),
+          f"exit {code}: {out.getvalue()}")
+
+
+def test_logs_name_the_principal_never_the_token() -> None:
+    import io
+    import logging
+
+    from apix.api.observe import JsonFormatter
+
+    _skip_without_api("test_logs_name_the_principal_never_the_token")
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    logger = logging.getLogger("apix.api")
+    logger.addHandler(handler)
+    old_level = logger.level
+    logger.setLevel(logging.INFO)
+    try:
+        with _client() as (client, approver, _):
+            client.post("/v1/safekill/shadow", json={"endpoint_id": PIN},
+                        headers=approver)
+            client.post("/v1/safekill/decision", headers=approver, json={
+                "endpoint_id": PIN, "approve": False, "note": "secret-note-text"})
+            token = approver["Authorization"].split()[1]
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(old_level)
+    import json as _json
+
+    lines = [_json.loads(x) for x in stream.getvalue().splitlines() if x]
+    events = {d["event"] for d in lines}
+    decided = [d for d in lines if d["event"] == "safekill.decision"]
+    raw = stream.getvalue()
+    check("test_logs_name_the_principal_never_the_token",
+          token not in raw and "secret-note-text" not in raw
+          and {"request", "safekill.shadow", "safekill.decision"} <= events
+          and decided and decided[0]["principal"] == APPROVER
+          and isinstance(decided[0]["state"], str)
+          and all("request_id" in d for d in lines if d["event"] == "request"),
+          raw[:1200])
+
+
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

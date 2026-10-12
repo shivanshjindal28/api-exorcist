@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 from apix import __version__
@@ -540,6 +541,22 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         print("  --allow-remote to confirm.")
         return EXIT_ERROR
 
+    spec = os.environ.get("APIX_API_TOKENS", "")
+    session_token = None
+    try:
+        tokens = TokenStore.parse(spec)
+    except TokenConfigError as exc:
+        print(f"  APIX_API_TOKENS is malformed: {exc}")
+        return EXIT_ERROR
+    if not tokens and not loopback:
+        # A one-time token is printed to stdout. On a laptop that is a terminal;
+        # in a container it is a log pipeline, retained and readable by whoever
+        # reads logs. A served deployment must be given its principals.
+        print("  refusing to mint a one-time token for a non-loopback bind: it would")
+        print("  be written to stdout, which in a deployment is retained log storage.")
+        print("  Set APIX_API_TOKENS; `apix token NAME --role approver` makes an entry.")
+        return EXIT_ERROR
+    # Configuration is checked first: it is the more useful error.
     try:
         import uvicorn
 
@@ -548,13 +565,8 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         print('  the API needs its extra: pip install -e ".[api]"')
         return EXIT_ERROR
 
-    spec = os.environ.get("APIX_API_TOKENS", "")
-    session_token = None
-    try:
-        tokens = TokenStore.parse(spec)
-    except TokenConfigError as exc:
-        print(f"  APIX_API_TOKENS is malformed: {exc}")
-        return EXIT_ERROR
+    from apix.api.observe import configure_logging, log
+
     if not tokens:
         # No configured principals: mint one for this process only, the way
         # Jupyter does, rather than starting an unauthenticated server.
@@ -565,7 +577,25 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     audit_path = Path(args.audit) if args.audit else (
         load_settings().ensure_data_dir() / "safekill-audit.jsonl"
     )
-    app = default_app(audit_path, tokens, seed=args.seed, use_model=args.model)
+    app = default_app(audit_path, tokens, seed=args.seed, use_model=args.model,
+                      docs=not args.no_docs)
+    log_config = configure_logging(args.log_format)
+
+    if args.log_format == "json":
+        # Plain banner lines would break a JSON log pipeline; one event instead.
+        import logging.config
+
+        logging.config.dictConfig(log_config)
+        log.info("serve.start", extra={"fields": {
+            "listening": f"http://{args.host}:{args.port}",
+            "audit_log": str(audit_path),
+            "estate": "simulated",
+            "principals": len(tokens.entries),
+            "docs": not args.no_docs,
+        }})
+        uvicorn.run(app, host=args.host, port=args.port, log_config=log_config,
+                    server_header=False)
+        return EXIT_OK
 
     print()
     print("=" * 74)
@@ -573,7 +603,9 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     print("=" * 74)
     print()
     print(f"  listening : http://{args.host}:{args.port}")
-    print(f"  docs      : http://{args.host}:{args.port}/docs")
+    print(f"  docs      : http://{args.host}:{args.port}/docs"
+          + ("  (disabled)" if args.no_docs else ""))
+    print(f"  metrics   : http://{args.host}:{args.port}/metrics  (needs a token)")
     print(f"  audit log : {audit_path}")
     print("  estate    : simulated; nothing real is touched")
     if session_token:
@@ -588,7 +620,8 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     else:
         print(f"  principals: {len(tokens.entries)} from APIX_API_TOKENS")
     print()
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    uvicorn.run(app, host=args.host, port=args.port, log_config=log_config,
+                server_header=False)
     return EXIT_OK
 
 
@@ -622,7 +655,7 @@ def _cmd_enforce(args: argparse.Namespace) -> int:
 
     repo = Path(args.repo)
     try:
-        config = EnforceConfig.load(repo, Path(args.config) if args.config else None)
+        config = EnforceConfig.load(repo, Path(args.config)) if args.config else None
         result = run_enforcement(repo, args.base, SemgrepExtractor(), config)
     except (EnforceConfigError, EnforceError) as exc:
         print(f"apix enforce: {exc}", file=sys.stderr)
@@ -813,6 +846,15 @@ def build_parser() -> argparse.ArgumentParser:
     srv.add_argument("--audit", metavar="PATH", help="audit log path (JSON Lines)")
     srv.add_argument("--model", action="store_true", help="add the learned layer's veto")
     srv.add_argument("--seed", type=int, default=7, help="simulated traffic seed")
+    srv.add_argument(
+        "--log-format", choices=["text", "json"],
+        default=os.environ.get("APIX_LOG_FORMAT", "text"),
+        help="json: one object per line, for a SIEM (env APIX_LOG_FORMAT)",
+    )
+    srv.add_argument(
+        "--no-docs", action="store_true",
+        help="disable /docs and /redoc, which load Swagger UI from a CDN",
+    )
     srv.set_defaults(func=_cmd_serve)
 
     tok = sub.add_parser("token", help="mint an API token for a named principal")

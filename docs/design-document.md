@@ -339,6 +339,37 @@ connections from its own origin only, and no inline script in the build), keeps 
 token in `sessionStorage` for the life of the tab, and sends it only in the
 `Authorization` header.
 
+#### As built: deployment, observability and hardening (Phases 7 and 8)
+
+The diagram above is the target topology. What ships is a single container image
+holding the FastAPI server and the dashboard: two build stages, a base image pinned
+by digest, an unprivileged user, a read-only root filesystem with the audit log on a
+volume, and no package manager in the runtime image. It refuses to start without
+configured tokens, because a one-time token printed to standard output would land in
+retained log storage. TLS is left to the proxy or ingress in front of it, which is
+where a bank terminates it anyway.
+
+Observability is a Prometheus endpoint and structured logs. The endpoint needs a
+token like every other route, since a scrape summarises an estate's weak points, and
+labels requests by route template rather than raw path, so a client cannot create
+unbounded time series. It exposes request rates and latency, authentication failures
+by reason, Safe Kill actions, the estate's composition, and `apix_audit_chain_ok`, the
+gauge to alert on. Logs are one JSON object per line and name the principal, never
+the token or a request body.
+
+The audit log now takes a cross-process lock and fsyncs each entry, so the command
+line, the API and a second process can append to one file at the same instant; on the
+unlocked code, four concurrent writers forked the chain. The approval queue still
+lives in the API process, so the service runs as one replica until that queue is
+moved to a database.
+
+A security review of the API, the GitHub Action and the image found two high-severity
+issues. First, a pull request could exempt its own new endpoint by editing `.apix.yml`
+in the same change; enforcement now reads its policy from the merge base, and an edit
+applies only after it merges. Second, the concurrent audit writers above. It also
+pinned every GitHub Action to a commit and the Action's scanner to exact versions,
+removed pip from the image, and capped request bodies at 64 KiB.
+
 ---
 
 ## 3. Behavioural view
@@ -960,6 +991,10 @@ Stated here rather than discovered by a reviewer.
    decay patterns from partial, disagreeing evidence, never that it is validated on
    production bank data. No public zombie-API corpus exists, because a real API
    inventory is a map of an attack surface.
+5. **One replica.** The audit log is safe under concurrent writers, but pending
+   approvals live in the API process, so a second replica would not see them.
+   Mitigation: move the approval queue into the PostgreSQL store the deployment
+   diagram already draws.
 
 ---
 

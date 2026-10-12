@@ -45,6 +45,7 @@ the architecture, and explains the system's most important behaviour — see
 - [Command reference](#command-reference)
 - [Scanning a real repository](#scanning-a-real-repository)
 - [The removal gate](#the-removal-gate)
+- [Deployment and operations](#deployment-and-operations-phases-7-and-8)
 - [The learned model](#the-learned-model-and-why-it-did-not-replace-the-rules)
 - [Evaluation methodology](#evaluation-methodology)
 - [Design decisions](#design-decisions)
@@ -85,7 +86,7 @@ in under a second.
 | 5 | REST API: bearer tokens, roles, Safe Kill approval over HTTP | ✅ done |
 | 5b | Dashboard: React + TypeScript, served by the API | ✅ done |
 | 6 | CI/CD enforcement: GitHub Action, judges only what a PR changes | ✅ done |
-| 7–8 | Security hardening, deployment, observability | ⬜ next |
+| 7–8 | Deployment: container image, observability, security review | ✅ done |
 
 ### What is built
 
@@ -105,14 +106,19 @@ in under a second.
 | Trained model with SHAP attribution, used as a veto over removals | ✅ |
 | Safe Kill: rule-of-three shadow window, named approval, 5/25/100 canary | ✅ |
 | Automatic rollback on breach, hash-chained append-only audit log | ✅ |
-| 142 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
+| 153 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
 | REST API: hashed bearer tokens, viewer and approver roles, approval over HTTP | ✅ |
 | Dashboard: React + TypeScript, same origin, strict CSP | ✅ |
 | CI/CD enforcement: undocumented, unowned and zombie-in-the-making endpoints | ✅ |
+| Container image: non-root, read-only filesystem, digest-pinned base, no pip | ✅ |
+| Observability: Prometheus metrics, JSON logs, request ids | ✅ |
 
-**Next: Phases 7 and 8, hardening, deployment and observability.** Every
-capability in the design is now built; what remains is making it run as a
-service at a bank rather than as a project on a laptop.
+**All eight phases are built.** What remains is outside this repository's
+reach rather than unbuilt: a gateway plugin implementing `EnforcementBackend`
+against a real gateway, an approval queue that outlives the process so the API
+can run as more than one replica, and anchoring the audit chain's head in a
+store the operator does not control. Each is listed under
+[Known limitations](#known-limitations).
 
 ---
 
@@ -247,6 +253,7 @@ Consequences, all enforced in code:
 | `apix safekill --evaluate` | Measure Safe Kill across 120 generated estates |
 | `apix safekill --verify PATH` | Verify an audit log's hash chain |
 | `apix serve` | The REST API on 127.0.0.1:8600; mints a one-time token if none set |
+| `apix serve --log-format json --no-docs` | As deployed: JSON logs, no Swagger pages |
 | `apix token NAME --role approver` | Mint a token; prints it once, stores only its hash |
 | `apix enforce --base origin/main` | Judge what this change does to the API surface |
 | `apix benchmark` | The comparative before/after study |
@@ -509,6 +516,7 @@ export APIX_API_TOKENS="alice:approver:<sha256>;bob:viewer:<sha256>"
 | `POST /v1/safekill/shadow` | approver | run the gate and the shadow window for one candidate |
 | `POST /v1/safekill/decision` | approver | approve or decline; the canary and rollback follow |
 | `POST /v1/scans` | approver | re-run discovery |
+| `GET /metrics` | viewer | Prometheus text format: requests, latency, auth failures, estate gauges |
 
 Four decisions, each made for a security reason:
 
@@ -553,7 +561,7 @@ The third rule is the one specific to this project. Every zombie in the simulate
 estate was made the same way: the route was removed from the specification and the
 handler was never deleted. Enforcement catches that at the commit that does it.
 
-Three decisions make it adoptable rather than switched off on day two:
+Four decisions make it adoptable, and hard to talk your way past:
 
 - **Existing debt is never held against a change.** An estate with four hundred
   undocumented endpoints can turn this on today; from then on it cannot gain a
@@ -563,6 +571,10 @@ Three decisions make it adoptable rather than switched off on day two:
 - **No endpoint is ever called dead.** A code change carries no evidence about
   traffic, so enforcement makes no lifecycle claim, for the same reason a
   repository scan abstains from one.
+- **A change cannot exempt itself.** `.apix.yml` is read from the merge base,
+  not from the pull request. Read from the head, one innocuous line in the same
+  pull request would exempt the endpoint it adds. An edit to the policy is
+  reported and applies once it has merged, reviewed like any other code.
 
 OpenAPI tags are deliberately not read as owners: they name functional groups, and
 treating them as teams would let nearly any tagged endpoint pass. Every exemption in
@@ -571,14 +583,16 @@ will later ask about.
 
 ```yaml
 # .github/workflows/api-surface.yml in the repository being protected
-on: pull_request
+on: pull_request                  # never pull_request_target: see below
+permissions:
+  contents: read                  # it reads code and writes annotations, nothing else
 jobs:
   api-surface:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }      # the merge base must be present
-      - uses: shivanshjindal28/api-exorcist@main
+      - uses: shivanshjindal28/api-exorcist@main   # pin to a commit SHA in production
 ```
 
 ```yaml
@@ -603,7 +617,15 @@ Route strings come from the pull request, whose author is untrusted in CI, so th
 output cannot be used to forge annotations: workflow-command data is escaped, and
 the readable report is wrapped in `::stop-commands::` with an unpredictable token.
 The action passes its inputs to the shell through environment variables, never by
-interpolating them into the script.
+interpolating them into the script, and installs exact scanner versions from
+`action-constraints.txt` rather than whatever PyPI served that hour.
+
+Two things the action cannot protect against on its own, because they are
+repository settings: run it on `pull_request`, never `pull_request_target`
+(which grants a fork's code the base repository's secrets and write token), and
+make the check required with CODEOWNERS covering `.github/` and `.apix.yml`. On
+`pull_request`, GitHub runs the workflow as the pull request has it, so a
+change could edit the workflow itself; review of those paths is what closes that.
 
 ---
 
@@ -643,6 +665,95 @@ Security, in the browser as on the server:
 cd dashboard && npm ci && npm run dev      # hot-reload against a running `apix serve`
 npm test && npm run build                  # 10 Vitest tests; build into src/apix/api/dashboard
 ```
+
+---
+
+## Deployment and operations (Phases 7 and 8)
+
+```bash
+docker build -t api-exorcist .
+docker run --rm api-exorcist token ops --role approver     # prints a token and its entry
+docker run -d --name apix -p 127.0.0.1:8600:8600 \
+  -e APIX_API_TOKENS='ops:approver:<sha256>' \
+  -v apix-data:/data --read-only --tmpfs /tmp \
+  --cap-drop ALL --security-opt no-new-privileges api-exorcist
+```
+
+The image is 53 MB and serves the API and the dashboard. What it does, and why:
+
+| Property | Why |
+|---|---|
+| Base image pinned by digest | A rebuild cannot silently pick up a different Python |
+| Two-stage build; no compiler, source tree or pip in the runtime image | pip-audit found known vulnerabilities only in the base image's own pip, which the server never uses |
+| Runs as uid 10001; works with a read-only root filesystem | The only writable path is `/data`, the audit log |
+| Refuses to start without `APIX_API_TOKENS` | On a served bind, a one-time token printed to stdout lands in retained log storage |
+| JSON logs, no Swagger pages, no `Server` header | Logs a SIEM ingests without a parser; Swagger loads scripts from a CDN |
+| Health check on `/v1/health` | The orchestrator restarts it; the route says nothing about the estate |
+
+A CI job builds the image and runs it exactly as above: it must become healthy,
+refuse an anonymous read, serve metrics to a token, keep the token out of its
+logs, and contain no pip.
+
+**TLS is the proxy's job.** Publish the port on 127.0.0.1, or put the container
+behind a TLS-terminating proxy or ingress. Bearer tokens over plain HTTP travel
+in cleartext, which is why `apix serve` refuses a non-loopback bind unless told
+`--allow-remote`.
+
+### Metrics
+
+`GET /metrics` is Prometheus text format, written by hand rather than through a
+client library: one fewer dependency for a bank's software review to clear.
+
+| Metric | What it answers |
+|---|---|
+| `apix_http_requests_total`, `apix_http_request_duration_seconds` | Traffic and latency, by route template |
+| `apix_auth_failures_total{reason}` | Missing, unrecognised or under-privileged credentials. A rising rate is someone guessing |
+| `apix_safekill_actions_total{kind,result}` | Shadows started; decisions approved, declined or refused |
+| `apix_endpoints{label}`, `apix_removal_candidates`, `apix_cleared_by_gate` | The estate, as the last scan saw it |
+| `apix_safekill_awaiting_approval` | Removals waiting on a person |
+| `apix_audit_entries`, `apix_audit_chain_ok` | Whether the audit chain still verifies: alert on 0 |
+
+It needs a token like every other route, because a scrape is a summary of an
+estate's weak points; Prometheus sends one natively
+(`authorization: {credentials_file: ...}`). Requests are labelled by **route
+template, never raw path**: endpoint ids appear in URLs, and labelling by path
+would let any client create a new time series per request until the process ran
+out of memory. A test sends random paths and checks none of them appears.
+
+### Logs
+
+`--log-format json` (the image's default) writes one object per line: an access
+line per request with its route template, status, duration, request id and the
+**principal's name**, plus an event for each Safe Kill action. The token never
+appears, and neither does a request body, which can carry an approver's note;
+tests check both. Every response carries an `X-Request-ID`, echoed from the
+client when it is well formed, so one failed approval can be followed from the
+browser to the log line to the audit entry.
+
+### The audit log under concurrent writers
+
+The CLI, the API and any second process can now append to one audit file at the
+same instant. Each append takes an exclusive lock on a sidecar file, re-reads the
+head under it, writes and fsyncs before releasing. A test starts four writer
+processes appending 25 entries each at once: on the unlocked code the chain
+broke within its first 25 entries in two runs of three; with the lock, all 100
+entries verify, every run.
+
+### Security review: what it found
+
+| Finding | Severity | Fixed by |
+|---|---|---|
+| A pull request could exempt its own endpoint by adding it to `.apix.yml` in the same change | High | The policy is read from the merge base; an edit is reported, applied after merge |
+| Two simultaneous audit writers forked the hash chain | High | Cross-process lock and fsync per append |
+| `apix serve` on a served bind would print a one-time token into container logs | Medium | Refuses; configured tokens are required off loopback |
+| GitHub Actions referenced by movable tags; scanner installed at whatever version PyPI had | Medium | Actions pinned to commit SHAs; exact scanner versions in `action-constraints.txt` |
+| pip in the runtime image carried known vulnerabilities | Low | Removed from the image |
+| Request bodies had no size limit | Low | 64 KiB cap; a body without a length is refused |
+
+Checked and found sound: token comparison is constant time over every stored
+digest; every route but `/v1/health` needs a token, including `/metrics`
+(the route-coverage test found it on its own); error messages echo endpoint ids
+only inside JSON, under a CSP with no inline script.
 
 ---
 
@@ -812,14 +923,18 @@ State these; do not hide them.
    the gateway behind them is a model whose assumptions are written down in
    `simulated_env/enforcement.py`. A real deployment replaces it with a gateway
    plugin.
-10. **The API holds pending approvals in memory.** Restarting it forgets a
-    candidate awaiting a decision, and its shadow must run again. That can only
-    delay a removal, never cause one. The audit log is on disk and shared with
-    the CLI; writers taking turns keep a valid chain, but two appending in the
-    same instant would race, so a deployment needs one writer or a lock.
+10. **The API holds pending approvals in memory, so it runs as one replica.**
+    Restarting it forgets a candidate awaiting a decision, and its shadow must
+    run again. That can only delay a removal, never cause one. The audit log is
+    safe to share between concurrent writers (it is locked); the approval queue
+    is not yet, and needs a database before a second replica.
 11. **Enforcement sees only what route extraction sees.** A framework the
     Semgrep rules do not cover is invisible to it, which is why a spec entry
     with no handler is only a warning by default.
+12. **The audit chain proves tampering only with its head anchored elsewhere.**
+    Someone who can rewrite the whole file can recompute the whole chain.
+    `apix_audit_chain_ok` catches an edit, not a rewrite; the deployment answer
+    is to ship the head hash to a store the operator does not control.
 ---
 
 ## Project layout
@@ -848,7 +963,8 @@ src/apix/
   api/
     auth.py                Bearer tokens, stored hashed; viewer and approver roles
     workspace.py           The served state: a scan, its gate, a Safe Kill controller
-    app.py                 FastAPI routes over the workspace
+    app.py                 FastAPI routes over the workspace; limits, request ids
+    observe.py             Prometheus metrics and JSON logs, no client library
   enforce/
     config.py              Rules, severities, and exemptions that must give a reason
     snapshot.py            One commit's API surface: routes, spec entries, owners
@@ -881,7 +997,9 @@ src/apix/
     enforcement.py         Simulated gateway for Safe Kill; its world model
 
 dashboard/                 React + TypeScript source; builds into src/apix/api/dashboard
-tests/                     142 tests, three ground-truth leakage guards
+Dockerfile                 The deployable image: API and dashboard, non-root, read-only
+action.yml                 The GitHub Action; action-constraints.txt pins what it installs
+tests/                     153 tests, three ground-truth leakage guards
 demo/                      Review runbook, paced demo runner, expected output
 docs/                      Literature review, design document, interim report,
                            source papers, diagram renderer, Word and
@@ -905,7 +1023,7 @@ pip install -e ".[dev,live,ml]" && pre-commit install
 pytest && ruff check . && mypy && python docs/verify_claims.py
 ```
 
-**142 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 10 Vitest
+**153 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 10 Vitest
 tests under TypeScript strict mode (`cd dashboard && npm test`).
 
 ### Optional extras
@@ -930,6 +1048,10 @@ Every push runs, on Python 3.10 and 3.12:
    0.95, or correlation stops beating a conventional inventory
 6. **The removal gate** — fails if any endpoint is ever cleared for removal while
    dependents exist
+
+Two more jobs run alongside: the dashboard (types, Vitest, and a rebuild that must
+match the committed build), and the container image, which is built and run as
+deployed and must pass a smoke test.
 
 **CI installs only `.[dev]`.** A machine with the ML extras will pass things CI fails,
 so reproduce it before pushing:

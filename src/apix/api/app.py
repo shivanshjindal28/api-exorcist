@@ -13,6 +13,7 @@ The REST API: FastAPI over a Workspace.
     GET  /v1/safekill                      candidates, pending approvals, outcomes
     GET  /v1/audit[?endpoint=&limit=]      audit entries and the chain head
     GET  /v1/audit/verify                  recompute the whole chain
+    GET  /metrics                          Prometheus text format (needs a token)
 
     POST /v1/scans                         approver: re-run discovery
     POST /v1/safekill/shadow               approver: gate + shadow window
@@ -24,21 +25,32 @@ destructive depends on how a client happens to encode a path.
 
 Every response carries `Cache-Control: no-store`: what this API returns is a
 map of an estate's weakest points, and no proxy or browser should keep a copy.
+
+Every response also carries an `X-Request-ID`, echoed from the client when it
+is well formed and generated otherwise, and the same id is in the access log
+line, so one failed approval can be traced from the browser to the audit entry.
+Request bodies are capped at 64 KiB: the largest legitimate one is a decision
+with a 1000-character note.
 """
 
 from __future__ import annotations
 
+import re
+import time
+import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from apix import __version__
 from apix.api.auth import Principal, Role, TokenStore
+from apix.api.observe import Metrics, log
 from apix.api.workspace import (
     NeedsAcknowledgement,
     NotACandidate,
@@ -49,6 +61,8 @@ from apix.engine.explain import audit_entry
 from apix.safekill.controller import NotAwaitingApproval
 
 _bearer = HTTPBearer(auto_error=False)
+MAX_BODY_BYTES = 64 * 1024
+_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
 # ---------------------------------------------------------------------------
@@ -80,20 +94,27 @@ def _principal(
     creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> Principal:
     tokens: TokenStore = request.app.state.tokens
+    metrics: Metrics = request.app.state.metrics
     if creds is None or creds.scheme.lower() != "bearer":
+        metrics.auth_failure("missing")
         raise HTTPException(
             401, "a bearer token is required", headers={"WWW-Authenticate": "Bearer"}
         )
     who = tokens.authenticate(creds.credentials)
     if who is None:
+        metrics.auth_failure("unrecognised")
         raise HTTPException(
             401, "token not recognised", headers={"WWW-Authenticate": "Bearer"}
         )
+    request.state.principal = who.name
     return who
 
 
-def _approver(who: Annotated[Principal, Depends(_principal)]) -> Principal:
+def _approver(
+    request: Request, who: Annotated[Principal, Depends(_principal)]
+) -> Principal:
     if not who.role.allows(Role.APPROVER):
+        request.app.state.metrics.auth_failure("forbidden")
         raise HTTPException(403, f"{who.name} is a viewer; this needs an approver")
     return who
 
@@ -127,7 +148,17 @@ _SWAGGER_PATHS = frozenset({"/docs", "/redoc", "/docs/oauth2-redirect"})
 
 
 # ---------------------------------------------------------------------------
-def create_app(workspace: Workspace, tokens: TokenStore) -> FastAPI:
+def _route_label(request: Request) -> str:
+    """The route template, so labels stay bounded whatever path is sent.
+
+    Dashboard files and unknown paths match no API route; they share "other".
+    """
+    route = request.scope.get("route")
+    return getattr(route, "path", None) or "other"
+
+
+def create_app(workspace: Workspace, tokens: TokenStore, *, docs: bool = True) -> FastAPI:
+    """`docs=False` removes /docs and /redoc, which load Swagger UI from a CDN."""
     if not tokens:
         # Refuse to start rather than serve an unauthenticated inventory.
         raise ValueError("the API needs at least one token; see `apix token`")
@@ -139,13 +170,48 @@ def create_app(workspace: Workspace, tokens: TokenStore) -> FastAPI:
             "Discovery, classification and Safe Kill for zombie, shadow and "
             "orphaned APIs. Simulated estate: nothing real is touched."
         ),
+        docs_url="/docs" if docs else None,
+        redoc_url="/redoc" if docs else None,
     )
+    metrics = Metrics()
+    app.state.metrics = metrics
 
     @app.middleware("http")
-    async def security_headers(
+    async def harden_and_observe(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        response = await call_next(request)
+        started = time.perf_counter()
+        incoming = request.headers.get("x-request-id", "")
+        request_id = incoming if _REQUEST_ID.match(incoming) else uuid.uuid4().hex
+        request.state.principal = None
+
+        response: Response | None = None
+        if request.method in {"POST", "PUT", "PATCH"}:
+            length = request.headers.get("content-length")
+            if length is None:
+                response = JSONResponse({"detail": "Content-Length is required"}, 411)
+            elif not length.isdigit() or int(length) > MAX_BODY_BYTES:
+                response = JSONResponse(
+                    {"detail": f"request body over {MAX_BODY_BYTES} bytes"}, 413)
+        status = 500
+        try:
+            if response is None:
+                response = await call_next(request)
+            status = response.status_code
+        finally:
+            elapsed = time.perf_counter() - started
+            route = _route_label(request)
+            metrics.observe(request.method, route, status, elapsed)
+            log.info("request", extra={"fields": {
+                "request_id": request_id,
+                "method": request.method,
+                "route": route,
+                "status": status,
+                "duration_ms": round(elapsed * 1000, 1),
+                "principal": request.state.principal,
+                "client": request.client.host if request.client else None,
+            }})
+        response.headers["X-Request-ID"] = request_id
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -221,6 +287,13 @@ def create_app(workspace: Workspace, tokens: TokenStore) -> FastAPI:
     def verify(who: Viewer) -> dict[str, Any]:
         return workspace.verify_audit()
 
+    @app.get("/metrics", response_class=PlainTextResponse)
+    def prometheus(who: Viewer) -> PlainTextResponse:
+        return PlainTextResponse(
+            metrics.render(workspace.metrics_state()),
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
+
     # -- actions ------------------------------------------------------------
     @app.post("/v1/scans")
     def rescan(who: Approver) -> dict[str, Any]:
@@ -230,11 +303,16 @@ def create_app(workspace: Workspace, tokens: TokenStore) -> FastAPI:
     @app.post("/v1/safekill/shadow")
     def shadow(body: ShadowRequest, who: Approver) -> dict[str, Any]:
         try:
-            return workspace.start_shadow(body.endpoint_id).to_dict()
+            result = workspace.start_shadow(body.endpoint_id).to_dict()
         except NotACandidate:
+            metrics.action("shadow", "not_a_candidate")
             raise HTTPException(
                 404, f"{body.endpoint_id!r} is not a removal candidate"
             ) from None
+        metrics.action("shadow", "started")
+        log.info("safekill.shadow", extra={"fields": {
+            "endpoint_id": body.endpoint_id, "principal": who.name}})
+        return result
 
     @app.post("/v1/safekill/decision")
     def decision(body: DecisionRequest, who: Approver) -> dict[str, Any]:
@@ -247,17 +325,27 @@ def create_app(workspace: Workspace, tokens: TokenStore) -> FastAPI:
                 note=body.note,
             )
         except NotAwaitingApproval:
+            metrics.action("decision", "not_awaiting")
             raise HTTPException(
                 409, f"{body.endpoint_id!r} is not awaiting approval; "
                 "start its shadow window first"
             ) from None
         except NeedsAcknowledgement as warning:
+            metrics.action("decision", "needs_acknowledgement")
             raise HTTPException(
                 409,
                 f"{warning}. Resend with accept_unidentified=true to accept that "
                 "risk, or approve=false to decline.",
             ) from None
-        return outcome.to_dict()
+        result = outcome.to_dict()
+        metrics.action("decision", "approved" if body.approve else "declined")
+        log.info("safekill.decision", extra={"fields": {
+            "endpoint_id": body.endpoint_id,
+            "principal": who.name,
+            "approve": body.approve,
+            "state": result["state"],
+        }})
+        return result
 
     # Mounted last, so every /v1 route above takes precedence over it.
     if (DASHBOARD_DIR / "index.html").exists():
@@ -267,5 +355,6 @@ def create_app(workspace: Workspace, tokens: TokenStore) -> FastAPI:
 
 
 def default_app(audit_path: Path, tokens: TokenStore, *, seed: int = 7,
-                use_model: bool = False) -> FastAPI:
-    return create_app(Workspace(audit_path, seed=seed, use_model=use_model), tokens)
+                use_model: bool = False, docs: bool = True) -> FastAPI:
+    return create_app(Workspace(audit_path, seed=seed, use_model=use_model), tokens,
+                      docs=docs)

@@ -45,6 +45,13 @@ paths:
     get: {summary: old export}
 ''')
 write("CODEOWNERS", "api/ @payments-team\n")
+# The policy lives on main. A feature branch cannot exempt its own endpoints:
+# enforcement reads .apix.yml from the merge base, not from the change.
+write(".apix.yml", '''enforce:
+  allow:
+    - endpoint: "GET /healthz"
+      reason: "liveness probe for the load balancer; infrastructure, not an API"
+''')
 git("add", "-A")
 git("commit", "-q", "-m", "base")
 
@@ -89,11 +96,6 @@ paths:
     get: {summary: one user}
   /v1/reports:
     get: {summary: reports, not built yet}
-''')
-write(".apix.yml", '''enforce:
-  allow:
-    - endpoint: "GET /healthz"
-      reason: "liveness probe for the load balancer; infrastructure, not an API"
 ''')
 git("add", "-A")
 git("commit", "-q", "-m", "feature")

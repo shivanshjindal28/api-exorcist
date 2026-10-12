@@ -234,12 +234,38 @@ The script builds a small repository whose feature branch breaks every rule once
 > Four errors and a warning: an undocumented DELETE, a debug route that is
 > undocumented **and** unowned, and `GET /v1/legacy/export` removed from the spec
 > with its handler left behind, flagged as **"Zombie in the making"**. The health
-> check passes, exempt with its reason shown.
+> check passes, exempt with its reason shown, because that exemption is in the
+> policy on `main`.
 
 **Say:** *"Every zombie in our estate was made the same way: someone deleted the
 route from the documentation and nobody deleted the code. This catches it at the
 commit that does it. And it only judges the change, so a bank with four hundred
 undocumented endpoints can switch it on today without every pull request failing."*
+
+If asked *"can't a developer just add their endpoint to the exemption list?"*:
+*"Not in the same pull request. The policy is read from main, never from the
+change being judged. An edit to it is flagged and only applies after it has been
+reviewed and merged. Our security review found that hole in the first version."*
+
+---
+
+### Step 4e: Running it as a service
+
+With `apix serve` still running from step 4c, in a second terminal (paste the
+token it printed in place of `TOKEN`):
+
+```powershell
+curl.exe -s -H "Authorization: Bearer TOKEN" http://127.0.0.1:8600/metrics | Select-String "apix_endpoints|apix_audit_chain_ok|auth_failures"
+```
+
+> The estate's composition, the audit chain's health, and failed sign-ins by
+> reason, in the format every bank's monitoring already scrapes.
+
+**Say:** *"In production this runs as one container: non-root, read-only
+filesystem, and it refuses to start without configured credentials. The metric
+to alert on is `apix_audit_chain_ok`: if anyone edits the audit log, it drops to
+zero."* Build the image before the review if you want to show it; the build
+needs a network and takes about a minute.
 
 ---
 
@@ -275,7 +301,7 @@ straight from GitHub; it takes about 99 seconds, nearly all of it cloning.
 python -m pytest -q
 ```
 
-> **142 tests.** Including the ground-truth leakage guards, the removal gate, a
+> **153 tests.** Including the ground-truth leakage guards, the removal gate, a
 > test asserting no live endpoint is ever cleared for removal, and every Safe Kill
 > safety path forced and asserted: rejection, denial, automatic rollback, and
 > tamper detection in the audit chain.
@@ -330,7 +356,7 @@ plainly; the distinction is one a panel will probe.
 | **Removal gate** — classifier and graph must both agree | Done |
 | **Safe Kill**: rule-of-three shadow, named approval, canary, automatic rollback | Done |
 | **Hash-chained audit log**, tamper-evident, every transition recorded | Done |
-| Packaging, CLI, CI on 3.10/3.12, mypy strict, 142 tests | Done |
+| Packaging, CLI, CI on 3.10/3.12, mypy strict, 153 tests | Done |
 
 ### What is left
 
@@ -410,6 +436,7 @@ what this document exists to let you do.
 | 4b Safe Kill (three runs) | 1s | 4 min |
 | 4c Dashboard | 2s | 4 min |
 | 4d Enforcement | 10s | 3 min |
+| 4e As a service | 1s | 2 min |
 | 5 Real repository | 9s | 4 min |
 | 6 Tests | 2s | 2 min |
 

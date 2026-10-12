@@ -35,7 +35,7 @@ from apix.enforce.config import (  # noqa: E402
     UNDOCUMENTED,
     UNOWNED,
 )
-from apix.enforce.report import as_github  # noqa: E402
+from apix.enforce.report import as_github, as_json  # noqa: E402
 from apix.extractors.base import ExtractedRoute, normalise_path  # noqa: E402
 
 _PASS = 0
@@ -283,6 +283,42 @@ def test_exemptions_are_reported_with_their_reason() -> None:
           c.passed and not c.findings
           and [(e, a.reason) for e, a in c.exempted] == [("GET /healthz", "load balancer probe")],
           str(c.exempted))
+
+
+_SELF_EXEMPT = (
+    'enforce:\n  allow:\n    - endpoint: "POST /v1/backdoor"\n'
+    '      reason: "trust me"\n'
+)
+
+
+def test_a_change_cannot_exempt_itself() -> None:
+    """The policy is read from the merge base, never from the change.
+
+    Read from the head, a pull request could add an exemption for the very
+    endpoint it introduces and pass its own check with one innocuous line.
+    """
+    head: dict[str, str | None] = {
+        "internal/b.py": _route("/v1/backdoor", "POST", "b"),
+        ".apix.yml": _SELF_EXEMPT,
+    }
+    with repo(BASE, head) as root:
+        r = run_enforcement(root, "main", FakeExtractor())
+    found = {(f.rule, f.endpoint_id) for f in r.comparison.findings}
+    check("test_a_change_cannot_exempt_itself",
+          not r.comparison.passed and (UNDOCUMENTED, "POST /v1/backdoor") in found
+          and not r.comparison.exempted and r.policy_changed
+          and "policy_changed" in as_json(r),
+          f"passed={r.comparison.passed} policy_changed={r.policy_changed} {found}")
+
+
+def test_policy_already_on_main_applies() -> None:
+    base = {**BASE, ".apix.yml": _SELF_EXEMPT}
+    with repo(base, {"internal/b.py": _route("/v1/backdoor", "POST", "b")}) as root:
+        r = run_enforcement(root, "main", FakeExtractor())
+    check("test_policy_already_on_main_applies",
+          r.comparison.passed and not r.policy_changed
+          and r.config.source == ".apix.yml at the merge base",
+          f"{r.comparison.findings} source={r.config.source!r}")
 
 
 # ---------------------------------------------------------------------------

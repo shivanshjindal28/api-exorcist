@@ -15,7 +15,13 @@ import os
 import secrets
 from pathlib import Path
 
+from apix.enforce.config import CONFIG_FILE
 from apix.enforce.runner import EnforceResult
+
+POLICY_NOTE = (
+    "this change edits .apix.yml. The edit is not applied to this check: a "
+    "change cannot exempt itself. It takes effect once merged."
+)
 
 _RULE_TITLE = {
     "new-endpoint-undocumented": "Undocumented endpoint",
@@ -57,6 +63,8 @@ def as_text(r: EnforceResult) -> str:
         lines.append("")
     for err in r.head.spec_errors:
         lines.append(f"  [NOTE ] specification not parsed: {err}")
+    if r.policy_changed:
+        lines.append(f"  [NOTE ] {POLICY_NOTE}")
     verdict = (
         "PASS: nothing this change adds is undocumented, unowned, or orphaned."
         if c.passed and not c.warnings
@@ -74,6 +82,7 @@ def as_json(r: EnforceResult) -> str:
         "base_ref": r.base_ref,
         "base_commit": r.base_commit,
         "config": r.config.source,
+        "policy_changed": r.policy_changed,
         "passed": c.passed,
         "added": c.added,
         "removed": c.removed,
@@ -103,6 +112,11 @@ def as_github(r: EnforceResult) -> str:
             if f.line:
                 props.insert(1, f"line={f.line}")
         out.append(f"::{level} {','.join(props)}::{_escape_data(f.message)}")
+    if r.policy_changed:
+        out.append(
+            f"::notice file={CONFIG_FILE},title=Policy edit not applied::"
+            f"{_escape_data(POLICY_NOTE)}"
+        )
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with Path(summary_path).open("a", encoding="utf-8") as fh:
@@ -153,6 +167,8 @@ def as_markdown(r: EnforceResult) -> str:
         md += ["Exempt by configuration:", ""]
         md += [f"- `{_md(e)}`: {_md(a.reason)}" for e, a in c.exempted]
         md.append("")
+    if r.policy_changed:
+        md += [f"**Note:** {POLICY_NOTE}", ""]
     md.append("Only this change is judged; endpoints that already existed are not.")
     md.append("")
     return "\n".join(md)

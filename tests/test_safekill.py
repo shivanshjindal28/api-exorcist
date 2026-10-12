@@ -38,7 +38,7 @@ from apix.safekill import (  # noqa: E402
     WindowObservation,
     verify_file,
 )
-from apix.safekill.audit import verify_entries  # noqa: E402
+from apix.safekill.audit import ChainCheck, verify_entries  # noqa: E402
 from apix.safekill.states import TERMINAL, TRANSITIONS, check_transition  # noqa: E402
 from apix.simulated_env.enforcement import SimulatedEnforcement  # noqa: E402
 from apix.simulated_env.estate import ESTATE  # noqa: E402
@@ -215,6 +215,54 @@ def test_audit_survives_two_writers_taking_turns() -> None:
         result = verify_file(path)
     check("test_audit_survives_two_writers_taking_turns",
           result.ok and result.entries == 3, str(result))
+
+
+_WRITER = """
+import sys, time
+from pathlib import Path
+from apix.safekill.audit import AuditLog
+path, go, name, n = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], int(sys.argv[4])
+log = AuditLog(path=path)
+while not go.exists():
+    time.sleep(0.005)
+for i in range(n):
+    log.append(at=str(i), endpoint_id="E", from_state=None, to_state="S",
+               reason="r", actor=name)
+"""
+
+
+def test_audit_survives_concurrent_writers() -> None:
+    """Separate processes appending at the same instant must not fork the chain.
+
+    Without a lock, two writers read the same head, both link to it, and the
+    chain breaks at the second of the pair; or their lines interleave and the
+    file stops parsing. Processes, not threads: the deployment case is the CLI
+    and the API server, or two API replicas, sharing one file.
+    """
+    import os
+    import subprocess
+
+    writers, each = 4, 25
+    with tempfile.TemporaryDirectory() as tmp:
+        path, go = Path(tmp) / "audit.jsonl", Path(tmp) / "go"
+        env = {**os.environ, "PYTHONPATH": str(Path(__file__).parents[1] / "src")}
+        procs = [
+            subprocess.Popen(
+                [sys.executable, "-c", _WRITER, str(path), str(go), f"w{k}", str(each)],
+                env=env, stderr=subprocess.PIPE, text=True,
+            )
+            for k in range(writers)
+        ]
+        go.touch()
+        errors = [p.communicate(timeout=120)[1] for p in procs]
+        try:
+            result = verify_file(path)
+        except ValueError as exc:     # interleaved, unparseable lines
+            result = ChainCheck(False, 0, None, f"unparseable: {exc}")
+    check("test_audit_survives_concurrent_writers",
+          result.ok and result.entries == writers * each
+          and all(p.returncode == 0 for p in procs),
+          f"{result}; stderr: {[e[-200:] for e in errors if e]}")
 
 
 # ---------------------------------------------------------------------------

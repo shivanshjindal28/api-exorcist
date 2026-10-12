@@ -75,6 +75,8 @@ class Workspace:
     def __post_init__(self) -> None:
         self._lock = threading.RLock()
         self._benchmark: dict[str, Any] | None = None
+        self._verified_head: str | None = None
+        self._verified_ok = True
         self.controller = SafeKillController(
             backend=SimulatedEnforcement(ESTATE, seed=self.seed),
             audit=AuditLog(path=self.audit_path),
@@ -237,14 +239,33 @@ class Workspace:
     def audit(self, endpoint_id: str | None, limit: int) -> dict[str, Any]:
         with self._lock:
             log = self.controller.audit
+            head = log.head                  # syncs first: another process may write
             entries = log.for_endpoint(endpoint_id) if endpoint_id else log.entries
             check = log.verify()
             return {
                 "path": str(self.audit_path),
                 "total": len(log.entries),
-                "head": log.head,
+                "head": head,
                 "chain_ok": check.ok,
                 "entries": [e.to_dict() for e in entries[-limit:]],
+            }
+
+    def metrics_state(self) -> dict[str, Any]:
+        """Gauges for /metrics. The chain is re-verified only when it has grown."""
+        summary = self.summary()
+        with self._lock:
+            log = self.controller.audit
+            head = log.head                  # syncs with the file first
+            if self._verified_head != head:
+                self._verified_ok = log.verify().ok
+                self._verified_head = head
+            scanned = datetime.fromisoformat(self.scanned_at).timestamp() \
+                if self.scanned_at else 0
+            return {
+                **summary,
+                "audit_entries": len(log.entries),
+                "audit_chain_ok": int(self._verified_ok),
+                "scanned_at_unix": int(scanned),
             }
 
     def verify_audit(self) -> dict[str, Any]:

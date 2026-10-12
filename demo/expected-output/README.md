@@ -13,7 +13,7 @@ typed from memory.
 | `blast.txt` | `apix impact "GET /v2/accounts/{id}"` |
 | `real.txt` | `apix scan --local demo\repos\full-stack-fastapi-template --limit 2` |
 | `dataset.txt` | `apix dataset` |
-| `tests.txt` | `python -m pytest -q` |
+| `tests.txt` | `python -m pytest` (the config already adds `-q`) |
 
 Regenerate after any change that could move the numbers:
 

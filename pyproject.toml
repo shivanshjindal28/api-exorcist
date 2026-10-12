@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "apix"
-version = "0.5.0"
+version = "0.8.0"
 description = "Autonomous discovery and safe elimination of zombie, shadow and orphaned APIs"
 readme = "README.md"
 requires-python = ">=3.10"

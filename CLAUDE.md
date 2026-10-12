@@ -17,8 +17,9 @@ apix safekill --evaluate          # Safe Kill vs the gate alone, shadow sweep
 apix serve                        # REST API (needs .[api]); mints a session token
 apix token NAME --role approver   # mint an API token; stores only its hash
 apix enforce --base origin/main   # judge a change's API surface (Phase 6)
+docker build -t api-exorcist .    # the deployable image (Phases 7-8)
 cd dashboard && npm ci && npm test && npm run build   # dashboard, 10 Vitest tests
-pytest                            # 142 tests
+pytest                            # 153 tests
 ruff check . && mypy              # lint + strict types
 
 python docs/render_diagrams.py    # mermaid -> png (run before the two below)
@@ -131,6 +132,9 @@ distinguish the cases.
   PowerShell round-trip. A pre-commit hook now catches BOMs.
 - **PowerShell reports exit 255 on native stderr** even when the command
   succeeded. Check `git log` rather than trusting the exit code.
+- **Git Bash rewrites container paths.** `-v vol:/data` became a Windows path
+  and Docker refused it. Prefix docker commands that take container paths with
+  `MSYS_NO_PATHCONV=1`.
 - **The repo lives inside OneDrive.** Syncing a live `.git` directory can
   corrupt it; `.git` should be excluded from sync.
 - **Remote:** `origin` is https://github.com/shivanshjindal28/api-exorcist (private).
@@ -149,6 +153,7 @@ src/apix/
   graph/           dependency graph, blast radius, removal gate
   safekill/        shadow, approval, canary, rollback, hash-chained audit
   api/             REST API: hashed bearer tokens, roles, approval over HTTP
+  api/observe.py   Prometheus metrics and JSON logs; labels are route templates
   enforce/         CI enforcement; action.yml at the repo root runs it on PRs
   api/dashboard/   the BUILT dashboard (committed; CI checks it is current)
   evaluation/      metrics, the comparative benchmark, Safe Kill evaluation

@@ -274,6 +274,14 @@ CAPABILITIES: dict[str, tuple[str, list[str]]] = {
         "src/apix/enforce/__init__.py",
         [r"CI/CD enforcement"],
     ),
+    "container image": (
+        "Dockerfile",
+        [r"container image"],
+    ),
+    "observability": (
+        "src/apix/api/observe.py",
+        [r"\bobservability\b"],
+    ),
 }
 
 _NOT_BUILT = ("⬜", "🔵")

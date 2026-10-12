@@ -26,9 +26,9 @@ jobs:
         python-version: ["3.10", "3.12"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -55,8 +55,8 @@ jobs:
     name: reproduce published results
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
           cache: pip
@@ -138,7 +138,7 @@ jobs:
 
       - name: Upload figures
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: benchmark-results
           path: data/benchmark.json
@@ -150,8 +150,8 @@ jobs:
       run:
         working-directory: dashboard
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: "20"
           cache: npm
@@ -186,3 +186,51 @@ jobs:
 
       - name: No known-vulnerable runtime dependencies
         run: npm audit --omit=dev --audit-level=high
+
+  container:
+    name: container image (build, run as deployed, smoke test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - name: Build
+        run: docker build -t api-exorcist:ci .
+
+      - name: Refuses to start without configured tokens
+        run: |
+          if docker run --rm api-exorcist:ci; then
+            echo "::error::the image started with no APIX_API_TOKENS"
+            exit 1
+          fi
+
+      # Note: `! cmd` does not trip `set -e` in bash, so every negative check
+      # below is written as an explicit if/exit.
+      - name: Smoke test (read-only filesystem, no capabilities)
+        run: |
+          out="$(docker run --rm api-exorcist:ci token ci --role viewer)"
+          token="$(grep -o 'apx_[A-Za-z0-9_-]*' <<<"$out" | head -1)"
+          entry="$(grep -o 'ci:viewer:[0-9a-f]*' <<<"$out" | head -1)"
+          echo "::add-mask::$token"
+          docker run -d --name apix -p 127.0.0.1:8600:8600 \
+            -e APIX_API_TOKENS="$entry" --read-only --tmpfs /tmp \
+            --cap-drop ALL --security-opt no-new-privileges api-exorcist:ci
+          for _ in $(seq 1 30); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' apix)" = healthy ] && break
+            sleep 2
+          done
+          docker inspect -f '{{.State.Health.Status}}' apix | grep -qx healthy
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8600/v1/summary)" = 401
+          curl -sf -H "Authorization: Bearer $token" localhost:8600/metrics \
+            | grep -qx 'apix_audit_chain_ok 1'
+          docker logs apix | grep -q '"event": "request"'
+          if docker logs apix 2>&1 | grep -qF "$token"; then
+            echo "::error::the token appeared in the container's logs"; exit 1
+          fi
+          if docker exec apix python -c "import pip" 2>/dev/null; then
+            echo "::error::pip is present in the runtime image"; exit 1
+          fi
+          echo "Image healthy, authenticated, read-only, token kept out of logs."
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs apix || true

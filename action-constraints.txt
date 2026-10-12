@@ -1,0 +1,7 @@
+# Exact versions the GitHub Action installs. pyproject.toml keeps ranges, as a
+# library should; the Action is a deployment, and a deployment should not pick
+# up whatever was published to PyPI an hour before a pull request ran.
+# Bump deliberately: change a version here, run the enforcement tests and the
+# demo (demo/DEMO.md step 4d), then commit.
+semgrep==1.155.0
+pyyaml==6.0.2
