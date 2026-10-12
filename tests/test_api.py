@@ -456,6 +456,33 @@ def test_remote_bind_needs_configured_tokens() -> None:
           f"exit {code}: {out.getvalue()}")
 
 
+def test_a_busy_default_port_moves_on_and_a_busy_chosen_one_is_refused() -> None:
+    """A previous `apix serve` left running must not strand the new one.
+
+    It used to bind-fail only after sending the browser to the old server, with a
+    token the old server had never seen.
+    """
+    import socket
+
+    from apix import cli
+
+    holder = socket.socket()
+    holder.bind(("127.0.0.1", 0))
+    holder.listen()
+    busy = holder.getsockname()[1]
+    saved = cli.DEFAULT_PORT
+    cli.DEFAULT_PORT = busy
+    try:
+        fallback = cli._choose_port("127.0.0.1", None)
+        refused = cli._choose_port("127.0.0.1", busy)
+    finally:
+        cli.DEFAULT_PORT = saved
+        holder.close()
+    check("test_a_busy_default_port_moves_on_and_a_busy_chosen_one_is_refused",
+          fallback is not None and fallback != busy and refused is None,
+          f"fallback={fallback} refused={refused} busy={busy}")
+
+
 def test_logs_name_the_principal_never_the_token() -> None:
     import io
     import logging

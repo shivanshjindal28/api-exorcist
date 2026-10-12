@@ -319,7 +319,7 @@ python -m pytest
 summary line. The runner leaves out the two tests that drive real Semgrep, which
 take 45 seconds on their own; `prepare.ps1` and CI run all of them.)
 
-> **186 tests.** Including the ground-truth leakage guards, the removal gate, a
+> **187 tests.** Including the ground-truth leakage guards, the removal gate, a
 > test asserting no live endpoint is ever cleared for removal, and every Safe Kill
 > safety path forced and asserted: rejection, denial, automatic rollback, and
 > tamper detection in the audit chain, plus every API route checked for
@@ -381,7 +381,7 @@ rather than as the decision-maker. All of it is synthetic; say so.
 | **Dashboard**: React + TypeScript, strict CSP, named approval | Done |
 | **CI/CD enforcement**: a GitHub Action that judges only what a pull request changes | Done |
 | **Container image**, Prometheus metrics, JSON logs, a security review with its fixes | Done |
-| Packaging, CLI, CI on 3.10/3.12, mypy strict, 186 tests | Done |
+| Packaging, CLI, CI on 3.10/3.12, mypy strict, 187 tests | Done |
 
 ### What is left, and why it is not in the repository
 

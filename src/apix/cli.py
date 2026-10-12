@@ -556,6 +556,21 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         print("  be written to stdout, which in a deployment is retained log storage.")
         print("  Set APIX_API_TOKENS; `apix token NAME --role approver` makes an entry.")
         return EXIT_ERROR
+    # The port is settled before anything else starts. Found the hard way: a
+    # previous `apix serve` still holding 8600 made the new one fail to bind
+    # *after* it had already sent the browser to the old server, with a token
+    # the old server had never seen.
+    chosen = _choose_port(args.host, args.port)
+    if chosen is None:
+        print(f"  port {args.port} on {args.host} is already in use, probably by another")
+        print("  API Exorcist that is still running. Close that one, or choose a free")
+        print("  port with --port.")
+        return EXIT_ERROR
+    if args.port is None and chosen != DEFAULT_PORT:
+        print(f"  port {DEFAULT_PORT} is in use (another API Exorcist still running?);")
+        print(f"  using {chosen} instead.")
+    args.port = chosen
+
     # Configuration is checked first: it is the more useful error.
     try:
         import uvicorn
@@ -628,6 +643,37 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     uvicorn.run(app, host=args.host, port=args.port, log_config=log_config,
                 server_header=False)
     return EXIT_OK
+
+
+DEFAULT_PORT = 8600
+
+
+def _port_free(host: str, port: int) -> bool:
+    import socket
+
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    with socket.socket(family, socket.SOCK_STREAM) as sock:
+        # No SO_REUSEADDR: on Windows it would let this test succeed on a port
+        # another process is actively listening on.
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
+def _choose_port(host: str, requested: int | None) -> int | None:
+    """The port to serve on: as asked, or the first free one from the default.
+
+    An explicit --port is honoured or refused, never silently changed, because
+    whoever chose it may have something else pointed at it.
+    """
+    if requested is not None:
+        return requested if _port_free(host, requested) else None
+    for port in range(DEFAULT_PORT, DEFAULT_PORT + 20):
+        if _port_free(host, port):
+            return port
+    return None
 
 
 def _open_dashboard_when_ready(host: str, port: int, token: str | None) -> None:
@@ -869,7 +915,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     srv = sub.add_parser("serve", help="run the REST API (Phase 5)")
     srv.add_argument("--host", default="127.0.0.1", help="bind address (default 127.0.0.1)")
-    srv.add_argument("--port", type=int, default=8600, help="port (default 8600)")
+    srv.add_argument(
+        "--port", type=int, default=None,
+        help=f"port (default {DEFAULT_PORT}, or the next free one if that is taken)",
+    )
     srv.add_argument(
         "--allow-remote", action="store_true",
         help="permit a non-loopback bind; only behind TLS termination",
