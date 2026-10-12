@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from apix.connectors.base import DiscoverySignal, Source
 from apix.engine.rules import RuleClassifier
@@ -48,6 +49,8 @@ class RepoScanResult:
     mount_prefixes: list[str] = field(default_factory=list)
     variable_mounts: list[str] = field(default_factory=list)
     unresolved_prefix_routes: int = 0
+    #: Calls, gateway routes and topics read from the code (apix.live.deps).
+    dependencies: Any = None
 
     @property
     def unavailable(self) -> frozenset[Source]:
@@ -94,6 +97,10 @@ def scan_repository(
         signals += spec.run()
         say("Reading CI/CD pipelines and ownership")
         signals += RepoCICDConnector(scan, code).run()
+        say("Reading calls, gateway routes and topics between services")
+        from apix.live.deps import extract_dependencies
+
+        dependencies = extract_dependencies(scan)
         say("Correlating and classifying")
 
         correlator = Correlator()
@@ -131,6 +138,7 @@ def scan_repository(
             unresolved_prefix_routes=sum(
                 1 for r in code.routes if not r.prefix_resolved
             ),
+            dependencies=dependencies,
         )
     finally:
         scan.close()

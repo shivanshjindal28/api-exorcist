@@ -119,6 +119,31 @@ def repository_report(
               "no GitHub Actions workflows found, so no deployment evidence")
     )
 
+    # -- dependencies between services ---------------------------------------
+    graph = None
+    deps = result.dependencies
+    if deps is not None:
+        from apix.graph.view import code_view
+
+        own = {v.endpoint_id: len(v.findings) for v in result.verdicts}
+        graph = code_view(result.records, deps, own)
+        st = graph["stats"]
+        n_topics = len({t.topic for t in deps.topics})
+        if st["calls"] or st["routes"] or n_topics:
+            checks.append(check(
+                "Dependencies between services", OK,
+                f"{st['calls']} call(s) between services, {st['routes']} gateway "
+                f"route(s) and {n_topics} message topic(s) read from code. This shows "
+                "what the code can call; callers outside the repository cannot appear",
+            ))
+        else:
+            checks.append(check(
+                "Dependencies between services", UNAVAILABLE,
+                "no calls between services, gateway routes or message topics were found "
+                "in the code, so every endpoint appears isolated. Either the project is "
+                "a single service, or its clients build their URLs at run time",
+            ))
+
     # -- what a repository can never show ------------------------------------
     checks.append(check(
         "Traffic, gateway and DNS", UNAVAILABLE,
@@ -175,6 +200,7 @@ def repository_report(
         "checks": checks,
         "endpoints": endpoints,
         "repository_findings": universal,
+        "graph": graph,
         "sources": {
             "consulted": sorted(s.value for s in result.consulted),
             "unavailable": sorted(s.value for s in result.unavailable),

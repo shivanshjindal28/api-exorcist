@@ -250,6 +250,14 @@ class Workspace:
                 "entries": [e.to_dict() for e in entries[-limit:]],
             }
 
+    def graph_view(self) -> dict[str, Any]:
+        """The demo bank's dependency graph, drawn from observed traffic."""
+        from apix.graph.view import traffic_view
+
+        with self._lock:
+            labels = {v.endpoint_id: v.label.value for v in self.verdicts}
+            return traffic_view(self.records, labels)
+
     def metrics_state(self) -> dict[str, Any]:
         """Gauges for /metrics. The chain is re-verified only when it has grown."""
         summary = self.summary()

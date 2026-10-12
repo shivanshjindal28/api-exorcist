@@ -12,6 +12,7 @@ import type {
   BlastRadius,
   Capabilities,
   ChainCheck,
+  GraphView,
   InventoryRecord,
   KillOutcome,
   Decision,
@@ -134,6 +135,10 @@ export class ApiClient {
 
   verifyAudit(): Promise<ChainCheck> {
     return this.request("GET", "/v1/audit/verify");
+  }
+
+  demoGraph(): Promise<GraphView> {
+    return this.request("GET", "/v1/demo/graph");
   }
 
   rescan(): Promise<Summary> {

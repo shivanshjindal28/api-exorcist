@@ -279,3 +279,61 @@ button[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 1px
 .split-even { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
 /* Long Java paths must wrap, not push the page sideways. */
 .facts dd, .facts dd code, td code, .check-detail { overflow-wrap: anywhere; }
+
+/* ---- dependency graph -------------------------------------------------- */
+.graph-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 1rem; align-items: start; }
+@media (max-width: 1100px) { .graph-layout { grid-template-columns: minmax(0, 1fr); } }
+.graph-basis { margin: 0 0 0.6rem; }
+.graph-toolbar { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-bottom: 0.6rem; }
+.graph-canvas { overflow: auto; max-height: 72vh; border: 1px solid var(--line); border-radius: 6px; background: #fbfcfd; }
+.graph-canvas svg { display: block; }
+.graph-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 0.9rem; margin: 0 0 0 auto; padding: 0; font-size: 0.78rem; color: var(--muted); }
+.graph-legend li { display: flex; align-items: center; gap: 0.35rem; }
+.lg { display: inline-block; width: 22px; height: 0; border-top: 2px solid #475467; }
+.lg-routes { border-top: 2px dashed var(--deprecated); }
+.lg-topic { border-top: 2px dotted var(--pending); }
+.dot-inline { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+
+.gbox-body { fill: #fff; stroke: #d0d5dd; stroke-width: 1; }
+.gbox-header { fill: var(--ink); cursor: pointer; }
+.gbox-title { fill: #fff; font-size: 13px; font-weight: 600; pointer-events: none; }
+.gbox-gateway .gbox-header { fill: var(--deprecated); }
+.gbox-topic .gbox-header { fill: var(--pending); }
+.gbox-topic .gbox-body { fill: #f4f3ff; }
+.gbox-external .gbox-header { fill: #98a2b3; }
+.gbox-external .gbox-body { fill: #f9fafb; stroke-dasharray: 4 3; }
+.gbox.is-selected .gbox-body, .gbox.is-lit .gbox-body { stroke: var(--brand); stroke-width: 2; }
+.gbox.is-dim { opacity: 0.28; }
+.gbox-head:focus-visible .gbox-header { stroke: #fff; stroke-width: 2; }
+.gbox-more { fill: var(--deprecated); font-size: 12px; cursor: pointer; }
+
+.grow { cursor: pointer; }
+.grow-bg { fill: transparent; }
+.grow:hover .grow-bg { fill: #f2f4f7; }
+.grow.is-hit .grow-bg { fill: #fff4e5; }
+.grow.is-selected .grow-bg { fill: #fee4e2; }
+.grow:focus-visible .grow-bg { stroke: var(--deprecated); }
+.grow-text { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 11.5px; fill: var(--ink); }
+.dot { stroke: #fff; stroke-width: 1; }
+.dot-zombie, .dot-inline.dot-zombie { fill: var(--zombie); background: var(--zombie); }
+.dot-active { fill: var(--active); }
+.dot-deprecated { fill: var(--deprecated); }
+.dot-orphaned { fill: var(--orphaned); }
+.dot-indeterminate { fill: var(--indeterminate); }
+.dot-depended, .dot-inline.dot-depended { fill: #f79009; background: #f79009; }
+.dot-isolated, .dot-inline.dot-isolated { fill: #98a2b3; background: #98a2b3; }
+
+.edge path { fill: none; stroke: #475467; stroke-width: 1.6; }
+.edge-routes path { stroke: var(--deprecated); stroke-dasharray: 6 4; }
+.edge-topic path { stroke: var(--pending); stroke-dasharray: 2 4; stroke-width: 1.8; }
+.edge.is-inferred path { opacity: 0.55; }
+.edge.is-lit path { stroke: var(--brand); stroke-width: 2.6; stroke-dasharray: none; }
+.edge.is-dim { opacity: 0.12; }
+.edge-label { font-size: 11px; fill: var(--deprecated); text-anchor: middle; paint-order: stroke; stroke: #fbfcfd; stroke-width: 4px; }
+.arrowhead-calls { fill: #475467; }
+.arrowhead-routes { fill: var(--deprecated); }
+.arrowhead-topic { fill: var(--pending); }
+.arrowhead-lit { fill: var(--brand); }
+.arrowhead-dim { fill: #d0d5dd; }
+.evidence-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.45rem; }
+.evidence-list li { border-left: 3px solid var(--line); padding-left: 0.5rem; overflow-wrap: anywhere; }

@@ -389,6 +389,20 @@ refused; GitHub links are reduced to an owner and a name before git ever sees
 them, and git is never allowed to prompt, so a private repository fails at once
 with its reason.
 
+#### As built: the dependency graph for real projects, drawn
+
+The component diagram's dependency graph was built from traffic, which a repository
+does not have, so project scans had none. It is now also read from code: HTTP
+client calls between services, gateway route configuration and message topics, each
+edge carrying the file and line it came from. Calls feed the same blast-radius
+traversal the removal gate uses; routes and topics are drawn but do not count as
+dependencies on an endpoint. Every scan, and the demo bank, has a drawn graph:
+services in columns by dependency depth, endpoints as rows, and a click on an
+endpoint highlights its blast radius. The two bases answer different questions,
+what can call an endpoint (code) and what does (traffic), and the page states
+which one it shows. A graph from code moves Safe Kill's dependency prerequisite to
+"partly met", never "met": callers outside the repository cannot appear in it.
+
 ---
 
 ## 3. Behavioural view

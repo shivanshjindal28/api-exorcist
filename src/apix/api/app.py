@@ -16,6 +16,7 @@ The REST API: FastAPI over a Workspace.
     GET  /metrics                          Prometheus text format (needs a token)
 
     POST /v1/demo/rescan                   approver: re-run discovery on the demo bank
+    GET  /v1/demo/graph                    the demo bank's dependency graph, from traffic
 
     GET  /v1/capabilities                  which scan inputs work on this machine
     POST /v1/scans/github                  approver: scan a public GitHub repository
@@ -335,6 +336,10 @@ def create_app(workspace: Workspace, tokens: TokenStore, *, docs: bool = True,
         )
 
     # -- actions ------------------------------------------------------------
+    @app.get("/v1/demo/graph")
+    def demo_graph(who: Viewer) -> dict[str, Any]:
+        return workspace.graph_view()
+
     @app.post("/v1/demo/rescan")
     def rescan(who: Approver) -> dict[str, Any]:
         workspace.refresh()

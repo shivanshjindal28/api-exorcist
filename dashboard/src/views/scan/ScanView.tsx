@@ -11,6 +11,7 @@ import { KIND_LABEL, ScanStatusBadge } from "../ScanResults";
 import { ScanAuditTab } from "./Audit";
 import { ScanBenchmarkTab } from "./Benchmark";
 import { ScanEndpointsTab } from "./Endpoints";
+import { DemoGraphTab, GraphPanel } from "./Graph";
 import { ScanOverviewTab } from "./Overview";
 import { ScanSafeKillTab } from "./SafeKill";
 import { when } from "./shared";
@@ -18,6 +19,7 @@ import { when } from "./shared";
 export const TABS = [
   ["overview", "Overview"],
   ["endpoints", "Endpoints"],
+  ["graph", "Dependency graph"],
   ["safekill", "Safe Kill"],
   ["audit", "Audit log"],
   ["benchmark", "Benchmark"],
@@ -56,6 +58,7 @@ function DemoView({ tab }: { tab: Tab }) {
   const body = {
     overview: <DemoOverview />,
     endpoints: <DemoEndpoints />,
+    graph: <DemoGraphTab />,
     safekill: <DemoSafeKill />,
     audit: <DemoAudit />,
     benchmark: <DemoBenchmark />,
@@ -161,6 +164,17 @@ function RealScanView({ id, tab }: { id: string; tab: Tab }) {
           <Tabs id={id} tab={tab} label="Scan views" />
           {tab === "overview" && <ScanOverviewTab job={job} />}
           {tab === "endpoints" && <ScanEndpointsTab job={job} onReviewed={onReviewed} />}
+          {tab === "graph" &&
+            (job.report.graph ? (
+              <GraphPanel view={job.report.graph} />
+            ) : (
+              <Card title="Dependency graph">
+                <p className="muted">
+                  This scan was made before dependency graphs were built from code. Scan
+                  the project again to draw one.
+                </p>
+              </Card>
+            ))}
           {tab === "safekill" && <ScanSafeKillTab job={job} onReviewed={onReviewed} />}
           {tab === "audit" && <ScanAuditTab id={id} />}
           {tab === "benchmark" && <ScanBenchmarkTab job={job} />}

@@ -4,28 +4,37 @@ import type { Review, ScanJob } from "../../types";
 import { ReviewBadge, ReviewControls, ago } from "./shared";
 
 /** What Safe Kill needs before it may remove anything, and whether this scan has it. */
-function prerequisites(job: ScanJob): { step: string; met: boolean; why: string }[] {
+type Status = "ok" | "partial" | "unavailable";
+const STATUS_TEXT: Record<Status, string> = { ok: "have it", partial: "partly", unavailable: "missing" };
+
+function prerequisites(job: ScanJob): { step: string; status: Status; why: string }[] {
   const consulted = job.report?.sources?.consulted ?? [];
   const found = (job.report?.endpoints.length ?? 0) > 0;
+  const graph = job.report?.graph;
+  const traffic = consulted.includes("TRAFFIC");
   return [
     {
       step: "An inventory of the endpoints",
-      met: found,
+      status: found ? "ok" : "unavailable",
       why: found ? "this scan found them in the code" : "this scan found no endpoints",
     },
     {
       step: "Usage data, to classify an endpoint as a zombie",
-      met: consulted.includes("TRAFFIC"),
+      status: traffic ? "ok" : "unavailable",
       why: "needs traffic logs from a gateway or a network sensor; a project's files have none",
     },
     {
       step: "A dependency graph, to prove nothing calls it",
-      met: consulted.includes("TRAFFIC"),
-      why: "built from observed calls between services, which also come from traffic",
+      status: traffic ? "ok" : graph ? "partial" : "unavailable",
+      why: traffic
+        ? "built from observed calls between services"
+        : graph
+          ? `drawn from the code (${graph.stats.calls ?? 0} call(s) between services): it shows what the code can call, but not callers outside the repository, so "nothing calls it" is not proven`
+          : "built from observed calls between services, which come from traffic",
     },
     {
       step: "Control of the gateway, to shadow, canary and roll back",
-      met: consulted.includes("GATEWAY"),
+      status: consulted.includes("GATEWAY") ? "ok" : "unavailable",
       why: "Safe Kill acts through the gateway in front of the API; none is connected",
     },
   ];
@@ -57,12 +66,12 @@ export function ScanSafeKillTab({
       <Card title="Why nothing is removed from a project scan">
         <p>
           Safe Kill removes an endpoint only after four things hold. A project scan
-          provides the first; the rest need the running system.
+          provides the first and part of the third; the rest need the running system.
         </p>
         <ul className="checks">
           {steps.map((s) => (
-            <li key={s.step} className={`check check-${s.met ? "ok" : "unavailable"}`}>
-              <span className="check-status">{s.met ? "have it" : "missing"}</span>
+            <li key={s.step} className={`check check-${s.status}`}>
+              <span className="check-status">{STATUS_TEXT[s.status]}</span>
               <span className="check-name">{s.step}</span>
               <span className="check-detail">{s.why}</span>
             </li>

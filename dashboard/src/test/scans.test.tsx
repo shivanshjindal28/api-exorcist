@@ -159,11 +159,11 @@ describe("Scan report", () => {
     expect(screen.getByText(/Why no endpoint is called a zombie/)).toBeTruthy();
   });
 
-  it("has the same five views as the demo bank", async () => {
+  it("has the same six views as the demo bank", async () => {
     renderReport(DONE);
     const tabs = await screen.findByRole("navigation", { name: "Scan views" });
     expect(Array.from(tabs.querySelectorAll("a")).map((a) => a.textContent)).toEqual([
-      "Overview", "Endpoints", "Safe Kill", "Audit log", "Benchmark",
+      "Overview", "Endpoints", "Dependency graph", "Safe Kill", "Audit log", "Benchmark",
     ]);
   });
 
@@ -205,5 +205,95 @@ describe("Scan report", () => {
     });
     expect(await screen.findByText(/could not finish/)).toBeTruthy();
     expect(screen.getByText(/it is private/)).toBeTruthy();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// The dependency graph
+import { layers, layout, serviceEdges } from "../graphLayout";
+import { GraphPanel } from "../views/scan/Graph";
+import type { GraphView } from "../types";
+
+const GRAPH: GraphView = {
+  basis: "code",
+  services: [
+    { id: "api-gateway", kind: "gateway", endpoints: [] },
+    { id: "account-service", kind: "service", endpoints: ["POST /api/accounts/internal/debit"] },
+    { id: "transaction-service", kind: "service", endpoints: ["POST /api/transactions/transfer"] },
+  ],
+  endpoints: [
+    { id: "POST /api/accounts/internal/debit", service: "account-service", method: "POST",
+      path: "/api/accounts/internal/debit", label: null, exposed_via: ["api-gateway /api/accounts/**"],
+      callers: ["transaction-service"], isolated: false },
+    { id: "POST /api/transactions/transfer", service: "transaction-service", method: "POST",
+      path: "/api/transactions/transfer", label: null, exposed_via: [], callers: [], isolated: true },
+  ],
+  edges: [
+    { kind: "calls", from: "transaction-service", to: "POST /api/accounts/internal/debit",
+      evidence: "RestClient/WebClient call in transaction-service/AccountClientImpl.java:70" },
+    { kind: "routes", from: "api-gateway", to: "account-service", label: "/api/accounts/**",
+      evidence: "route /api/accounts/** in api-gateway/application.yml:22" },
+  ],
+  radius: {
+    "POST /api/accounts/internal/debit": {
+      endpoint_id: "POST /api/accounts/internal/debit", direct_services: ["transaction-service"],
+      indirect_services: [], affected_endpoints: [{ endpoint_id: "POST /api/transactions/transfer", hop: 2 }],
+      depth_reached: 2, truncated: false, isolated: false, severity: "contained",
+    },
+    "POST /api/transactions/transfer": {
+      endpoint_id: "POST /api/transactions/transfer", direct_services: [], indirect_services: [],
+      affected_endpoints: [], depth_reached: 0, truncated: false, isolated: true, severity: "isolated",
+    },
+  },
+  notes: ["Read from 146 source and config files."],
+  stats: { services: 2, endpoints: 2, calls: 1, routes: 1, topics: 0, isolated: 1 },
+};
+
+describe("dependency graph layout", () => {
+  it("puts callers to the left of what they call", () => {
+    const lay = layout(GRAPH);
+    const x = (id: string) => lay.boxes.get(id)!.x;
+    expect(x("transaction-service")).toBeLessThan(x("account-service"));
+    expect(x("api-gateway")).toBeLessThan(x("account-service"));
+    expect(serviceEdges(GRAPH)).toContainEqual(["transaction-service", "account-service"]);
+  });
+
+  it("survives a cycle between services", () => {
+    const l = layers(["a", "b", "c"], [["a", "b"], ["b", "c"], ["c", "a"]]);
+    expect([...l.values()].every((n) => n >= 0 && n < 3)).toBe(true);
+  });
+});
+
+describe("dependency graph view", () => {
+  it("shows an endpoint's blast radius and the code behind each caller", async () => {
+    const user = userEvent.setup();
+    render(<GraphPanel view={GRAPH} />);
+    expect(screen.getByText(/Drawn from the code/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Endpoint POST /api/accounts/internal/debit" }));
+    expect(screen.getByText("contained")).toBeTruthy();
+    // In the side panel, not only in the arrow's hover tooltip.
+    const evidence = screen.getAllByText(/AccountClientImpl.java:70/);
+    expect(evidence.some((el) => el.tagName.toLowerCase() !== "title")).toBe(true);
+    // The side panel lists them in <code>; the drawing has its own copies.
+    expect(screen.getByText("POST /api/transactions/transfer", { selector: "code" })).toBeTruthy();
+    expect(screen.getByText("api-gateway /api/accounts/**", { selector: "code" })).toBeTruthy();
+  });
+
+  it("says an endpoint is isolated without claiming nothing outside could call it", async () => {
+    const user = userEvent.setup();
+    render(<GraphPanel view={GRAPH} />);
+    await user.click(screen.getByRole("button", { name: "Endpoint POST /api/transactions/transfer" }));
+    expect(screen.getByText(/Callers outside the repository would not show here/)).toBeTruthy();
+  });
+});
+
+
+describe("Safe Kill with a graph drawn from code", () => {
+  it("counts the dependency graph as partly there, and says why not fully", async () => {
+    renderReport({ ...DONE, report: { ...DONE.report!, graph: GRAPH } }, "safekill");
+    expect(await screen.findByText("partly")).toBeTruthy();
+    expect(screen.getAllByText("missing").length).toBe(2);
+    expect(screen.getByText(/not callers outside the repository/)).toBeTruthy();
   });
 });

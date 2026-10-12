@@ -204,6 +204,8 @@ export interface ScanReport {
   checks: ScanCheck[];
   endpoints: ScanEndpoint[];
   repository_findings: string[];
+  /** Absent (or null) in reports saved before the graph was built from code. */
+  graph?: GraphView | null;
   /** Absent from reports saved before sources were recorded. */
   sources?: { consulted: string[]; unavailable: string[] };
   lifecycle: { available: boolean; why: string };
@@ -256,4 +258,53 @@ export interface Capabilities {
   folder: InputOption;
   github: InputOption;
   website: InputOption;
+}
+
+// ---------------------------------------------------------------------------
+// The dependency graph (apix/graph/view.py), the same shape for the demo bank
+// (basis "traffic") and for a project scan (basis "code").
+
+export type GraphServiceKind = "service" | "gateway" | "topic" | "external";
+export type GraphEdgeKind = "calls" | "routes" | "publishes" | "consumes";
+
+export interface GraphService {
+  id: string;
+  kind: GraphServiceKind;
+  endpoints: string[];
+  broker?: string;
+}
+
+export interface GraphEndpoint {
+  id: string;
+  service: string;
+  method: string;
+  path: string;
+  label: string | null;
+  findings?: number;
+  daily_calls?: number;
+  exposed_via: string[];
+  callers: string[];
+  isolated: boolean;
+}
+
+export interface GraphEdge {
+  kind: GraphEdgeKind;
+  from: string;
+  to: string;
+  evidence: string;
+  label?: string;
+  count?: number;
+  certain?: boolean;
+  file?: string;
+  line?: number;
+}
+
+export interface GraphView {
+  basis: "traffic" | "code";
+  services: GraphService[];
+  endpoints: GraphEndpoint[];
+  edges: GraphEdge[];
+  radius: Record<string, BlastRadius>;
+  notes: string[];
+  stats: Record<string, number>;
 }

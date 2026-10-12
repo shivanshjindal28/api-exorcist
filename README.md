@@ -114,7 +114,7 @@ The command line is still there for scripting and CI (see the
 | Trained model with SHAP attribution, used as a veto over removals | ✅ |
 | Safe Kill: rule-of-three shadow window, named approval, 5/25/100 canary | ✅ |
 | Automatic rollback on breach, hash-chained append-only audit log | ✅ |
-| 203 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
+| 223 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
 | REST API: hashed bearer tokens, viewer and approver roles, approval over HTTP | ✅ |
 | Dashboard: React + TypeScript, same origin, strict CSP | ✅ |
 | CI/CD enforcement: undocumented, unowned and zombie-in-the-making endpoints | ✅ |
@@ -531,6 +531,7 @@ export APIX_API_TOKENS="alice:approver:<sha256>;bob:viewer:<sha256>"
 | `POST /v1/scans/upload`, `POST /v1/scans/github` | approver | start a scan of an uploaded folder or a GitHub link |
 | `GET /v1/scans`, `GET /v1/scans/{id}` | viewer | every scan; one scan's progress, then its report and decisions |
 | `GET /v1/scans/{id}/audit` | viewer | that scan's hash-chained audit log |
+| `GET /v1/demo/graph` | viewer | the demo bank's dependency graph, from traffic (a scan's is in its report) |
 | `POST /v1/scans/{id}/review` | approver | record a decision about an endpoint the scan found |
 | `GET /metrics` | viewer | Prometheus text format: requests, latency, auth failures, estate gauges |
 
@@ -675,7 +676,7 @@ and zombie are all defined by *use*, and a project's files cannot show use; the
 report says this rather than guessing. The **Demo bank** pages show the full
 classification and Safe Kill on the simulated estate, where usage data exists.
 
-### Every scan has the same five views
+### Every scan has the same six views
 
 A finished scan, and the demo bank, open on the same tabs. On a real project
 each shows what can honestly be shown without traffic data:
@@ -684,9 +685,24 @@ each shows what can honestly be shown without traffic data:
 |---|---|
 | Overview | Headline counts, what was checked and why, findings across endpoints, review progress |
 | Endpoints | List and detail: where each endpoint is defined, which sources saw it (and which were never consulted), its findings, its decision |
+| Dependency graph | Services as boxes listing their endpoints, drawn in columns by dependency depth; calls, gateway routes and message topics as arrows. Click an endpoint for its blast radius, with the file and line behind every caller |
 | Safe Kill | Which of removal's four prerequisites the scan has (the inventory) and lacks (usage data, a dependency graph, gateway control), then a **review queue**: keep, needs documentation, needs an owner, or investigate for removal, recorded under the reviewer's name |
 | Audit log | The scan's own hash-chained log: who started it, a SHA-256 fingerprint of its report, every decision since; verifiable in one click |
 | Benchmark | What a documentation-only inventory would have listed against what the scan found. Coverage, not accuracy: a real project has no answer key, and the page says so |
+
+**The dependency graph of a project is read from its code** (`apix/live/deps.py`):
+HTTP client calls between services (Spring RestClient, WebClient, RestTemplate and
+Feign; fetch and axios; Python requests and httpx), gateway routes (Spring Cloud
+Gateway), and Kafka and RabbitMQ topics. Only calls feed the blast radius: a gateway
+route exposes endpoints rather than depending on one, and a topic links services,
+not endpoints. Test code is left out, since a call in a test is not a production
+dependency. On the Spring banking repository that prompted it, the graph shows
+`transaction-service` calling `account-service`'s internal debit and credit
+endpoints, so removing either would break five transaction endpoints, and it notes
+that the public `/api/accounts/**` gateway route also matches them. The page says
+plainly that this is what the code *can* call: callers outside the repository, and
+URLs built at run time, do not appear. The demo bank's graph is drawn from
+observed traffic instead, and says so.
 
 Nothing is removed from a project scan. Removing an endpoint on the strength of
 its code alone is how outages happen; the code cannot show the month-end batch job
@@ -742,7 +758,7 @@ Security, in the browser as on the server:
 
 ```bash
 cd dashboard && npm ci && npm run dev      # hot-reload against a running `apix serve`
-npm test && npm run build                  # 23 Vitest tests; build into src/apix/api/dashboard
+npm test && npm run build                  # 28 Vitest tests; build into src/apix/api/dashboard
 ```
 
 ---
@@ -1046,6 +1062,7 @@ src/apix/
     memory.py              In-process graph (default; no infrastructure)
     neo4j_store.py         Neo4j backend, variable-length Cypher traversal
     build.py               Graph construction and the removal gate
+    view.py                The graph as something to draw: one shape for traffic and code
   api/
     auth.py                Bearer tokens, stored hashed; viewer and approver roles
     workspace.py           The served state: a scan, its gate, a Safe Kill controller
@@ -1072,6 +1089,7 @@ src/apix/
     semgrep_extractor.py   AST route extraction; router prefix composition
     rules/routes.yaml      Semgrep rules: FastAPI, Flask, Express, Spring
   live/
+    deps.py                Calls, gateway routes and topics between services, read from code
     repo.py                Clone a repository; git-history staleness, CODEOWNERS
     connectors.py          CODE / OPENAPI / CICD read from a real checkout
     scan.py                Orchestrates a repository scan
@@ -1089,7 +1107,7 @@ src/apix/
 dashboard/                 React + TypeScript source; builds into src/apix/api/dashboard
 Dockerfile                 The deployable image: API and dashboard, non-root, read-only
 action.yml                 The GitHub Action; action-constraints.txt pins what it installs
-tests/                     203 tests, three ground-truth leakage guards
+tests/                     223 tests, three ground-truth leakage guards
 demo/                      Review runbook, paced demo runner, expected output
 docs/                      Literature review, design document, interim report,
                            source papers, diagram renderer, Word and
@@ -1113,7 +1131,7 @@ pip install -e ".[dev,live,ml]" && pre-commit install
 pytest && ruff check . && mypy && python docs/verify_claims.py
 ```
 
-**203 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 23 Vitest
+**223 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 28 Vitest
 tests under TypeScript strict mode (`cd dashboard && npm test`).
 
 ### Optional extras
