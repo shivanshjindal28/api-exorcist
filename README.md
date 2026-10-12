@@ -82,7 +82,8 @@ in under a second.
 | 2 | Dependency graph, blast radius, removal gate | ✅ done |
 | 3 | Scaled dataset, trained model, SHAP attribution | ✅ done |
 | 4 | Safe Kill Simulation — shadow, canary, rollback, audit log | ✅ done |
-| 5 | REST API and dashboard | ⬜ next |
+| 5 | REST API: bearer tokens, roles, Safe Kill approval over HTTP | ✅ done |
+| 5b | Dashboard | ⬜ next |
 | 6 | CI/CD enforcement plugin | ⬜ |
 | 7–8 | Security hardening, deployment, observability | ⬜ |
 
@@ -104,13 +105,12 @@ in under a second.
 | Trained model with SHAP attribution, used as a veto over removals | ✅ |
 | Safe Kill: rule-of-three shadow window, named approval, 5/25/100 canary | ✅ |
 | Automatic rollback on breach, hash-chained append-only audit log | ✅ |
-| 108 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
-| CI/CD enforcement plugin, REST API, dashboard | ⬜ |
+| 124 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
+| REST API: hashed bearer tokens, viewer and approver roles, approval over HTTP | ✅ |
+| CI/CD enforcement plugin, dashboard | ⬜ |
 
-**Next: Phase 5, the REST API and dashboard.** Every verdict, blast radius and Safe
-Kill outcome already serialises to JSON, and the audit log is already a stream of
-self-verifying records, so the API exposes data that exists rather than inventing
-new shapes.
+**Next: the dashboard.** It is a client of the REST API above, which already
+serves every verdict, blast radius, Safe Kill decision and audit entry.
 
 ---
 
@@ -244,6 +244,8 @@ Consequences, all enforced in code:
 | `apix safekill --hidden-caller EP` | What-if: a month-end caller the capture never saw |
 | `apix safekill --evaluate` | Measure Safe Kill across 120 generated estates |
 | `apix safekill --verify PATH` | Verify an audit log's hash chain |
+| `apix serve` | The REST API on 127.0.0.1:8600; mints a one-time token if none set |
+| `apix token NAME --role approver` | Mint a token; prints it once, stores only its hash |
 | `apix benchmark` | The comparative before/after study |
 | `apix train --estates 120 --save` | Train the model and compare it against the rules |
 | `apix dataset` | Build the labelled dataset |
@@ -479,6 +481,58 @@ request counts are upper bounds on what a streaming detector would allow.
 
 ---
 
+## REST API
+
+```bash
+pip install -e ".[api]"
+apix serve                       # http://127.0.0.1:8600, docs at /docs
+```
+
+With no tokens configured, `apix serve` mints a one-time approver token for this
+process and prints it once, the way Jupyter does, rather than starting open. For
+named principals:
+
+```bash
+apix token alice --role approver   # prints the token once, and its config entry
+export APIX_API_TOKENS="alice:approver:<sha256>;bob:viewer:<sha256>"
+```
+
+| Route | Role | What it returns |
+|---|---|---|
+| `GET /v1/health` | none | status and version, nothing about the estate |
+| `GET /v1/summary` | viewer | counts, scan time, and the simulated-mode notice |
+| `GET /v1/inventory`, `/v1/verdicts`, `/v1/impact`, `/v1/benchmark` | viewer | what the CLI prints, as JSON |
+| `GET /v1/safekill`, `/v1/audit`, `/v1/audit/verify` | viewer | Safe Kill state, the audit chain, its verification |
+| `POST /v1/safekill/shadow` | approver | run the gate and the shadow window for one candidate |
+| `POST /v1/safekill/decision` | approver | approve or decline; the canary and rollback follow |
+| `POST /v1/scans` | approver | re-run discovery |
+
+Four decisions, each made for a security reason:
+
+- **Every route but `/v1/health` needs a token, reads included.** The inventory is
+  a map of an estate's weakest points: which endpoints are unauthenticated, which
+  nobody owns. A test reads the routes from the application itself, so a route
+  added later without authentication fails the build the moment it exists.
+- **The approver's name comes from their token, never the request.** Request
+  bodies reject unknown fields, so there is no `approver` field to forge, and the
+  audit log credits the person who actually holds the token.
+- **Tokens are stored only as SHA-256 hashes**, so the configuration is not a
+  secret. They are 256-bit random values, so no slow hash is needed.
+- **Approval over HTTP never forces an irreversible denial.** Where the CLI turns
+  unacknowledged anonymous traffic into DENIED, the API returns 409 and leaves the
+  decision open, so a person mid-decision can accept the risk explicitly or decline.
+
+`apix serve` binds to localhost and refuses any other address without
+`--allow-remote`, because bearer tokens over plain HTTP travel in cleartext. Every
+response carries `Cache-Control: no-store`.
+
+The approval flow was the one change Safe Kill needed: in a real deployment the
+shadow runs for weeks and a person decides afterwards, so the controller now
+stops at the approval gate (`begin`) and continues later (`resolve`). The split
+is behaviour-preserving: the same run writes a byte-identical audit chain.
+
+---
+
 ## The learned model, and why it did not replace the rules
 
 25 endpoints cannot train anything, so `simulated_env/generator.py` produces many
@@ -645,7 +699,11 @@ State these; do not hide them.
    the gateway behind them is a model whose assumptions are written down in
    `simulated_env/enforcement.py`. A real deployment replaces it with a gateway
    plugin.
-
+10. **The API holds pending approvals in memory.** Restarting it forgets a
+    candidate awaiting a decision, and its shadow must run again. That can only
+    delay a removal, never cause one. The audit log is on disk and shared with
+    the CLI; writers taking turns keep a valid chain, but two appending in the
+    same instant would race, so a deployment needs one writer or a lock.
 ---
 
 ## Project layout
@@ -671,6 +729,10 @@ src/apix/
     memory.py              In-process graph (default; no infrastructure)
     neo4j_store.py         Neo4j backend, variable-length Cypher traversal
     build.py               Graph construction and the removal gate
+  api/
+    auth.py                Bearer tokens, stored hashed; viewer and approver roles
+    workspace.py           The served state: a scan, its gate, a Safe Kill controller
+    app.py                 FastAPI routes over the workspace
   safekill/
     states.py              The design's state machine; illegal moves raise
     policy.py              Rule-of-three shadow window, breach criteria
@@ -696,7 +758,7 @@ src/apix/
     generator.py           Parameterised estates, generated by mechanism
     enforcement.py         Simulated gateway for Safe Kill; its world model
 
-tests/                     108 tests, three ground-truth leakage guards
+tests/                     124 tests, three ground-truth leakage guards
 demo/                      Review runbook, paced demo runner, expected output
 docs/                      Literature review, design document, interim report,
                            source papers, diagram renderer, Word and
@@ -720,7 +782,7 @@ pip install -e ".[dev,live,ml]" && pre-commit install
 pytest && ruff check . && mypy && python docs/verify_claims.py
 ```
 
-**108 tests**, ruff clean, mypy `--strict` clean.
+**124 tests**, ruff clean, mypy `--strict` clean.
 
 ### Optional extras
 

@@ -185,19 +185,17 @@ def build_claims(live: dict[str, float]) -> list[Claim]:
     """Patterns are deliberately narrow — a false alarm is worse than a miss."""
     return [
         Claim("evidence rules", r"(\d+) evidence rules", live["rules"]),
-        Claim("rules usable denominator", r"\d+\s*/\s*(\d+)\s*rules", live["rules"]),
         Claim("discrepancy flags", r"(\d+) (?:discrepancy )?flags", live["flags"]),
         Claim("observable features", r"(\d+) (?:observable )?features", live["features"]),
         Claim("estate size", r"(\d+)-endpoint estate", live["endpoints"]),
         Claim("zombie count", r"(?:all )?(\d+) zombies are isolated", live["zombies"]),
         Claim("zombies of total", r"\d+ of (\d+) zombies", live["zombies"]),
         Claim("deprecated count", r"all (\d+) deprecated endpoints", live["deprecated"]),
-        Claim("connector count", r"(\d+) connectors", live["connectors"]),
         # The worked blast-radius example, spelled in digits or in words.
         Claim("blast services", NUM + r"\**,? services\**,? (?:across|affected)",
               live["blast_services"]),
         Claim("blast hops", NUM + r" hops? deep", live["blast_hops"]),
-        Claim("blast hops (across)", NUM + r"\**\s*hops", live["blast_hops"]),
+        Claim("blast hops (across)", NUM + r"\**\s*hops\b", live["blast_hops"]),
         Claim("blast callers", NUM + r" direct callers", live["blast_callers"]),
         # The demo script wraps this claim across a blockquote line break, so
         # the pattern has to tolerate a newline and a "> " continuation.
@@ -248,14 +246,49 @@ CAPABILITIES: dict[str, tuple[str, list[str]]] = {
         "src/apix/safekill/__init__.py",
         [r"Safe Kill Simulation"],
     ),
+    # Split in Phase 5: the API shipped before the dashboard, and one entry
+    # for both would have demanded the unbuilt half be marked done.
+    "REST API": (
+        "src/apix/api/app.py",
+        [r"\bREST API\b(?! and dashboard)"],
+    ),
     "dashboard": (
-        "src/apix/api/__init__.py",
-        [r"REST API and dashboard"],
+        "src/apix/api/dashboard/index.html",
+        [r"\bdashboard\b"],
     ),
 }
 
 _NOT_BUILT = ("⬜", "🔵")
 _BUILT = "✅"
+
+
+def check_patterns_are_live(claims: list[Claim]) -> list[str]:
+    """Every claim and every capability phrase must match something.
+
+    A pattern that matches no document line reports "consistent" forever,
+    because there is nothing for it to disagree with. That is how three
+    patterns ran for weeks checking nothing: a shell had turned their `\\b`
+    into a literal backspace byte (0x08), invisible in an editor, and the
+    script kept printing "all consistent". This check makes a dead pattern a
+    failure, and refuses control characters in this file outright.
+    """
+    problems: list[str] = []
+    own = Path(__file__).read_text(encoding="utf-8")
+    for lineno, line in enumerate(own.splitlines(), 1):
+        if any(ord(c) < 32 and c != "\t" for c in line):
+            problems.append(f"verify_claims.py:{lineno}: control character in source")
+
+    texts = [d.read_text(encoding="utf-8") for d in DOCS if d.exists()]
+    for claim in claims:
+        if not any(claim.matches(t) for t in texts):
+            problems.append(f"claim {claim.name!r} matches no document: dead pattern")
+    for label, (_, phrases) in CAPABILITIES.items():
+        for phrase in phrases:
+            if not any(re.search(phrase, t, re.I) for t in texts):
+                problems.append(
+                    f"capability {label!r}: phrase {phrase!r} matches no document"
+                )
+    return problems
 
 
 def check_status_markers() -> list[str]:
@@ -343,7 +376,11 @@ def main() -> int:
         print(f"    {k:<24} {v:g}")
     print()
 
-    failures: list[str] = check_diagram_lists() + check_status_markers()
+    failures: list[str] = (
+        check_patterns_are_live(claims)
+        + check_diagram_lists()
+        + check_status_markers()
+    )
     checked = 0
 
     for doc in DOCS:

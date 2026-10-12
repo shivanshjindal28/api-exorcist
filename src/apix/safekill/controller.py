@@ -180,18 +180,64 @@ def _obs_dict(o: WindowObservation) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Controller
 # ---------------------------------------------------------------------------
+class NotAwaitingApproval(LookupError):
+    """A decision was offered for an endpoint that is not waiting for one."""
+
+
 @dataclass
 class SafeKillController:
+    """Walks candidates through the state machine.
+
+    Approval is asynchronous in a real deployment: the shadow window runs for
+    weeks, and a person decides afterwards, from the CLI or through the REST
+    API. So the walk is split at the approval gate:
+
+        begin(assessment)       NOMINATED ... AWAITING_APPROVAL, or a terminal
+        resolve(endpoint, d)    applies a Decision and continues to the end
+
+    `run` is `begin` followed, if the configured approver decides, by
+    `resolve`. The shadow observation and the anonymous-traffic baseline are
+    kept between the two, so resuming does not re-run the shadow window and
+    does not write the early transitions to the audit log a second time.
+    """
+
     backend: EnforcementBackend
     audit: AuditLog = field(default_factory=AuditLog)
     policy: SafeKillPolicy = field(default_factory=SafeKillPolicy)
     approver: Approver = field(default_factory=NoApprover)
     start: datetime = DEFAULT_START
+    _pending: dict[str, tuple[_Walk, ApprovalRequest]] = field(
+        default_factory=dict, init=False, repr=False
+    )
 
     def run(self, assessment: RemovalAssessment) -> KillOutcome:
         """Walk one candidate as far as the evidence and the approver allow."""
+        outcome = self.begin(assessment)
+        if not outcome.pending_approval:
+            return outcome
+        decision = self.approver.decide(self._pending[outcome.endpoint_id][1])
+        if decision is None:
+            return outcome
+        return self.resolve(outcome.endpoint_id, decision)
+
+    def pending(self) -> list[ApprovalRequest]:
+        """Every candidate whose shadow is done and which awaits a decision."""
+        return [request for _, request in self._pending.values()]
+
+    def pending_outcome(self, endpoint_id: str) -> KillOutcome | None:
+        entry = self._pending.get(endpoint_id)
+        return entry[0].outcome if entry else None
+
+    def begin(self, assessment: RemovalAssessment) -> KillOutcome:
+        """From nomination to the approval gate, or to a terminal state before it.
+
+        Idempotent for a candidate already waiting: it returns the existing
+        outcome rather than shadowing the endpoint and auditing it again.
+        """
         verdict = assessment.verdict
         ep = verdict.endpoint_id
+        if ep in self._pending:
+            return self._pending[ep][0].outcome
         walk = _Walk(self, KillOutcome(endpoint_id=ep, state=KillState.NOMINATED))
 
         walk.enter(
@@ -254,19 +300,28 @@ class SafeKillController:
             evidence={**_obs_dict(shadow), "warnings": warnings},
         )
 
-        decision = self.approver.decide(
-            ApprovalRequest(
-                endpoint_id=ep,
-                confidence=verdict.confidence,
-                reasons=[r.statement for r in verdict.reasons[:5]],
-                shadow=shadow,
-                baseline_per_day=baseline,
-                warnings=warnings,
-            )
+        request = ApprovalRequest(
+            endpoint_id=ep,
+            confidence=verdict.confidence,
+            reasons=[r.statement for r in verdict.reasons[:5]],
+            shadow=shadow,
+            baseline_per_day=baseline,
+            warnings=warnings,
         )
-        if decision is None:
-            walk.outcome.reason = "awaiting a named approver; nothing has been removed"
-            return walk.outcome
+        walk.outcome.reason = "awaiting a named approver; nothing has been removed"
+        self._pending[ep] = (walk, request)
+        return walk.outcome
+
+    def resolve(self, endpoint_id: str, decision: Decision) -> KillOutcome:
+        """Apply a decision to a candidate waiting at the approval gate."""
+        try:
+            walk, request = self._pending.pop(endpoint_id)
+        except KeyError:
+            raise NotAwaitingApproval(
+                f"{endpoint_id} is not awaiting approval"
+            ) from None
+        ep = endpoint_id
+        baseline = request.baseline_per_day
 
         walk.outcome.approver = decision.approver
         if not decision.approved:

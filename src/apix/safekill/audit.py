@@ -93,13 +93,34 @@ class AuditLog:
 
     path: Path | None = None
     entries: list[AuditEntry] = field(default_factory=list)
+    _seen_size: int = field(default=-1, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.path is not None and self.path.exists():
+        self._sync()
+
+    def _sync(self) -> None:
+        """Reload from disk if another process has appended since we last read.
+
+        The CLI and the REST API share one log file. Without this, each loads
+        the file once and links its next entry to the head *it* last saw; the
+        moment the other process has appended in between, the chain breaks
+        on the very next entry. Checking the file size is enough because the
+        file only ever grows.
+
+        This handles writers taking turns. Two processes appending in the same
+        instant still race; a deployment with concurrent writers needs a lock
+        or a single writer, and that is stated rather than assumed away.
+        """
+        if self.path is None or not self.path.exists():
+            return
+        size = self.path.stat().st_size
+        if size != self._seen_size:
             self.entries = load(self.path)
+            self._seen_size = size
 
     @property
     def head(self) -> str:
+        self._sync()
         return self.entries[-1].hash if self.entries else GENESIS
 
     def append(
@@ -113,6 +134,7 @@ class AuditLog:
         actor: str,
         evidence: dict[str, Any] | None = None,
     ) -> AuditEntry:
+        self._sync()
         body: dict[str, Any] = {
             "seq": len(self.entries),
             "at": at,
@@ -130,6 +152,7 @@ class AuditLog:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(entry.to_dict(), ensure_ascii=False) + "\n")
+            self._seen_size = self.path.stat().st_size
         return entry
 
     def verify(self) -> ChainCheck:

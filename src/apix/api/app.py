@@ -1,0 +1,240 @@
+"""
+The REST API: FastAPI over a Workspace.
+
+    GET  /v1/health                        open; says nothing about the estate
+    GET  /v1/whoami                        the principal behind the token
+    GET  /v1/summary                       counts, scan time, simulated-mode notice
+    GET  /v1/inventory                     correlated inventory, every source's view
+    GET  /v1/verdicts[?label=ZOMBIE]       verdicts with signed reasons
+    GET  /v1/verdicts/{endpoint}           one verdict and its explanation
+    GET  /v1/impact                        the removal gate for every candidate
+    GET  /v1/impact/{endpoint}             one blast radius
+    GET  /v1/benchmark                     the comparative before/after study
+    GET  /v1/safekill                      candidates, pending approvals, outcomes
+    GET  /v1/audit[?endpoint=&limit=]      audit entries and the chain head
+    GET  /v1/audit/verify                  recompute the whole chain
+
+    POST /v1/scans                         approver: re-run discovery
+    POST /v1/safekill/shadow               approver: gate + shadow window
+    POST /v1/safekill/decision             approver: approve or decline
+
+`{endpoint}` is an endpoint id such as `GET /v1/cards/{id}/pin`, percent-encoded
+in the URL. Actions carry the endpoint in the JSON body instead, so nothing
+destructive depends on how a client happens to encode a path.
+
+Every response carries `Cache-Control: no-store`: what this API returns is a
+map of an estate's weakest points, and no proxy or browser should keep a copy.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from pathlib import Path
+from typing import Annotated, Any
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, ConfigDict, Field
+
+from apix import __version__
+from apix.api.auth import Principal, Role, TokenStore
+from apix.api.workspace import (
+    NeedsAcknowledgement,
+    NotACandidate,
+    UnknownEndpoint,
+    Workspace,
+)
+from apix.engine.explain import audit_entry
+from apix.safekill.controller import NotAwaitingApproval
+
+_bearer = HTTPBearer(auto_error=False)
+
+
+# ---------------------------------------------------------------------------
+# Request bodies. extra="forbid": an unknown field is a 422, so there is no
+# way to smuggle an "approver" name in alongside the real fields.
+# ---------------------------------------------------------------------------
+class ShadowRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    endpoint_id: str = Field(min_length=1, max_length=512)
+
+
+class DecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    endpoint_id: str = Field(min_length=1, max_length=512)
+    approve: bool
+    accept_unidentified: bool = False
+    note: str = Field(default="", max_length=1000)
+
+
+# ---------------------------------------------------------------------------
+# Authentication. These live at module level for a reason that cost a bug:
+# with `from __future__ import annotations`, FastAPI resolves type hints against
+# the module's globals. Aliases defined inside create_app() were invisible to
+# it, so `who: Viewer` was silently treated as a required query parameter and
+# a missing token returned 422 instead of 401.
+# ---------------------------------------------------------------------------
+def _principal(
+    request: Request,
+    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> Principal:
+    tokens: TokenStore = request.app.state.tokens
+    if creds is None or creds.scheme.lower() != "bearer":
+        raise HTTPException(
+            401, "a bearer token is required", headers={"WWW-Authenticate": "Bearer"}
+        )
+    who = tokens.authenticate(creds.credentials)
+    if who is None:
+        raise HTTPException(
+            401, "token not recognised", headers={"WWW-Authenticate": "Bearer"}
+        )
+    return who
+
+
+def _approver(who: Annotated[Principal, Depends(_principal)]) -> Principal:
+    if not who.role.allows(Role.APPROVER):
+        raise HTTPException(403, f"{who.name} is a viewer; this needs an approver")
+    return who
+
+
+Viewer = Annotated[Principal, Depends(_principal)]
+Approver = Annotated[Principal, Depends(_approver)]
+
+
+# ---------------------------------------------------------------------------
+def create_app(workspace: Workspace, tokens: TokenStore) -> FastAPI:
+    if not tokens:
+        # Refuse to start rather than serve an unauthenticated inventory.
+        raise ValueError("the API needs at least one token; see `apix token`")
+
+    app = FastAPI(
+        title="API Exorcist",
+        version=__version__,
+        description=(
+            "Discovery, classification and Safe Kill for zombie, shadow and "
+            "orphaned APIs. Simulated estate: nothing real is touched."
+        ),
+    )
+
+    @app.middleware("http")
+    async def security_headers(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+
+    app.state.tokens = tokens
+
+    # -- reads --------------------------------------------------------------
+    @app.get("/v1/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok", "version": __version__}
+
+    @app.get("/v1/whoami")
+    def whoami(who: Viewer) -> dict[str, str]:
+        return {"name": who.name, "role": who.role.value}
+
+    @app.get("/v1/summary")
+    def summary(who: Viewer) -> dict[str, Any]:
+        return workspace.summary()
+
+    @app.get("/v1/inventory")
+    def inventory(who: Viewer) -> list[dict[str, Any]]:
+        return [r.to_dict() for r in workspace.records]
+
+    @app.get("/v1/verdicts")
+    def verdicts(
+        who: Viewer,
+        label: Annotated[str | None, Query(pattern="^[A-Z]+$")] = None,
+    ) -> list[dict[str, Any]]:
+        return [
+            audit_entry(v) for v in workspace.verdicts
+            if label is None or v.label.value == label
+        ]
+
+    @app.get("/v1/verdicts/{endpoint_id:path}")
+    def verdict(endpoint_id: str, who: Viewer) -> dict[str, Any]:
+        try:
+            return workspace.verdict(endpoint_id)
+        except UnknownEndpoint:
+            raise HTTPException(404, f"no endpoint {endpoint_id!r}") from None
+
+    @app.get("/v1/impact")
+    def impact(who: Viewer) -> list[dict[str, Any]]:
+        return [a.to_dict() for a in workspace.assessments]
+
+    @app.get("/v1/impact/{endpoint_id:path}")
+    def radius(endpoint_id: str, who: Viewer) -> dict[str, Any]:
+        try:
+            return workspace.radius(endpoint_id)
+        except UnknownEndpoint:
+            raise HTTPException(404, f"no endpoint {endpoint_id!r}") from None
+
+    @app.get("/v1/benchmark")
+    def benchmark(who: Viewer) -> dict[str, Any]:
+        return workspace.benchmark()
+
+    @app.get("/v1/safekill")
+    def safekill(who: Viewer) -> dict[str, Any]:
+        return workspace.safekill_state()
+
+    @app.get("/v1/audit")
+    def audit(
+        who: Viewer,
+        endpoint: str | None = None,
+        limit: Annotated[int, Query(ge=1, le=5000)] = 200,
+    ) -> dict[str, Any]:
+        return workspace.audit(endpoint, limit)
+
+    @app.get("/v1/audit/verify")
+    def verify(who: Viewer) -> dict[str, Any]:
+        return workspace.verify_audit()
+
+    # -- actions ------------------------------------------------------------
+    @app.post("/v1/scans")
+    def rescan(who: Approver) -> dict[str, Any]:
+        workspace.refresh()
+        return workspace.summary()
+
+    @app.post("/v1/safekill/shadow")
+    def shadow(body: ShadowRequest, who: Approver) -> dict[str, Any]:
+        try:
+            return workspace.start_shadow(body.endpoint_id).to_dict()
+        except NotACandidate:
+            raise HTTPException(
+                404, f"{body.endpoint_id!r} is not a removal candidate"
+            ) from None
+
+    @app.post("/v1/safekill/decision")
+    def decision(body: DecisionRequest, who: Approver) -> dict[str, Any]:
+        try:
+            outcome = workspace.decide(
+                body.endpoint_id,
+                approver=who.name,          # from the token, never the body
+                approve=body.approve,
+                accept_unidentified=body.accept_unidentified,
+                note=body.note,
+            )
+        except NotAwaitingApproval:
+            raise HTTPException(
+                409, f"{body.endpoint_id!r} is not awaiting approval; "
+                "start its shadow window first"
+            ) from None
+        except NeedsAcknowledgement as warning:
+            raise HTTPException(
+                409,
+                f"{warning}. Resend with accept_unidentified=true to accept that "
+                "risk, or approve=false to decline.",
+            ) from None
+        return outcome.to_dict()
+
+    return app
+
+
+def default_app(audit_path: Path, tokens: TokenStore, *, seed: int = 7,
+                use_model: bool = False) -> FastAPI:
+    return create_app(Workspace(audit_path, seed=seed, use_model=use_model), tokens)

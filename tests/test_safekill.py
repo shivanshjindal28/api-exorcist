@@ -201,6 +201,22 @@ def test_audit_file_round_trip_and_tamper() -> None:
           f"intact={intact}, tampered={tampered}")
 
 
+def test_audit_survives_two_writers_taking_turns() -> None:
+    """The CLI and the REST API share one log; neither may link to a stale head."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "audit.jsonl"
+        api, cli = AuditLog(path=path), AuditLog(path=path)
+        api.append(at="t0", endpoint_id="E", from_state=None, to_state="S",
+                   reason="r", actor="api")
+        cli.append(at="t1", endpoint_id="E", from_state=None, to_state="S",
+                   reason="r", actor="cli")
+        api.append(at="t2", endpoint_id="E", from_state=None, to_state="S",
+                   reason="r", actor="api")
+        result = verify_file(path)
+    check("test_audit_survives_two_writers_taking_turns",
+          result.ok and result.entries == 3, str(result))
+
+
 # ---------------------------------------------------------------------------
 # Policy
 # ---------------------------------------------------------------------------

@@ -221,7 +221,7 @@ straight from GitHub; it takes about 99 seconds, nearly all of it cloning.
 python -m pytest -q
 ```
 
-> **108 tests.** Including the ground-truth leakage guards, the removal gate, a
+> **124 tests.** Including the ground-truth leakage guards, the removal gate, a
 > test asserting no live endpoint is ever cleared for removal, and every Safe Kill
 > safety path forced and asserted: rejection, denial, automatic rollback, and
 > tamper detection in the audit chain.
@@ -276,13 +276,13 @@ plainly; the distinction is one a panel will probe.
 | **Removal gate** — classifier and graph must both agree | Done |
 | **Safe Kill**: rule-of-three shadow, named approval, canary, automatic rollback | Done |
 | **Hash-chained audit log**, tamper-evident, every transition recorded | Done |
-| Packaging, CLI, CI on 3.10/3.12, mypy strict, 108 tests | Done |
+| Packaging, CLI, CI on 3.10/3.12, mypy strict, 124 tests | Done |
 
 ### What is left
 
 | Remaining | Phase | Notes |
 |---|---|---|
-| REST API + dashboard | 5 | Next; every result already serialises to JSON |
+| Dashboard | 5b | Next; a client of the REST API, which is built |
 | CI/CD enforcement plugin | 6 | The prevention half |
 | Security hardening, deployment, observability | 7–8 | |
 | Paper [2] Cassieri | — | Last one outstanding; 9 of 10 now in `docs/papers/` |

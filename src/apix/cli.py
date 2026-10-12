@@ -9,6 +9,8 @@ genuinely different jobs and a user should be able to discover them with
     apix scan --github O/R     scan a real GitHub repository
     apix impact                dependency graph, blast radius, removal gate
     apix safekill              shadow, approval, canary and rollback (Phase 4)
+    apix serve                 the REST API (Phase 5)
+    apix token NAME            mint an API token for a named principal
     apix benchmark             the comparative before/after evaluation
     apix train                 train the model and compare it against the rules
     apix dataset               build the labelled dataset for the ML engine
@@ -517,6 +519,96 @@ def _safekill_evaluate(n_estates: int, as_json: bool) -> int:
     return EXIT_OK
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    """Run the REST API."""
+    import getpass
+    import ipaddress
+    import os
+    from pathlib import Path
+
+    from apix.api.auth import Role, TokenConfigError, TokenStore, new_token
+
+    try:
+        loopback = ipaddress.ip_address(args.host).is_loopback
+    except ValueError:
+        loopback = args.host == "localhost"
+    if not loopback and not args.allow_remote:
+        print(f"  refusing to bind {args.host}: bearer tokens over plain HTTP travel")
+        print("  in cleartext. Put the API behind TLS termination, then pass")
+        print("  --allow-remote to confirm.")
+        return EXIT_ERROR
+
+    try:
+        import uvicorn
+
+        from apix.api.app import default_app
+    except ImportError:
+        print('  the API needs its extra: pip install -e ".[api]"')
+        return EXIT_ERROR
+
+    spec = os.environ.get("APIX_API_TOKENS", "")
+    session_token = None
+    try:
+        tokens = TokenStore.parse(spec)
+    except TokenConfigError as exc:
+        print(f"  APIX_API_TOKENS is malformed: {exc}")
+        return EXIT_ERROR
+    if not tokens:
+        # No configured principals: mint one for this process only, the way
+        # Jupyter does, rather than starting an unauthenticated server.
+        session_token = new_token()
+        tokens = TokenStore.single(args.as_name or getpass.getuser(),
+                                   Role.APPROVER, session_token)
+
+    audit_path = Path(args.audit) if args.audit else (
+        load_settings().ensure_data_dir() / "safekill-audit.jsonl"
+    )
+    app = default_app(audit_path, tokens, seed=args.seed, use_model=args.model)
+
+    print()
+    print("=" * 74)
+    print("API EXORCIST REST API")
+    print("=" * 74)
+    print()
+    print(f"  listening : http://{args.host}:{args.port}")
+    print(f"  docs      : http://{args.host}:{args.port}/docs")
+    print(f"  audit log : {audit_path}")
+    print("  estate    : simulated; nothing real is touched")
+    if session_token:
+        who = tokens.entries[0][1].name
+        print()
+        print(f"  No APIX_API_TOKENS set. A one-time approver token for {who!r},")
+        print("  valid only while this process runs (shown once, never stored):")
+        print()
+        print(f"      {session_token}")
+        print()
+        print("  Send it as:  Authorization: Bearer <token>")
+    else:
+        print(f"  principals: {len(tokens.entries)} from APIX_API_TOKENS")
+    print()
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    return EXIT_OK
+
+
+def _cmd_token(args: argparse.Namespace) -> int:
+    """Mint a token and print the configuration line that grants it."""
+    from apix.api.auth import Role, TokenStore, new_token
+
+    token = new_token()
+    store = TokenStore.single(args.name, Role(args.role), token)
+    print()
+    print(f"  token for {args.name} ({args.role}). Shown once; it is not stored:")
+    print()
+    print(f"      {token}")
+    print()
+    print("  Add this entry to APIX_API_TOKENS (';' separates entries). It holds")
+    print("  only the SHA-256 of the token, so the configuration is not a secret:")
+    print()
+    print(f"      {store.config_line()}")
+    print()
+    return EXIT_OK
+
+
 def _cmd_train(args: argparse.Namespace) -> int:
     """Train the ML classifier and compare it honestly against the rules."""
     from apix.engine.model import DEFAULT_MODEL_PATH
@@ -682,6 +774,30 @@ def build_parser() -> argparse.ArgumentParser:
     sk.add_argument("--seed", type=int, default=7, help="simulated traffic seed")
     sk.add_argument("--json", action="store_true", help="emit as JSON")
     sk.set_defaults(func=_cmd_safekill)
+
+    srv = sub.add_parser("serve", help="run the REST API (Phase 5)")
+    srv.add_argument("--host", default="127.0.0.1", help="bind address (default 127.0.0.1)")
+    srv.add_argument("--port", type=int, default=8600, help="port (default 8600)")
+    srv.add_argument(
+        "--allow-remote", action="store_true",
+        help="permit a non-loopback bind; only behind TLS termination",
+    )
+    srv.add_argument(
+        "--as", dest="as_name", metavar="NAME",
+        help="name for the one-time session token when APIX_API_TOKENS is unset",
+    )
+    srv.add_argument("--audit", metavar="PATH", help="audit log path (JSON Lines)")
+    srv.add_argument("--model", action="store_true", help="add the learned layer's veto")
+    srv.add_argument("--seed", type=int, default=7, help="simulated traffic seed")
+    srv.set_defaults(func=_cmd_serve)
+
+    tok = sub.add_parser("token", help="mint an API token for a named principal")
+    tok.add_argument("name", help="who the token belongs to; written to the audit log")
+    tok.add_argument(
+        "--role", choices=["viewer", "approver"], default="viewer",
+        help="viewer reads; approver also shadows, approves and re-scans",
+    )
+    tok.set_defaults(func=_cmd_token)
 
     tr = sub.add_parser(
         "train", help="train the ML classifier and compare it against the rules"

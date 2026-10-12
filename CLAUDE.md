@@ -14,7 +14,9 @@ apix benchmark                    # comparative before/after evaluation
 apix train --estates 120 --save   # train the model, compare against rules
 apix safekill --approve-as NAME   # shadow, approval, canary, rollback
 apix safekill --evaluate          # Safe Kill vs the gate alone, shadow sweep
-pytest                            # 108 tests
+apix serve                        # REST API (needs .[api]); mints a session token
+apix token NAME --role approver   # mint an API token; stores only its hash
+pytest                            # 124 tests
 ruff check . && mypy              # lint + strict types
 
 python docs/render_diagrams.py    # mermaid -> png (run before the two below)
@@ -115,6 +117,12 @@ distinguish the cases.
 
 ## Environment gotchas
 
+- **The shell here mangles backslashes in heredocs.** `\b` written through a
+  bash heredoc landed in `verify_claims.py` as a literal backspace byte (0x08),
+  so three regexes silently matched nothing for weeks. Write files containing
+  backslashes with the file tools, not heredocs. `verify_claims.py` now fails on
+  control characters in its own source and on any pattern matching nothing.
+
 - **Windows PowerShell 5.1 corrupts source files.** `Get-Content | Set-Content
   -Encoding utf8` double-encodes UTF-8 and adds a BOM — it mangled em-dashes in
   `rules.py` once. Use the editor tools or Python for text edits, never a
@@ -136,6 +144,7 @@ src/apix/
   engine/          verdict types, rule classifier, explanations
   graph/           dependency graph, blast radius, removal gate
   safekill/        shadow, approval, canary, rollback, hash-chained audit
+  api/             REST API: hashed bearer tokens, roles, approval over HTTP
   evaluation/      metrics, the comparative benchmark, Safe Kill evaluation
   dataset/         labelled dataset for the ML engine
   simulated_env/   the estate and its ground truth (the answer key)
