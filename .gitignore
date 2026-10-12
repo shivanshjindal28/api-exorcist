@@ -67,3 +67,6 @@ desktop.ini
 # (src/apix/api/dashboard/) so pip users need no Node; node_modules never is.
 dashboard/node_modules/
 dashboard/.vite/
+
+# Built by demo/make_enforce_demo.py for the enforcement demo; a nested git repo.
+demo/enforce-demo/

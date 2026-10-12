@@ -84,8 +84,8 @@ in under a second.
 | 4 | Safe Kill Simulation — shadow, canary, rollback, audit log | ✅ done |
 | 5 | REST API: bearer tokens, roles, Safe Kill approval over HTTP | ✅ done |
 | 5b | Dashboard: React + TypeScript, served by the API | ✅ done |
-| 6 | CI/CD enforcement plugin | ⬜ next |
-| 7–8 | Security hardening, deployment, observability | ⬜ |
+| 6 | CI/CD enforcement: GitHub Action, judges only what a PR changes | ✅ done |
+| 7–8 | Security hardening, deployment, observability | ⬜ next |
 
 ### What is built
 
@@ -105,14 +105,14 @@ in under a second.
 | Trained model with SHAP attribution, used as a veto over removals | ✅ |
 | Safe Kill: rule-of-three shadow window, named approval, 5/25/100 canary | ✅ |
 | Automatic rollback on breach, hash-chained append-only audit log | ✅ |
-| 126 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
+| 142 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
 | REST API: hashed bearer tokens, viewer and approver roles, approval over HTTP | ✅ |
 | Dashboard: React + TypeScript, same origin, strict CSP | ✅ |
-| CI/CD enforcement plugin | ⬜ |
+| CI/CD enforcement: undocumented, unowned and zombie-in-the-making endpoints | ✅ |
 
-**Next: Phase 6, the CI/CD enforcement plugin.** Detection and safe removal
-deal with zombies that already exist; the plugin is the prevention half, failing
-a merge that introduces an undocumented or unowned endpoint.
+**Next: Phases 7 and 8, hardening, deployment and observability.** Every
+capability in the design is now built; what remains is making it run as a
+service at a bank rather than as a project on a laptop.
 
 ---
 
@@ -248,6 +248,7 @@ Consequences, all enforced in code:
 | `apix safekill --verify PATH` | Verify an audit log's hash chain |
 | `apix serve` | The REST API on 127.0.0.1:8600; mints a one-time token if none set |
 | `apix token NAME --role approver` | Mint a token; prints it once, stores only its hash |
+| `apix enforce --base origin/main` | Judge what this change does to the API surface |
 | `apix benchmark` | The comparative before/after study |
 | `apix train --estates 120 --save` | Train the model and compare it against the rules |
 | `apix dataset` | Build the labelled dataset |
@@ -535,6 +536,77 @@ is behaviour-preserving: the same run writes a byte-identical audit chain.
 
 ---
 
+## Enforcement in CI (Phase 6)
+
+Detection and Safe Kill deal with zombies that already exist. Enforcement stops
+new ones being made. It runs on a pull request and judges **only what that change
+does** to the API surface:
+
+| Rule | Fails when the change | Default |
+|---|---|---|
+| Undocumented endpoint | adds a route with no OpenAPI entry: a shadow API from its first commit | error |
+| Unowned endpoint | adds a route no CODEOWNERS entry and no `x-owner` covers | error |
+| Zombie in the making | removes an endpoint from the spec but leaves its handler in the code | error |
+| Documented, not implemented | adds a spec entry with no handler behind it | warning |
+
+The third rule is the one specific to this project. Every zombie in the simulated
+estate was made the same way: the route was removed from the specification and the
+handler was never deleted. Enforcement catches that at the commit that does it.
+
+Three decisions make it adoptable rather than switched off on day two:
+
+- **Existing debt is never held against a change.** An estate with four hundred
+  undocumented endpoints can turn this on today; from then on it cannot gain a
+  four hundred and first.
+- **The comparison is against the merge base**, not the tip of `main`, so work
+  merged elsewhere after the branch was cut is not blamed on this pull request.
+- **No endpoint is ever called dead.** A code change carries no evidence about
+  traffic, so enforcement makes no lifecycle claim, for the same reason a
+  repository scan abstains from one.
+
+OpenAPI tags are deliberately not read as owners: they name functional groups, and
+treating them as teams would let nearly any tagged endpoint pass. Every exemption in
+`.apix.yml` must carry a reason, because a silenced check is a decision an auditor
+will later ask about.
+
+```yaml
+# .github/workflows/api-surface.yml in the repository being protected
+on: pull_request
+jobs:
+  api-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }      # the merge base must be present
+      - uses: shivanshjindal28/api-exorcist@main
+```
+
+```yaml
+# .apix.yml (optional; with no file every rule runs at its default)
+enforce:
+  rules:
+    spec-without-handler: off
+  allow:
+    - endpoint: "GET /healthz"
+      reason: "load-balancer probe; infrastructure, not an API"
+```
+
+Findings appear as annotations on the exact lines of the pull request, with a
+summary table on the run page. Locally, or in any other CI:
+
+```bash
+apix enforce --base origin/main                  # exit 0 pass, 1 findings, 2 cannot run
+python demo/make_enforce_demo.py demo/enforce-demo && apix enforce --repo demo/enforce-demo --base main
+```
+
+Route strings come from the pull request, whose author is untrusted in CI, so the
+output cannot be used to forge annotations: workflow-command data is escaped, and
+the readable report is wrapped in `::stop-commands::` with an unpredictable token.
+The action passes its inputs to the shell through environment variables, never by
+interpolating them into the script.
+
+---
+
 ## Dashboard
 
 `apix serve` also serves the dashboard at `http://127.0.0.1:8600/`. Sign in with
@@ -745,6 +817,9 @@ State these; do not hide them.
     delay a removal, never cause one. The audit log is on disk and shared with
     the CLI; writers taking turns keep a valid chain, but two appending in the
     same instant would race, so a deployment needs one writer or a lock.
+11. **Enforcement sees only what route extraction sees.** A framework the
+    Semgrep rules do not cover is invisible to it, which is why a spec entry
+    with no handler is only a warning by default.
 ---
 
 ## Project layout
@@ -774,6 +849,12 @@ src/apix/
     auth.py                Bearer tokens, stored hashed; viewer and approver roles
     workspace.py           The served state: a scan, its gate, a Safe Kill controller
     app.py                 FastAPI routes over the workspace
+  enforce/
+    config.py              Rules, severities, and exemptions that must give a reason
+    snapshot.py            One commit's API surface: routes, spec entries, owners
+    check.py               The four rules, applied only to what the change touches
+    runner.py              Merge base, temporary worktree, the two snapshots
+    report.py              Text, JSON, GitHub annotations; injection-safe
   safekill/
     states.py              The design's state machine; illegal moves raise
     policy.py              Rule-of-three shadow window, breach criteria
@@ -800,7 +881,7 @@ src/apix/
     enforcement.py         Simulated gateway for Safe Kill; its world model
 
 dashboard/                 React + TypeScript source; builds into src/apix/api/dashboard
-tests/                     126 tests, three ground-truth leakage guards
+tests/                     142 tests, three ground-truth leakage guards
 demo/                      Review runbook, paced demo runner, expected output
 docs/                      Literature review, design document, interim report,
                            source papers, diagram renderer, Word and
@@ -824,7 +905,7 @@ pip install -e ".[dev,live,ml]" && pre-commit install
 pytest && ruff check . && mypy && python docs/verify_claims.py
 ```
 
-**126 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 10 Vitest
+**142 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 10 Vitest
 tests under TypeScript strict mode (`cd dashboard && npm test`).
 
 ### Optional extras

@@ -94,8 +94,7 @@ flowchart TB
     classDef todo fill:#eeeeee,stroke:#999,color:#333,stroke-dasharray:4 3
     class GW,SPEC,TRAF,CODE,DNS,CICD,CONN,BUS,SINK,CORR,FEAT,CLI,GRAPH,BLAST done
     class RULES,ML,XAI done
-    class GATE,KILL,AUDIT,API,UI done
-    class ENF todo
+    class GATE,KILL,AUDIT,API,UI,ENF done
 ```
 
 **Layer boundaries are enforced by dependency direction.** Layer 1 knows nothing of
@@ -103,6 +102,24 @@ Layer 2; connectors emit `DiscoverySignal` and never classify. Layer 3 never rea
 back to a data source. This is what makes the simulated estate swappable for live
 sources without touching anything downstream, the single most important structural
 property of the system.
+
+#### As built: CI/CD enforcement (Phase 6)
+
+The GitHub Action box above is a composite action at the repository root that runs
+`apix enforce` on a pull request. It snapshots the API surface at the merge base and
+at the head (routes by static analysis, documentation from the OpenAPI files,
+ownership from CODEOWNERS or an explicit `x-owner`) and judges only the difference.
+Four rules apply: an added endpoint that is undocumented, an added endpoint that is
+unowned, an endpoint removed from the specification while its handler remains, which
+is exactly how the simulated estate's zombies were made, and, as a warning, a
+specification entry with no handler. Existing debt never fails a change, and no
+lifecycle claim is made, because a code change carries no traffic evidence.
+
+Untrusted input reaches this component, since a pull request's author chooses its
+route strings, so its output cannot be used to forge workflow commands: annotation
+data is escaped, and the readable report runs inside a `stop-commands` block with an
+unpredictable token. The action passes its inputs through environment variables
+rather than interpolating them into its script.
 
 ### 2.2 Class diagram: core domain model
 

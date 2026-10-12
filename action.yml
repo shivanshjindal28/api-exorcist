@@ -1,0 +1,56 @@
+name: API Exorcist enforcement
+description: >-
+  Fail a pull request that adds an undocumented or unowned API endpoint, or
+  removes an endpoint from the OpenAPI specification while leaving its handler
+  in the code. Only the change is judged; existing endpoints never fail a PR.
+author: Shivansh Jindal
+branding:
+  icon: shield
+  color: red
+
+inputs:
+  base:
+    description: >-
+      Ref the change merges into. Defaults to the pull request's base commit.
+    required: false
+    default: ""
+  config:
+    description: Policy file. Defaults to .apix.yml at the repository root.
+    required: false
+    default: ""
+  python-version:
+    description: Python used to run the check.
+    required: false
+    default: "3.12"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install API Exorcist
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: python -m pip install --quiet "${ACTION_PATH}[live]"
+
+    # Inputs reach the script only through environment variables. Writing
+    # ${{ inputs.base }} directly into `run:` would let a crafted value inject
+    # shell commands into the job, the classic Actions script-injection flaw.
+    - name: Judge this change's API surface
+      shell: bash
+      env:
+        APIX_BASE: ${{ inputs.base || github.event.pull_request.base.sha }}
+        APIX_CONFIG: ${{ inputs.config }}
+      run: |
+        if [ -z "$APIX_BASE" ]; then
+          echo "::error::No base ref. Run on pull_request, or set the 'base' input."
+          exit 2
+        fi
+        args=(enforce --base "$APIX_BASE" --format github)
+        if [ -n "$APIX_CONFIG" ]; then
+          args+=(--config "$APIX_CONFIG")
+        fi
+        apix "${args[@]}"

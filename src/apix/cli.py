@@ -11,6 +11,8 @@ genuinely different jobs and a user should be able to discover them with
     apix safekill              shadow, approval, canary and rollback (Phase 4)
     apix serve                 the REST API (Phase 5)
     apix token NAME            mint an API token for a named principal
+    apix enforce --base REF    fail a change that adds an undocumented,
+                               unowned or orphaned endpoint (Phase 6)
     apix benchmark             the comparative before/after evaluation
     apix train                 train the model and compare it against the rules
     apix dataset               build the labelled dataset for the ML engine
@@ -609,6 +611,28 @@ def _cmd_token(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_enforce(args: argparse.Namespace) -> int:
+    """Judge what this change does to the API surface (Phase 6)."""
+    from pathlib import Path
+
+    from apix.enforce import EnforceConfig, EnforceConfigError, EnforceError
+    from apix.enforce.report import as_github, as_json, as_text
+    from apix.enforce.runner import run_enforcement
+    from apix.extractors.semgrep_extractor import SemgrepExtractor
+
+    repo = Path(args.repo)
+    try:
+        config = EnforceConfig.load(repo, Path(args.config) if args.config else None)
+        result = run_enforcement(repo, args.base, SemgrepExtractor(), config)
+    except (EnforceConfigError, EnforceError) as exc:
+        print(f"apix enforce: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+
+    render = {"text": as_text, "json": as_json, "github": as_github}[args.format]
+    print(render(result))
+    return EXIT_OK if result.comparison.passed else EXIT_FINDINGS
+
+
 def _cmd_train(args: argparse.Namespace) -> int:
     """Train the ML classifier and compare it honestly against the rules."""
     from apix.engine.model import DEFAULT_MODEL_PATH
@@ -798,6 +822,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="viewer reads; approver also shadows, approves and re-scans",
     )
     tok.set_defaults(func=_cmd_token)
+
+    enf = sub.add_parser(
+        "enforce",
+        help="fail a change that adds an undocumented, unowned or orphaned endpoint",
+    )
+    enf.add_argument(
+        "--base", required=True, metavar="REF",
+        help="the branch the change will merge into, e.g. origin/main",
+    )
+    enf.add_argument("--repo", default=".", metavar="PATH", help="repository (default .)")
+    enf.add_argument(
+        "--config", metavar="PATH", help="policy file (default: .apix.yml in the repo)"
+    )
+    enf.add_argument(
+        "--format", choices=["text", "json", "github"], default="text",
+        help="github writes annotations and a run summary",
+    )
+    enf.set_defaults(func=_cmd_enforce)
 
     tr = sub.add_parser(
         "train", help="train the ML classifier and compare it against the rules"

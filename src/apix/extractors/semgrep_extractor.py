@@ -66,6 +66,30 @@ _MOUNT_MSG = re.compile(r"APIXMOUNT\|prefix=(?P<prefix>.*)$", re.S)
 _FLASK_METHODS = re.compile(r"methods\s*=\s*\[([^\]]*)\]")
 
 
+def _matched_source(res: dict[str, Any]) -> str:
+    """The source text of a match, read from the file rather than from Semgrep.
+
+    Semgrep's `extra.lines` used to carry the matched source. Current releases
+    return the literal string "requires login" there unless the CLI is signed
+    in to Semgrep's cloud platform, so reading Flask's `methods=[...]` from it
+    silently turned every Flask route into GET, and a DELETE beside a GET on
+    the same path collapsed into one endpoint. The match's line span is still
+    reported, so the text is read from the file on disk instead. `extra.lines`
+    remains only a fallback, and never when it is the redaction marker.
+    """
+    start = int((res.get("start") or {}).get("line", 0) or 0)
+    end = int((res.get("end") or {}).get("line", start) or start)
+    path = res.get("path")
+    if path and start > 0:
+        try:
+            text = Path(path).read_text(encoding="utf-8", errors="replace")
+            return "\n".join(text.splitlines()[start - 1 : max(end, start)])
+        except OSError:
+            pass
+    lines = str((res.get("extra") or {}).get("lines") or "")
+    return "" if lines.strip() == "requires login" else lines
+
+
 def _clean(literal: str) -> str:
     """Strip quotes from a matched string literal."""
     return literal.strip().strip("\"'").strip()
@@ -177,8 +201,7 @@ class SemgrepExtractor:
             # decorator name, so recover them from the matched source lines.
             methods = [method]
             if framework == "flask":
-                lines = res.get("extra", {}).get("lines", "") or ""
-                fm = _FLASK_METHODS.search(lines)
+                fm = _FLASK_METHODS.search(_matched_source(res))
                 if fm:
                     found = [
                         t.strip().strip("\"'").upper()

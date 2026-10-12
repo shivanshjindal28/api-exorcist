@@ -163,16 +163,38 @@ def test_ambiguous_mount_prefixes_are_not_guessed() -> None:
 
 
 def test_flask_methods_are_read_from_the_decorator() -> None:
+    """Methods come from the source file, because Semgrep now redacts it.
+
+    This test used to hand the parser a payload whose `extra.lines` held the
+    decorator. Real Semgrep returns "requires login" there unless signed in to
+    its cloud platform, so the test passed while every real Flask route was
+    extracted as GET. The payload below is shaped like real output: redacted
+    lines, and a line span pointing at an actual file.
+    """
+    import tempfile
+
     ex = SemgrepExtractor()
-    data = {
-        "results": [
-            _result(
-                "apix-py-flask-route", '"/submit"', "app.py", 7,
-                lines='@app.route("/submit", methods=["POST", "PUT"])',
-            )
-        ]
-    }
-    routes = ex._parse(data, ROOT)
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "app.py").write_text(
+            "from flask import Flask\napp = Flask(__name__)\n\n"
+            '@app.route("/submit", methods=["POST", "PUT"])\n'
+            "def submit():\n    return ''\n",
+            encoding="utf-8",
+        )
+        data = {
+            "results": [{
+                "check_id": "rules.apix-py-flask-route",
+                "path": str(root / "app.py"),
+                "start": {"line": 4},
+                "end": {"line": 6},
+                "extra": {
+                    "message": 'APIX|path="/submit"|func=submit',
+                    "lines": "requires login",
+                },
+            }]
+        }
+        routes = ex._parse(data, root)
     check(
         "test_flask_methods_are_read_from_the_decorator",
         sorted(r.method for r in routes) == ["POST", "PUT"],
@@ -231,6 +253,25 @@ def test_version_inferred_from_path() -> None:
     check("test_version_inferred_from_path", ok)
 
 
+def test_specs_under_docs_are_found() -> None:
+    """`docs/openapi.yaml` is a common home for a spec; it used to be skipped."""
+    import tempfile
+
+    from apix.live.repo import RepoScan
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        for folder in ("docs", "api"):
+            (root / folder).mkdir()
+            (root / folder / "openapi.yaml").write_text("openapi: 3.0.0\npaths: {}\n")
+        (root / "node_modules").mkdir()
+        (root / "node_modules" / "openapi.yaml").write_text("openapi: 3.0.0\n")
+        found = sorted(RepoScan.from_path(root).rel(p) for p in RepoScan.from_path(root).spec_files)
+    check("test_specs_under_docs_are_found",
+          found == ["api/openapi.yaml", "docs/openapi.yaml"],
+          f"found {found}; docs/ must be searched, node_modules/ must not")
+
+
 def main() -> None:
     print("Live-scan tests\n")
     for fn in [
@@ -244,6 +285,7 @@ def main() -> None:
         test_repo_scan_declares_only_three_sources,
         test_spec_auth_none_only_when_explicit,
         test_version_inferred_from_path,
+        test_specs_under_docs_are_found,
     ]:
         with contextlib.suppress(AssertionError):
             fn()

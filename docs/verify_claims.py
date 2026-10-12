@@ -270,6 +270,10 @@ CAPABILITIES: dict[str, tuple[str, list[str]]] = {
         "src/apix/api/dashboard/index.html",
         [r"\bdashboard\b"],
     ),
+    "CI/CD enforcement": (
+        "src/apix/enforce/__init__.py",
+        [r"CI/CD enforcement"],
+    ),
 }
 
 _NOT_BUILT = ("⬜", "🔵")

@@ -16,8 +16,9 @@ apix safekill --approve-as NAME   # shadow, approval, canary, rollback
 apix safekill --evaluate          # Safe Kill vs the gate alone, shadow sweep
 apix serve                        # REST API (needs .[api]); mints a session token
 apix token NAME --role approver   # mint an API token; stores only its hash
+apix enforce --base origin/main   # judge a change's API surface (Phase 6)
 cd dashboard && npm ci && npm test && npm run build   # dashboard, 10 Vitest tests
-pytest                            # 126 tests
+pytest                            # 142 tests
 ruff check . && mypy              # lint + strict types
 
 python docs/render_diagrams.py    # mermaid -> png (run before the two below)
@@ -148,6 +149,7 @@ src/apix/
   graph/           dependency graph, blast radius, removal gate
   safekill/        shadow, approval, canary, rollback, hash-chained audit
   api/             REST API: hashed bearer tokens, roles, approval over HTTP
+  enforce/         CI enforcement; action.yml at the repo root runs it on PRs
   api/dashboard/   the BUILT dashboard (committed; CI checks it is current)
   evaluation/      metrics, the comparative benchmark, Safe Kill evaluation
   dataset/         labelled dataset for the ML engine

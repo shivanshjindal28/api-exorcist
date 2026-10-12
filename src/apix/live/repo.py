@@ -38,6 +38,12 @@ _SKIP_DIRS = {
     "vendor", "third_party", "examples", "example", "docs", "doc",
 }
 
+#: Spec discovery skips less. `docs/` and `doc/` hold example code that must
+#: not count as routes, but they are also where an OpenAPI document most often
+#: lives. Searching specs with _SKIP_DIRS made `docs/openapi.yaml` invisible, so
+#: every endpoint in such a repository looked undocumented.
+_SPEC_SKIP_DIRS = _SKIP_DIRS - {"docs", "doc"}
+
 _SPEC_NAMES = re.compile(
     r"(openapi|swagger)[.\-_]?.*\.(json|ya?ml)$|"
     r".*\.(openapi|swagger)\.(json|ya?ml)$",
@@ -182,15 +188,15 @@ class RepoScan:
                 if p.suffix.lower() in (".yml", ".yaml")
             )
 
-        for p in self._walk():
+        for p in self._walk(_SPEC_SKIP_DIRS):
             if _SPEC_NAMES.search(p.name):
                 self.spec_files.append(p)
 
-    def _walk(self) -> Iterator[Path]:
+    def _walk(self, skip: set[str] = _SKIP_DIRS) -> Iterator[Path]:
         for p in self.root.rglob("*"):
             if not p.is_file():
                 continue
-            if any(part in _SKIP_DIRS for part in p.relative_to(self.root).parts):
+            if any(part in skip for part in p.relative_to(self.root).parts):
                 continue
             yield p
 
