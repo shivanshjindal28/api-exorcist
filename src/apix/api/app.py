@@ -22,6 +22,8 @@ The REST API: FastAPI over a Workspace.
     POST /v1/scans/upload                  approver: scan an uploaded project folder
     GET  /v1/scans                         every scan, newest first
     GET  /v1/scans/{id}                    one scan: progress while running, then its report
+    GET  /v1/scans/{id}/audit              that scan's own hash-chained audit log
+    POST /v1/scans/{id}/review             approver: record a decision about an endpoint
     POST /v1/safekill/shadow               approver: gate + shadow window
     POST /v1/safekill/decision             approver: approve or decline
 
@@ -69,7 +71,14 @@ from apix.api.workspace import (
 )
 from apix.engine.explain import audit_entry
 from apix.safekill.controller import NotAwaitingApproval
-from apix.scanning import JobManager, ScanRefused, UploadRejected, save_files
+from apix.scanning import (
+    DECISIONS,
+    JobManager,
+    NotReviewable,
+    ScanRefused,
+    UploadRejected,
+    save_files,
+)
 from apix.scanning.upload import MAX_FILES, MAX_TOTAL_BYTES
 
 _bearer = HTTPBearer(auto_error=False)
@@ -93,6 +102,13 @@ class ShadowRequest(BaseModel):
 class GithubScanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     url: str = Field(min_length=1, max_length=500)
+
+
+class ReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    endpoint_id: str = Field(min_length=1, max_length=512)
+    decision: str = Field(pattern="^(" + "|".join(DECISIONS) + ")$")
+    note: str = Field(default="", max_length=1000)
 
 
 class DecisionRequest(BaseModel):
@@ -455,6 +471,34 @@ def create_app(workspace: Workspace, tokens: TokenStore, *, docs: bool = True,
         if job is None:
             raise HTTPException(404, f"no scan {job_id}")
         return job
+
+    @app.get("/v1/scans/{job_id}/audit")
+    def scan_audit(
+        who: Viewer,
+        job_id: Annotated[str, PathParam(pattern="^[0-9a-f]{12}$")],
+    ) -> dict[str, Any]:
+        page = scans.audit(job_id)
+        if page is None:
+            raise HTTPException(404, f"no scan {job_id}")
+        return page
+
+    @app.post("/v1/scans/{job_id}/review")
+    def scan_review(
+        body: ReviewRequest,
+        who: Approver,
+        job_id: Annotated[str, PathParam(pattern="^[0-9a-f]{12}$")],
+    ) -> dict[str, Any]:
+        try:
+            # The reviewer is the token's principal, never a name in the body.
+            reviews = scans.review(job_id, body.endpoint_id, body.decision,
+                                   body.note, who.name)
+        except NotReviewable as exc:
+            raise HTTPException(409 if "finished" in str(exc) else 404, str(exc)) from None
+        metrics.action("scan_review", body.decision)
+        log.info("scan.review", extra={"fields": {
+            "job": job_id, "endpoint_id": body.endpoint_id,
+            "decision": body.decision, "principal": who.name}})
+        return {"reviews": reviews}
 
     # Mounted last, so every /v1 route above takes precedence over it.
     if (DASHBOARD_DIR / "index.html").exists():

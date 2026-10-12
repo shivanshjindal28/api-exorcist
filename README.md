@@ -114,7 +114,7 @@ The command line is still there for scripting and CI (see the
 | Trained model with SHAP attribution, used as a veto over removals | ✅ |
 | Safe Kill: rule-of-three shadow window, named approval, 5/25/100 canary | ✅ |
 | Automatic rollback on breach, hash-chained append-only audit log | ✅ |
-| 201 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
+| 203 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
 | REST API: hashed bearer tokens, viewer and approver roles, approval over HTTP | ✅ |
 | Dashboard: React + TypeScript, same origin, strict CSP | ✅ |
 | CI/CD enforcement: undocumented, unowned and zombie-in-the-making endpoints | ✅ |
@@ -529,7 +529,9 @@ export APIX_API_TOKENS="alice:approver:<sha256>;bob:viewer:<sha256>"
 | `POST /v1/demo/rescan` | approver | re-run discovery on the demo bank |
 | `GET /v1/capabilities` | viewer | which scan inputs work on this machine, and why not |
 | `POST /v1/scans/upload`, `POST /v1/scans/github` | approver | start a scan of an uploaded folder or a GitHub link |
-| `GET /v1/scans`, `GET /v1/scans/{id}` | viewer | every scan; one scan's progress, then its report |
+| `GET /v1/scans`, `GET /v1/scans/{id}` | viewer | every scan; one scan's progress, then its report and decisions |
+| `GET /v1/scans/{id}/audit` | viewer | that scan's hash-chained audit log |
+| `POST /v1/scans/{id}/review` | approver | record a decision about an endpoint the scan found |
 | `GET /metrics` | viewer | Prometheus text format: requests, latency, auth failures, estate gauges |
 
 Four decisions, each made for a security reason:
@@ -673,6 +675,24 @@ and zombie are all defined by *use*, and a project's files cannot show use; the
 report says this rather than guessing. The **Demo bank** pages show the full
 classification and Safe Kill on the simulated estate, where usage data exists.
 
+### Every scan has the same five views
+
+A finished scan, and the demo bank, open on the same tabs. On a real project
+each shows what can honestly be shown without traffic data:
+
+| View | On a project scan |
+|---|---|
+| Overview | Headline counts, what was checked and why, findings across endpoints, review progress |
+| Endpoints | List and detail: where each endpoint is defined, which sources saw it (and which were never consulted), its findings, its decision |
+| Safe Kill | Which of removal's four prerequisites the scan has (the inventory) and lacks (usage data, a dependency graph, gateway control), then a **review queue**: keep, needs documentation, needs an owner, or investigate for removal, recorded under the reviewer's name |
+| Audit log | The scan's own hash-chained log: who started it, a SHA-256 fingerprint of its report, every decision since; verifiable in one click |
+| Benchmark | What a documentation-only inventory would have listed against what the scan found. Coverage, not accuracy: a real project has no answer key, and the page says so |
+
+Nothing is removed from a project scan. Removing an endpoint on the strength of
+its code alone is how outages happen; the code cannot show the month-end batch job
+that still calls it. **Run the demo** on New scan opens the simulated bank, where
+traffic and a gateway exist, with the full classification and Safe Kill.
+
 Reports are kept in `data/scans/` and listed under **Scan results**. Nothing from a
 scanned project is ever run: routes are read by static analysis and
 specifications are parsed as data. Uploaded file names that could point outside
@@ -686,9 +706,12 @@ the upload (`../../x`, absolute paths, drive letters) are refused.
 one-time token it mints is handed to the browser in the URL *fragment*
 (`#signin=...`), which browsers never send to a server or put in a Referer
 header; the page reads it and erases it from the address bar and history at once.
-With `--no-browser`, or with configured tokens, sign in by pasting a token.
+With `--no-browser`, or with configured tokens, sign in by pasting a token. If
+port 8600 is taken (an earlier `apix serve` still running, say), it uses the next
+free one and says so.
 
-Besides the scanning pages above, the **Demo bank** section holds:
+The demo bank opens from **Run the demo** on New scan, as a scan with the same
+five views:
 
 | View | What it shows |
 |---|---|
@@ -719,7 +742,7 @@ Security, in the browser as on the server:
 
 ```bash
 cd dashboard && npm ci && npm run dev      # hot-reload against a running `apix serve`
-npm test && npm run build                  # 19 Vitest tests; build into src/apix/api/dashboard
+npm test && npm run build                  # 23 Vitest tests; build into src/apix/api/dashboard
 ```
 
 ---
@@ -1066,7 +1089,7 @@ src/apix/
 dashboard/                 React + TypeScript source; builds into src/apix/api/dashboard
 Dockerfile                 The deployable image: API and dashboard, non-root, read-only
 action.yml                 The GitHub Action; action-constraints.txt pins what it installs
-tests/                     201 tests, three ground-truth leakage guards
+tests/                     203 tests, three ground-truth leakage guards
 demo/                      Review runbook, paced demo runner, expected output
 docs/                      Literature review, design document, interim report,
                            source papers, diagram renderer, Word and
@@ -1090,7 +1113,7 @@ pip install -e ".[dev,live,ml]" && pre-commit install
 pytest && ruff check . && mypy && python docs/verify_claims.py
 ```
 
-**201 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 19 Vitest
+**203 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 23 Vitest
 tests under TypeScript strict mode (`cd dashboard && npm test`).
 
 ### Optional extras

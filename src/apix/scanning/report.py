@@ -175,6 +175,10 @@ def repository_report(
         "checks": checks,
         "endpoints": endpoints,
         "repository_findings": universal,
+        "sources": {
+            "consulted": sorted(s.value for s in result.consulted),
+            "unavailable": sorted(s.value for s in result.unavailable),
+        },
         "lifecycle": {
             "available": False,
             "why": "No usage data: a project's files cannot show whether an endpoint "

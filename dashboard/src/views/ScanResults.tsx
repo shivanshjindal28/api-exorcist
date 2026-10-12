@@ -27,19 +27,14 @@ export function ScanResults() {
   if (loading && !data) return <Loading what="scans" />;
   if (!data) return null;
 
-  if (data.length === 0) {
-    return (
-      <Card title="No scans yet">
-        <p>
-          Start one from <a href="#scan">New scan</a>: upload a project folder or paste a
-          GitHub link.
-        </p>
-      </Card>
-    );
-  }
-
   return (
     <Card title={`Scans (${data.length})`}>
+      {data.length === 0 && (
+        <p>
+          No scans yet. Start one from <a href="#scan">New scan</a>: upload a project folder
+          or paste a GitHub link.
+        </p>
+      )}
       <div className="table-wrap">
         <table>
           <thead>
@@ -54,12 +49,25 @@ export function ScanResults() {
             </tr>
           </thead>
           <tbody>
+            <tr className="demo-row">
+              <td>
+                <a href="#results/demo/overview">Demo bank</a>
+              </td>
+              <td>Simulated</td>
+              <td>
+                <span className="scan-status scan-demo">always available</span>
+              </td>
+              <td>25</td>
+              <td colSpan={3} className="small muted">
+                All six sources, with traffic: the full engine, on a known answer key
+              </td>
+            </tr>
             {data.map((s) => {
               const n = (label: string) => s.summary?.find((x) => x.label === label)?.value ?? "";
               return (
                 <tr key={s.id}>
                   <td>
-                    <a href={`#results/${s.id}`}>
+                    <a href={`#results/${s.id}/overview`}>
                       <code>{s.target}</code>
                     </a>
                   </td>

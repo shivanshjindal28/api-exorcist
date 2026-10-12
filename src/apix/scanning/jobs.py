@@ -13,6 +13,7 @@ queue a new scan is refused rather than piling up work nobody is watching.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -29,12 +30,28 @@ from urllib.parse import urlsplit
 
 from apix.live.repo import RepoError
 from apix.live.scan import scan_repository
+from apix.safekill.audit import AuditLog
 from apix.scanning.report import OK, PARTIAL, check, repository_report
 from apix.scanning.upload import SavedUpload
 
 log = logging.getLogger("apix.scans")
 
 MAX_WAITING = 6
+
+#: What a person can decide about an endpoint found by a scan. A project scan
+#: has no traffic and no gateway, so removal itself is out of reach; what is
+#: in reach is triage, recorded under the reviewer's name in the scan's audit log.
+DECISIONS: dict[str, str] = {
+    "keep": "Keep: in use and intended",
+    "document": "Needs documentation",
+    "assign-owner": "Needs an owner",
+    "investigate": "Investigate for removal",
+}
+SCAN_SUBJECT = "(scan)"
+
+
+class NotReviewable(ValueError):
+    """The scan or endpoint cannot take a review decision; the message says why."""
 _SLUG = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9._-]{1,100}$")
 
 
@@ -113,6 +130,7 @@ class JobManager:
         self._jobs: dict[str, ScanJob] = {}
         self._lock = threading.Lock()
         self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="apix-scan")
+        self._audits: dict[str, AuditLog] = {}
         self._load()
 
     # -- history -----------------------------------------------------------
@@ -145,7 +163,73 @@ class JobManager:
     def get(self, job_id: str) -> dict[str, Any] | None:
         with self._lock:
             job = self._jobs.get(job_id)
-            return job.to_dict() if job else None
+            if job is None:
+                return None
+            d = job.to_dict()
+        d["reviews"] = self.reviews(job_id)
+        return d
+
+    # -- the scan's own audit log: who started it, what it found, decisions ----
+    def audit_log(self, job_id: str) -> AuditLog:
+        with self._lock:
+            log = self._audits.get(job_id)
+            if log is None:
+                path = self.store / f"{job_id}.audit.jsonl" if self.store else None
+                log = AuditLog(path=path)
+                self._audits[job_id] = log
+            return log
+
+    def _record(self, job_id: str, to_state: str, reason: str, actor: str,
+                evidence: dict[str, Any] | None = None, *,
+                subject: str = SCAN_SUBJECT, from_state: str | None = None) -> None:
+        self.audit_log(job_id).append(
+            at=_now(), endpoint_id=subject, from_state=from_state, to_state=to_state,
+            reason=reason, actor=actor, evidence=evidence or {},
+        )
+
+    def audit(self, job_id: str) -> dict[str, Any] | None:
+        if job_id not in self._jobs:
+            return None
+        log = self.audit_log(job_id)
+        check = log.verify()
+        return {
+            "head": log.head,
+            "chain": {"ok": check.ok, "entries": check.entries,
+                      "broken_at": check.broken_at, "problem": check.problem},
+            "entries": [e.to_dict() for e in log.entries],
+        }
+
+    def reviews(self, job_id: str) -> dict[str, dict[str, Any]]:
+        """The latest decision per endpoint, read back from the audit log."""
+        if job_id not in self._jobs:
+            return {}
+        out: dict[str, dict[str, Any]] = {}
+        for e in self.audit_log(job_id).entries:
+            if e.endpoint_id != SCAN_SUBJECT and e.to_state in DECISIONS:
+                out[e.endpoint_id] = {
+                    "decision": e.to_state, "label": DECISIONS[e.to_state],
+                    "by": e.actor, "at": e.at, "note": e.evidence.get("note", ""),
+                }
+        return out
+
+    def review(self, job_id: str, endpoint_id: str, decision: str, note: str,
+               who: str) -> dict[str, dict[str, Any]]:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                raise NotReviewable(f"no scan {job_id}")
+            if job.status != "done" or job.report is None:
+                raise NotReviewable("only a finished scan can be reviewed")
+            known = {e["id"] for e in job.report.get("endpoints", [])}
+        if endpoint_id not in known:
+            raise NotReviewable(f"{endpoint_id!r} is not an endpoint this scan found")
+        if decision not in DECISIONS:
+            raise NotReviewable(f"unknown decision {decision!r}")
+        previous = self.reviews(job_id).get(endpoint_id, {}).get("decision")
+        self._record(job_id, decision, DECISIONS[decision], who,
+                     {"note": note} if note else {}, subject=endpoint_id,
+                     from_state=previous)
+        return self.reviews(job_id)
 
     # -- starting scans ---------------------------------------------------------
     def _new(self, kind: str, target: str, who: str) -> ScanJob:
@@ -159,7 +243,9 @@ class JobManager:
                           requested_by=who)
             job.say("Queued")
             self._jobs[job.id] = job
-            return job
+        self._record(job.id, "STARTED", f"{kind} scan of {target}", who,
+                     {"kind": kind, "target": target})
+        return job
 
     def submit_github(self, raw: str, who: str) -> dict[str, Any]:
         slug = parse_github(raw)
@@ -203,6 +289,18 @@ class JobManager:
                 job.duration_s = round(time.monotonic() - started, 1)
                 snapshot = job
             self._save(snapshot)
+            if job.status == "done" and job.report is not None:
+                # The report's fingerprint goes into the chain, so a report
+                # edited on disk later no longer matches what was recorded.
+                digest = hashlib.sha256(json.dumps(
+                    job.report, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+                self._record(job.id, "FINISHED",
+                             f"{len(job.report.get('endpoints', []))} endpoint(s) found",
+                             "apix-scanner",
+                             {"report_sha256": digest, "duration_s": job.duration_s})
+            else:
+                self._record(job.id, "FAILED", job.error or "the scan did not finish",
+                             "apix-scanner")
             log.info("scan.finished", extra={"fields": {
                 "job": job.id, "kind": job.kind, "status": job.status,
                 "duration_s": job.duration_s}})

@@ -7,7 +7,7 @@ import { SessionContext } from "../common";
 import { selectFiles } from "../folder";
 import type { Capabilities, Principal, ScanJob } from "../types";
 import { NewScan } from "../views/NewScan";
-import { ScanReport } from "../views/ScanReport";
+import { ScanView } from "../views/scan/ScanView";
 
 afterEach(() => {
   cleanup();
@@ -39,6 +39,8 @@ describe("routing and sign-in", () => {
   it("opens a scan's report from its link, and New scan by default", () => {
     expect(route("#results/abc123def456")).toEqual({ view: "results", param: "abc123def456" });
     expect(route("#nonsense")).toEqual({ view: "scan", param: null });
+    // Links from before every scan had the five views still reach the demo.
+    expect(route("#safekill")).toEqual({ view: "results", param: "demo/safekill" });
     expect(route("")).toEqual({ view: "scan", param: null });
   });
 
@@ -90,7 +92,7 @@ describe("New scan", () => {
     await user.type(screen.getByLabelText("Repository link"), "https://github.com/a/b");
     await user.click(screen.getByRole("button", { name: "Scan repository" }));
     expect(scanGithub).toHaveBeenCalledWith("https://github.com/a/b");
-    await waitFor(() => expect(window.location.hash).toBe("#results/0123456789ab"));
+    await waitFor(() => expect(window.location.hash).toBe("#results/0123456789ab/overview"));
   });
 
   it("lets a viewer look but not start a scan", async () => {
@@ -122,26 +124,28 @@ const DONE: ScanJob = {
       {
         id: "DELETE /v1/orders/{id}", method: "DELETE", path: "/v1/orders/{id}", file: "api.py",
         line: 9, framework: "flask", owner: null, last_change_days: null, documented: false,
-        deprecated_in_spec: false, seen_by: ["code"], flags: [], risk: 2,
+        deprecated_in_spec: false, seen_by: ["CODE"], flags: [], risk: 2,
         findings: ["handler exists in code but the endpoint is not documented"],
       },
     ],
     repository_findings: [],
+    // Spelled as real reports spell them: upper case, as apix.connectors.base.Source.
+    sources: { consulted: ["CICD", "CODE", "OPENAPI"], unavailable: ["DNS", "GATEWAY", "TRAFFIC"] },
     lifecycle: { available: false, why: "No usage data." },
     details: { commit: null, specifications: [], mount_prefixes: [] },
   },
 };
 
-function renderReport(job: ScanJob) {
+function renderReport(job: ScanJob, tab = "overview", extra: Partial<ApiClient> = {}) {
   render(
     <SessionContext.Provider
       value={{
-        api: { scan: vi.fn(async () => job) } as unknown as ApiClient,
+        api: { scan: vi.fn(async () => job), ...extra } as unknown as ApiClient,
         principal: { name: "ann", role: "approver" },
         signOut: vi.fn(),
       }}
     >
-      <ScanReport id={job.id} />
+      <ScanView param={`${job.id}/${tab}`} />
     </SessionContext.Provider>,
   );
 }
@@ -155,11 +159,43 @@ describe("Scan report", () => {
     expect(screen.getByText(/Why no endpoint is called a zombie/)).toBeTruthy();
   });
 
-  it("shows an endpoint's findings when its row is opened", async () => {
-    const user = userEvent.setup();
+  it("has the same five views as the demo bank", async () => {
     renderReport(DONE);
-    await user.click(await screen.findByRole("button", { name: "Details for DELETE /v1/orders/{id}" }));
-    expect(screen.getByText("handler exists in code but the endpoint is not documented")).toBeTruthy();
+    const tabs = await screen.findByRole("navigation", { name: "Scan views" });
+    expect(Array.from(tabs.querySelectorAll("a")).map((a) => a.textContent)).toEqual([
+      "Overview", "Endpoints", "Safe Kill", "Audit log", "Benchmark",
+    ]);
+  });
+
+  it("shows an endpoint's sources and findings on the Endpoints view", async () => {
+    renderReport(DONE, "endpoints");
+    expect(await screen.findByText("handler exists in code but the endpoint is not documented")).toBeTruthy();
+    expect(screen.getByTitle("Traffic: not consulted")).toBeTruthy();
+    expect(screen.getByTitle("Code: saw it")).toBeTruthy();
+  });
+
+  it("records a review decision, without sending a reviewer name", async () => {
+    const user = userEvent.setup();
+    const review = vi.fn(async () => ({
+      reviews: { "DELETE /v1/orders/{id}": { decision: "investigate", label: "Investigate for removal", by: "ann", at: "2026-10-12T10:00:00+00:00", note: "" } },
+    }));
+    renderReport(DONE, "endpoints", { review } as Partial<ApiClient>);
+    await user.click(await screen.findByRole("button", { name: "Investigate for removal: DELETE /v1/orders/{id}" }));
+    expect(review).toHaveBeenCalledWith("0123456789ab", "DELETE /v1/orders/{id}", "investigate", "");
+    expect((await screen.findAllByText("Investigate for removal")).length).toBeGreaterThan(0);
+  });
+
+  it("says on the Safe Kill view what removal still needs", async () => {
+    renderReport(DONE, "safekill");
+    expect(await screen.findByText(/Why nothing is removed/)).toBeTruthy();
+    expect(screen.getByText("Usage data, to classify an endpoint as a zombie")).toBeTruthy();
+    expect(screen.getAllByText("missing").length).toBe(3);
+  });
+
+  it("benchmarks against a documentation-only inventory, and says when there is none", async () => {
+    renderReport(DONE, "benchmark");
+    expect(await screen.findByText(/publishes no API specification/)).toBeTruthy();
+    expect(screen.getByText(/coverage, not accuracy/)).toBeTruthy();
   });
 
   it("explains a failed scan instead of showing an empty report", async () => {

@@ -176,6 +176,13 @@ def test_an_uploaded_folder_is_scanned_and_the_report_explains_itself() -> None:
     if routes["status"] == "failed":                  # CI: no Semgrep
         assert "Semgrep" in routes["detail"]
     assert report["lifecycle"]["available"] is False
+    # The dashboard matches these exact spellings (views/scan/shared.tsx).
+    # Its first version assumed lower case, and so did its tests, so every
+    # source showed as "not consulted" on a real report.
+    assert report["sources"] == {"consulted": ["CICD", "CODE", "OPENAPI"],
+                                 "unavailable": ["DNS", "GATEWAY", "TRAFFIC"]}
+    assert all(set(e["seen_by"]) <= {"CICD", "CODE", "OPENAPI"}
+               for e in report["endpoints"])
 
     ids = {e["id"] for e in report["endpoints"]}
     assert {"GET /v1/orders", "DELETE /v1/orders/{id}"} <= ids
@@ -250,3 +257,57 @@ def test_finished_reports_survive_a_restart() -> None:
         finally:
             reloaded.shutdown()
     assert again is not None and again["status"] == "done" and again["report"]["endpoints"]
+
+
+def test_each_scan_has_its_own_audit_chain() -> None:
+    with _client() as (client, approver, viewer, _):
+        job_id = client.post("/v1/scans/upload", headers=approver, files=[
+            ("files", ("p/docs/openapi.yaml", SPEC, "text/yaml"))]).json()["id"]
+        _wait(client, viewer, job_id)
+        page = client.get(f"/v1/scans/{job_id}/audit", headers=viewer).json()
+    states = [(e["to_state"], e["actor"]) for e in page["entries"]]
+    assert states == [("STARTED", "ann"), ("FINISHED", "apix-scanner")]
+    assert len(page["entries"][1]["evidence"]["report_sha256"]) == 64
+    assert page["chain"]["ok"] is True
+
+
+def test_review_decisions_are_recorded_under_the_token_name() -> None:
+    target = "DELETE /v1/orders/{id}"
+    with _client() as (client, approver, viewer, tmp):
+        job_id = client.post("/v1/scans/upload", headers=approver, files=[
+            ("files", ("p/docs/openapi.yaml", SPEC, "text/yaml"))]).json()["id"]
+        _wait(client, viewer, job_id)
+        url = f"/v1/scans/{job_id}/review"
+
+        first = client.post(url, headers=approver, json={
+            "endpoint_id": target, "decision": "investigate", "note": "looks unused"})
+        second = client.post(url, headers=approver, json={
+            "endpoint_id": target, "decision": "keep"})
+        by_viewer = client.post(url, headers=viewer, json={
+            "endpoint_id": target, "decision": "keep"})
+        forged = client.post(url, headers=approver, json={
+            "endpoint_id": target, "decision": "keep", "reviewer": "someone else"})
+        unknown = client.post(url, headers=approver, json={
+            "endpoint_id": "GET /nope", "decision": "keep"})
+        bad = client.post(url, headers=approver, json={
+            "endpoint_id": target, "decision": "delete-it-now"})
+
+        job = client.get(f"/v1/scans/{job_id}", headers=viewer).json()
+        page = client.get(f"/v1/scans/{job_id}/audit", headers=viewer).json()
+        reloaded = JobManager(store=tmp / "scans")
+        try:
+            after_restart = reloaded.reviews(job_id)
+        finally:
+            reloaded.shutdown()
+
+    assert first.status_code == second.status_code == 200
+    assert (by_viewer.status_code, forged.status_code, unknown.status_code,
+            bad.status_code) == (403, 422, 404, 422)
+    assert job["reviews"][target]["decision"] == "keep"
+    assert job["reviews"][target]["by"] == "ann"
+    transitions = [(e["from_state"], e["to_state"]) for e in page["entries"]
+                   if e["endpoint_id"] == target]
+    assert transitions == [(None, "investigate"), ("investigate", "keep")]
+    assert page["entries"][2]["evidence"] == {"note": "looks unused"}
+    assert page["chain"]["ok"] and page["chain"]["entries"] == 4
+    assert after_restart[target]["decision"] == "keep"

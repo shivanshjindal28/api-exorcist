@@ -14,8 +14,11 @@ import type {
   ChainCheck,
   InventoryRecord,
   KillOutcome,
+  Decision,
   Principal,
+  Review,
   SafeKillState,
+  ScanAudit,
   ScanJob,
   Summary,
   Verdict,
@@ -149,6 +152,25 @@ export class ApiClient {
 
   scan(id: string): Promise<ScanJob> {
     return this.request("GET", `/v1/scans/${encodeURIComponent(id)}`);
+  }
+
+  scanAudit(id: string): Promise<ScanAudit> {
+    return this.request("GET", `/v1/scans/${encodeURIComponent(id)}/audit`);
+  }
+
+  review(
+    id: string,
+    endpointId: string,
+    decision: Decision,
+    note = "",
+  ): Promise<{ reviews: Record<string, Review> }> {
+    // As with Safe Kill decisions: no reviewer field. The server records the
+    // token's principal.
+    return this.request("POST", `/v1/scans/${encodeURIComponent(id)}/review`, {
+      endpoint_id: endpointId,
+      decision,
+      note,
+    });
   }
 
   scanGithub(url: string): Promise<ScanJob> {

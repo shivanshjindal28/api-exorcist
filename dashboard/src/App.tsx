@@ -3,41 +3,34 @@ import type { ReactNode } from "react";
 import { ApiClient, session } from "./api";
 import { SessionContext } from "./common";
 import type { Principal } from "./types";
-import { Audit } from "./views/Audit";
-import { Benchmark } from "./views/Benchmark";
-import { Endpoints } from "./views/Endpoints";
 import { Login } from "./views/Login";
 import { NewScan } from "./views/NewScan";
-import { Overview } from "./views/Overview";
-import { SafeKill } from "./views/SafeKill";
-import { ScanReport } from "./views/ScanReport";
 import { ScanResults } from "./views/ScanResults";
+import { ScanView } from "./views/scan/ScanView";
 
 interface View {
   title: string;
-  group: "scan" | "demo";
   render: (param: string | null) => ReactNode;
 }
 
 const VIEWS: Record<string, View> = {
-  scan: { title: "New scan", group: "scan", render: () => <NewScan /> },
+  scan: { title: "New scan", render: () => <NewScan /> },
   results: {
     title: "Scan results",
-    group: "scan",
-    render: (id) => (id ? <ScanReport key={id} id={id} /> : <ScanResults />),
+    // A scan id (or "demo") opens that scan's five views; without one, the list.
+    render: (param) => (param ? <ScanView key={param.split("/")[0]} param={param} /> : <ScanResults />),
   },
-  overview: { title: "Overview", group: "demo", render: () => <Overview /> },
-  endpoints: { title: "Endpoints", group: "demo", render: () => <Endpoints /> },
-  safekill: { title: "Safe Kill", group: "demo", render: () => <SafeKill /> },
-  audit: { title: "Audit log", group: "demo", render: () => <Audit /> },
-  benchmark: { title: "Benchmark", group: "demo", render: () => <Benchmark /> },
 };
 
 const HOME = "scan";
 
+/** Where the demo bank's views used to live, before every scan had them. */
+const LEGACY_DEMO = new Set(["overview", "endpoints", "safekill", "audit", "benchmark"]);
+
 export function route(hash: string): { view: string; param: string | null } {
   const [view, ...rest] = hash.replace(/^#\/?/, "").split("/");
   if (view && view in VIEWS) return { view, param: rest.length ? rest.join("/") : null };
+  if (view && LEGACY_DEMO.has(view)) return { view: "results", param: `demo/${view}` };
   return { view: HOME, param: null };
 }
 
@@ -106,23 +99,17 @@ export function App() {
   }
 
   const view = VIEWS[where.view] ?? VIEWS[HOME]!;
-  const link = (k: string) => (
-    <a key={k} href={`#${k}`} aria-current={k === where.view ? "page" : undefined}>
-      {VIEWS[k]!.title}
-    </a>
-  );
-  const keys = Object.keys(VIEWS);
 
   return (
     <SessionContext.Provider value={{ api, principal, signOut }}>
       <header className="topbar">
         <span className="brand">API Exorcist</span>
         <nav aria-label="Sections">
-          {keys.filter((k) => VIEWS[k]!.group === "scan").map(link)}
-          <span className="nav-group" aria-hidden="true">
-            Demo bank
-          </span>
-          {keys.filter((k) => VIEWS[k]!.group === "demo").map(link)}
+          {Object.keys(VIEWS).map((k) => (
+            <a key={k} href={`#${k}`} aria-current={k === where.view ? "page" : undefined}>
+              {VIEWS[k]!.title}
+            </a>
+          ))}
         </nav>
         <span className="who">
           {principal.name} <span className="role">{principal.role}</span>
@@ -131,14 +118,8 @@ export function App() {
           </button>
         </span>
       </header>
-      {view.group === "demo" && (
-        <div className="simulated" role="note">
-          Demo bank: a simulated estate behind a simulated gateway, used to show the full
-          classification and Safe Kill. Nothing real is touched.
-        </div>
-      )}
       <main className="content">
-        <h1>{view.group === "demo" ? `Demo bank: ${view.title}` : view.title}</h1>
+        <h1>{view.title}</h1>
         {view.render(where.param)}
       </main>
     </SessionContext.Provider>

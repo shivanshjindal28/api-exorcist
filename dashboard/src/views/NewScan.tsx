@@ -5,10 +5,11 @@ import { ErrorBox, canApprove, useLoad, useSession } from "../common";
 import { megabytes, pathOf, selectFiles } from "../folder";
 import type { Selection } from "../folder";
 import type { InputOption } from "../types";
+import { DemoButton } from "./scan/ScanView";
 
 /** Where to go once a scan has started: its live progress page. */
 function openScan(id: string) {
-  window.location.hash = `#results/${id}`;
+  window.location.hash = `#results/${id}/overview`;
 }
 
 export function NewScan() {
@@ -35,6 +36,17 @@ export function NewScan() {
         <GithubOption option={caps.data?.github} disabled={!mayScan} />
         <WebsiteOption option={caps.data?.website} />
       </div>
+      <section className="card demo-card" aria-labelledby="opt-demo">
+        <div>
+          <h2 id="opt-demo">Not sure what to expect? Run the demo</h2>
+          <p className="muted small">
+            A simulated bank with all six evidence sources, traffic included, so every view
+            is complete: zombie classification, the removal gate, Safe Kill with approval
+            and rollback, the audit log and the accuracy benchmark. It opens like any scan.
+          </p>
+        </div>
+        <DemoButton />
+      </section>
     </div>
   );
 }

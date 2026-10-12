@@ -204,6 +204,8 @@ export interface ScanReport {
   checks: ScanCheck[];
   endpoints: ScanEndpoint[];
   repository_findings: string[];
+  /** Absent from reports saved before sources were recorded. */
+  sources?: { consulted: string[]; unavailable: string[] };
   lifecycle: { available: boolean; why: string };
   details: { commit: string | null; specifications: string[]; mount_prefixes: string[] };
 }
@@ -225,6 +227,23 @@ export interface ScanJob {
   progress: { at: string; message: string }[];
   summary?: SummaryItem[];
   report?: ScanReport;
+  reviews?: Record<string, Review>;
+}
+
+export type Decision = "keep" | "document" | "assign-owner" | "investigate";
+
+export interface Review {
+  decision: Decision;
+  label: string;
+  by: string;
+  at: string;
+  note: string;
+}
+
+export interface ScanAudit {
+  head: string;
+  chain: { ok: boolean; entries: number; broken_at: number | null; problem: string };
+  entries: AuditEntry[];
 }
 
 export interface InputOption {
