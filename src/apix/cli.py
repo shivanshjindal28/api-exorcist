@@ -102,7 +102,7 @@ def _scan_repository(args: argparse.Namespace) -> int:
 
     print()
     print("=" * 74)
-    print(f"REAL SCAN — {result.slug} @ {result.head_commit}")
+    print(f"REAL SCAN: {result.slug} @ {result.head_commit}")
     print("=" * 74)
     print()
     print(f"  route declarations found : {result.routes_found}")
@@ -171,7 +171,7 @@ def _scan_repository(args: argparse.Namespace) -> int:
     # triage. Separate them.
     universal = {s for s, n in finding_counts.items() if n == total and total}
     if universal:
-        print("  Repository-level — true of all "
+        print("  Repository-level: true of all "
               f"{total} endpoint(s), so it distinguishes none of them:")
         for statement in sorted(universal):
             print(f"    · {statement}")
@@ -181,7 +181,7 @@ def _scan_repository(args: argparse.Namespace) -> int:
         s: n for s, n in finding_counts.items() if s not in universal
     }
     if distinguishing:
-        print("  Endpoint-level — these differ between endpoints:")
+        print("  Endpoint-level: these differ between endpoints:")
         for statement, n in Counter(distinguishing).most_common(10):
             print(f"    {n:>4}/{total}  {statement}")
     else:
@@ -280,7 +280,7 @@ def _cmd_impact(args: argparse.Namespace) -> int:
 
         print()
         print("=" * 74)
-        print("DEPENDENCY GRAPH — what would break")
+        print("DEPENDENCY GRAPH: what would break")
         print("=" * 74)
         print()
         print(f"  backend            : {graph.name}")
@@ -296,12 +296,12 @@ def _cmd_impact(args: argparse.Namespace) -> int:
         clear = [a for a in assessments if a.may_proceed]
         blocked = [a for a in assessments if not a.may_proceed]
 
-        print(f"  CLEARED FOR SAFE KILL — {len(clear)}")
+        print(f"  CLEARED FOR SAFE KILL: {len(clear)}")
         for a in clear:
             print(f"    [ok]      {a.verdict.endpoint_id}")
             print("              nothing observed depends on it")
         print()
-        print(f"  BLOCKED — {len(blocked)}")
+        print(f"  BLOCKED: {len(blocked)}")
         for a in blocked:
             print(f"    [blocked] {a.verdict.endpoint_id}")
             print(f"              {a.blocked_by}")
@@ -314,7 +314,7 @@ def _cmd_impact(args: argparse.Namespace) -> int:
 def _print_radius(radius: object) -> None:
     r = radius  # typed loosely; BlastRadius is a frozen dataclass
     print()
-    print(f"Blast radius — {r.endpoint_id}")  # type: ignore[attr-defined]
+    print(f"Blast radius: {r.endpoint_id}")  # type: ignore[attr-defined]
     print("-" * 74)
     if r.is_isolated:  # type: ignore[attr-defined]
         print("  isolated: nothing observed calls this endpoint.")
@@ -671,7 +671,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="apix",
         description=(
-            "API Exorcist — discover, classify and safely eliminate zombie, "
+            "API Exorcist: discover, classify and safely eliminate zombie, "
             "shadow and orphaned APIs."
         ),
     )

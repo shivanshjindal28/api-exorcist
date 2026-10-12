@@ -1,6 +1,6 @@
-﻿
+
 ==========================================================================
-DEPENDENCY GRAPH — what would break
+DEPENDENCY GRAPH: what would break
 ==========================================================================
 
   backend            : in-memory
@@ -12,7 +12,7 @@ DEPENDENCY GRAPH — what would break
   An endpoint nothing calls is a removal candidate. One that
   something still calls is blocked, however dead it looks.
 
-  CLEARED FOR SAFE KILL — 8
+  CLEARED FOR SAFE KILL: 8
     [ok]      GET /v1/accounts/{id}/statement.pdf
               nothing observed depends on it
     [ok]      GET /v1/cards/{id}/pin
@@ -30,5 +30,5 @@ DEPENDENCY GRAPH — what would break
     [ok]      POST /v1/payments/wallet/topup
               nothing observed depends on it
 
-  BLOCKED — 0
+  BLOCKED: 0
 

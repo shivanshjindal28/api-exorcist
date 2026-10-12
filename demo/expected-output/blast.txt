@@ -1,11 +1,11 @@
-﻿
-Blast radius — GET /v2/accounts/{id}
+
+Blast radius: GET /v2/accounts/{id}
 --------------------------------------------------------------------------
   severity         : severe
   depth reached    : 5 hop(s)
   direct callers   : lending-service, mobile-bff, payments-service
   reached onward   : cards-service, kyc-service, marketing-batch, merchant-gateway, notifications-service, partner-psp-adapter
-  endpoints degraded:
+  endpoints degraded: 13
       hop 2  GET /v1/loans/{id}/schedule
       hop 2  POST /v1/loans/apply
       hop 2  POST /v1/loans/scorecard/experiment
@@ -18,4 +18,5 @@ Blast radius — GET /v2/accounts/{id}
       hop 4  GET /v1/notify/templates/preview
       hop 4  POST /v1/notify/email/bulk
       hop 4  POST /v1/notify/push
+      ... and 1 more
 

@@ -1,6 +1,6 @@
-﻿
+
 ==========================================================================
-REAL SCAN — demo\repos\full-stack-fastapi-template @ 486f054
+REAL SCAN: demo\repos\full-stack-fastapi-template @ 486f054
 ==========================================================================
 
   route declarations found : 23
@@ -25,24 +25,37 @@ REAL SCAN — demo\repos\full-stack-fastapi-template @ 486f054
     Every class (active / deprecated / orphaned / zombie) is
     defined by usage, and no traffic source was consulted.
 
-  Findings across 23 endpoint(s):
-      23  handler exists in code but the endpoint is not documented
-      23  no owning team could be determined
-       3  no commit touching this handler in over a year
+  Repository-level: true of all 23 endpoint(s), so it distinguishes none of them:
+    · handler exists in code but the endpoint is not documented
+    · no owning team could be determined
 
-  Endpoints worth review (showing 2):
+  Endpoint-level: these differ between endpoints:
+       3/23  no commit touching this handler in over a year
 
-  [##...] DELETE /items/{id}
-          status  : FINDINGS ONLY — lifecycle cannot be determined without usage data
+  Endpoints worth review (showing 3):
+
+  [##...] GET /utils/health-check
+          status  : FINDINGS ONLY. Lifecycle cannot be determined without usage data
             · handler exists in code but the endpoint is not documented
+            · no commit touching this handler in over a year
             · no owning team could be determined
           unknown : DNS, GATEWAY, TRAFFIC not consulted
           action  : Triage on these findings. Connect a traffic source before any removal decision.
           note    : not actionable: TRAFFIC was not consulted, so real usage was never measured
 
-  [##...] DELETE /users/me
-          status  : FINDINGS ONLY — lifecycle cannot be determined without usage data
+  [##...] POST /private/users
+          status  : FINDINGS ONLY. Lifecycle cannot be determined without usage data
             · handler exists in code but the endpoint is not documented
+            · no commit touching this handler in over a year
+            · no owning team could be determined
+          unknown : DNS, GATEWAY, TRAFFIC not consulted
+          action  : Triage on these findings. Connect a traffic source before any removal decision.
+          note    : not actionable: TRAFFIC was not consulted, so real usage was never measured
+
+  [##...] POST /utils/test-email
+          status  : FINDINGS ONLY. Lifecycle cannot be determined without usage data
+            · handler exists in code but the endpoint is not documented
+            · no commit touching this handler in over a year
             · no owning team could be determined
           unknown : DNS, GATEWAY, TRAFFIC not consulted
           action  : Triage on these findings. Connect a traffic source before any removal decision.

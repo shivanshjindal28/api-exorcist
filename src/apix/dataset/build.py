@@ -171,7 +171,7 @@ def main() -> None:
     print()
     print(f"  written to: {out_dir/'dataset.csv'}")
     print()
-    print("  NOTE: 25 samples cannot train a model — ORPHANED has two.")
+    print("  NOTE: 25 samples cannot train a model: ORPHANED has two.")
     print("  What is settled here is the schema, the provenance and the")
     print("  labelling method. Volume is Phase 3: parameterised generation")
     print("  of many estates, held out whole so a model must generalise")

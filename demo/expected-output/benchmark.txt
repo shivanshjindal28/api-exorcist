@@ -1,5 +1,5 @@
-﻿==============================================================================
-COMPARATIVE EVALUATION — before and after multi-source correlation
+==============================================================================
+COMPARATIVE EVALUATION: before and after multi-source correlation
 ==============================================================================
 
   Every configuration runs identical pipeline code. Only the set of
@@ -7,7 +7,7 @@ COMPARATIVE EVALUATION — before and after multi-source correlation
   the correlation, not by a different algorithm.
 
 ------------------------------------------------------------------------------
-Discovery — how much of the estate each configuration can even see
+Discovery: how much of the estate each configuration can even see
 ------------------------------------------------------------------------------
 
   configuration                                  found  of    coverage
@@ -15,10 +15,10 @@ Discovery — how much of the estate each configuration can even see
   Gateway registry only                             19  25       76.0%
   OpenAPI specification only                        17  25       68.0%
   Gateway + specification (conventional)            19  25       76.0%
-  API Exorcist — all six sources, correlated        25  25      100.0%
+  API Exorcist: all six sources, correlated         25  25      100.0%
 
 ------------------------------------------------------------------------------
-HEADLINE — end-to-end zombie recall
+HEADLINE: end-to-end zombie recall
 ------------------------------------------------------------------------------
 
   Of the zombies genuinely present, how many were discovered AND
@@ -29,31 +29,31 @@ HEADLINE — end-to-end zombie recall
   Gateway registry only                               0   8       0.0%  
   OpenAPI specification only                          0   8       0.0%  
   Gateway + specification (conventional)              2   8      25.0%  ##
-  API Exorcist — all six sources, correlated          8   8     100.0%  ##########
+  API Exorcist: all six sources, correlated           8   8     100.0%  ##########
 
 ------------------------------------------------------------------------------
-Why — evidence available to each configuration
+Why: evidence available to each configuration
 ------------------------------------------------------------------------------
 
   A source that was never consulted is not evidence of absence. Rules
   depending on it abstain. A configuration with no evaluable rules has
-  not classified anything — it has merely failed to.
+  not classified anything; it has merely failed to.
 
   configuration                                 rules usable  undetermined
   -----------------------------------------------------------------------
   Gateway registry only                             0/15          19/19     <- cannot classify at all
   OpenAPI specification only                        3/15           0/17   
   Gateway + specification (conventional)            5/15           0/19   
-  API Exorcist — all six sources, correlated       15/15           0/25   
+  API Exorcist: all six sources, correlated        15/15           0/25   
 
   A conventional inventory (gateway + specification) finds 2 of 8 zombies.
-  Correlating all six sources finds 8 — 6 additional endpoint(s) that no conventional
+  Correlating all six sources finds 8 : 6 additional endpoint(s) that no conventional
   approach could have surfaced.
 
   4 of those carry no authentication at all.
 
 ------------------------------------------------------------------------------
-Classification quality — API Exorcist
+Classification quality: API Exorcist
 
   class         precision   recall      f1  support
   -------------------------------------------------

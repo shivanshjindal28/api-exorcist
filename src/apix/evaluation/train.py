@@ -269,7 +269,7 @@ def format_comparison(report: TrainingReport) -> str:
 
     lines = [
         "=" * 78,
-        "MODEL vs RULES — scored on estates neither has seen",
+        "MODEL vs RULES: scored on estates neither has seen",
         "=" * 78,
         "",
         f"  {report.n_estates} estates, {report.n_samples} endpoints",
@@ -303,7 +303,7 @@ def format_comparison(report: TrainingReport) -> str:
         lines.append(f"  {cls:<22}{rf:>10.3f}{mf:>10.3f}{'+' if d > 0.0005 else ' '}{d:>9.3f}")
 
     # The safety property, stated separately because it is not negotiable.
-    lines += ["", "  Safety — false ZOMBIE (would cause an outage):"]
+    lines += ["", "  Safety: false ZOMBIE (would cause an outage):"]
     for label, res in (("rules", r), ("model", m)):
         fp = res.per_class["ZOMBIE"].fp
         prec = res.per_class["ZOMBIE"].precision
@@ -356,8 +356,8 @@ def verdict_line(report: TrainingReport) -> str:
             "\n  candidate outage, so this difference outweighs the average."
         )
         lines.append(
-            "\n  RECOMMENDATION: keep the rules as the day-one classifier — they"
-            "\n  need no training data and are auditable line by line — and use"
+            "\n  RECOMMENDATION: keep the rules as the day-one classifier, because"
+            "\n  they need no training data and are auditable line by line, and use"
             "\n  the model to veto removal candidates the rules propose."
         )
     elif m_fp > r_fp:
@@ -370,7 +370,7 @@ def verdict_line(report: TrainingReport) -> str:
     else:
         lines.append(
             f"  Both produce {m_fp} false zombie(s), so neither is safer."
-            "\n\n  RECOMMENDATION: ship the rules — equal accuracy, and they are"
+            "\n\n  RECOMMENDATION: ship the rules: equal accuracy, and they are"
             "\n  auditable and work with no training data."
         )
 
@@ -380,7 +380,7 @@ def verdict_line(report: TrainingReport) -> str:
         lines.append(
             f"\n  Note: DEPRECATED is the weakest class for both ({worse} weaker"
             f"\n  by {abs(dep_gap):.3f} F1). Neither can exceed the rate at which"
-            "\n  teams actually set the deprecation flag — the ceiling is"
+            "\n  teams actually set the deprecation flag. The ceiling is"
             "\n  observability, not the algorithm."
         )
 

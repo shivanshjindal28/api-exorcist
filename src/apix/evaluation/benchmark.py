@@ -70,7 +70,7 @@ CONFIGURATIONS: list[tuple[str, str, list[type[Connector]]]] = [
     ),
     (
         "api-exorcist",
-        "API Exorcist — all six sources, correlated",
+        "API Exorcist: all six sources, correlated",
         [
             GatewayConnector,
             OpenAPIConnector,
@@ -170,7 +170,7 @@ def run_benchmark() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 def print_benchmark(results: dict[str, Any]) -> None:
     print("=" * 78)
-    print("COMPARATIVE EVALUATION — before and after multi-source correlation")
+    print("COMPARATIVE EVALUATION: before and after multi-source correlation")
     print("=" * 78)
     print()
     print(
@@ -184,7 +184,7 @@ def print_benchmark(results: dict[str, Any]) -> None:
 
     # ---- discovery comparison ----
     print("-" * 78)
-    print("Discovery — how much of the estate each configuration can even see")
+    print("Discovery: how much of the estate each configuration can even see")
     print("-" * 78)
     print()
     print(
@@ -201,7 +201,7 @@ def print_benchmark(results: dict[str, Any]) -> None:
 
     # ---- the headline ----
     print("-" * 78)
-    print("HEADLINE — end-to-end zombie recall")
+    print("HEADLINE: end-to-end zombie recall")
     print("-" * 78)
     print()
     print("  Of the zombies genuinely present, how many were discovered AND")
@@ -220,7 +220,7 @@ def print_benchmark(results: dict[str, Any]) -> None:
 
     # ---- what each configuration is even able to reason with ----
     print("-" * 78)
-    print("Why — evidence available to each configuration")
+    print("Why: evidence available to each configuration")
     print("-" * 78)
     print()
     print(
@@ -229,7 +229,7 @@ def print_benchmark(results: dict[str, Any]) -> None:
     print(
         "  depending on it abstain. A configuration with no evaluable rules has"
     )
-    print("  not classified anything — it has merely failed to.")
+    print("  not classified anything; it has merely failed to.")
     print()
     print(f"  {'configuration':<44}{'rules usable':>14}{'undetermined':>14}")
     print("  " + "-" * 71)
@@ -253,7 +253,7 @@ def print_benchmark(results: dict[str, Any]) -> None:
     )
     print(
         f"  Correlating all six sources finds {full['zombies_caught']} "
-        f"— {delta} additional endpoint(s) that no conventional"
+        f": {delta} additional endpoint(s) that no conventional"
     )
     print("  approach could have surfaced.")
     print()
@@ -266,7 +266,7 @@ def print_benchmark(results: dict[str, Any]) -> None:
 
     # ---- classification quality, full configuration ----
     print("-" * 78)
-    print(format_report(full["_result_obj"], "Classification quality — API Exorcist"))
+    print(format_report(full["_result_obj"], "Classification quality: API Exorcist"))
     print()
 
 

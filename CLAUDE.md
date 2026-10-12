@@ -17,7 +17,7 @@ apix safekill --evaluate          # Safe Kill vs the gate alone, shadow sweep
 apix serve                        # REST API (needs .[api]); mints a session token
 apix token NAME --role approver   # mint an API token; stores only its hash
 cd dashboard && npm ci && npm test && npm run build   # dashboard, 10 Vitest tests
-pytest                            # 124 tests
+pytest                            # 126 tests
 ruff check . && mypy              # lint + strict types
 
 python docs/render_diagrams.py    # mermaid -> png (run before the two below)
@@ -132,7 +132,9 @@ distinguish the cases.
   succeeded. Check `git log` rather than trusting the exit code.
 - **The repo lives inside OneDrive.** Syncing a live `.git` directory can
   corrupt it; `.git` should be excluded from sync.
-- No GitHub remote is configured yet.
+- **Remote:** `origin` is https://github.com/shivanshjindal28/api-exorcist (private).
+  No `gh` CLI here; plain git over HTTPS works through Git Credential Manager.
+  CI only runs on what is pushed, so a check that passes locally is unproven there.
 
 ## Layout
 

@@ -89,7 +89,7 @@ def run_discovery(
     bus.flush()
 
     if verbose:
-        print("Stage 1 — collection")
+        print("Stage 1: collection")
         for name, n in per_connector.items():
             print(f"  {name:<18} {n:>3} signals")
         print(f"  {'TOTAL':<18} {total_signals:>3} signals\n")
@@ -116,7 +116,7 @@ def run_discovery(
         indexed = sink.index_records(r.to_dict() for r in records)
 
     if verbose:
-        print("Stage 2 — correlation")
+        print("Stage 2: correlation")
         print(f"  unified endpoints : {len(records)}")
         if persist:
             print(f"  written to        : {_display_path(out)}")
@@ -186,7 +186,7 @@ def print_findings(records: list[InventoryRecord]) -> None:
         r for r in records
         if "SHADOW_CANDIDATE" in r.flags or "REACHABLE_BUT_UNUSED" in r.flags
     ]
-    print(f"Discovery findings — {len(suspicious)} endpoint(s) needing review\n")
+    print(f"Discovery findings: {len(suspicious)} endpoint(s) needing review\n")
     for r in sorted(suspicious, key=lambda x: (-_risk(x), x.endpoint_id)):
         risk = _risk(r)
         bar = "#" * risk + "." * (5 - risk)

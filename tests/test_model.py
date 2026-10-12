@@ -103,6 +103,26 @@ def test_missing_model_fails_loudly() -> None:
     check("test_missing_model_fails_loudly", ok, detail)
 
 
+def test_hybrid_refuses_to_run_without_its_model() -> None:
+    """`--model` asks for a safety veto; a missing model must not remove it silently.
+
+    The hybrid used to return rules-only verdicts when the model was missing,
+    which is indistinguishable from a run in which the model vetoed nothing.
+    MLClassifier already raised; the hybrid is what `--model` actually uses.
+    """
+    from apix.engine.model import HybridClassifier
+    from apix.pipeline import run_discovery
+
+    hybrid = HybridClassifier(model=MLClassifier(model_path=Path("does-not-exist.joblib")))
+    records = run_discovery(verbose=False, persist=False)
+    try:
+        hybrid.classify_all(records)
+        ok, detail = False, "classified without its model instead of raising"
+    except ModelUnavailable:
+        ok, detail = True, ""
+    check("test_hybrid_refuses_to_run_without_its_model", ok, detail)
+
+
 def test_model_classifies_the_estate() -> None:
     m = _model_or_none()
     if m is None:
@@ -273,22 +293,6 @@ def test_veto_retains_both_opinions() -> None:
     )
 
 
-def test_hybrid_works_without_a_model() -> None:
-    """No model installed must degrade to the rules, not crash."""
-    hybrid = HybridClassifier(
-        rules=RuleClassifier(consulted=sources_of()),
-        model=MLClassifier(model_path=Path("does-not-exist.joblib")),
-    )
-    records = run_discovery(verbose=False, persist=False)
-    try:
-        verdicts = hybrid.classify_all(records)
-        ok = len(verdicts) == len(records)
-        detail = ""
-    except Exception as exc:
-        ok, detail = False, repr(exc)
-    check("test_hybrid_works_without_a_model", ok, detail)
-
-
 def main() -> None:
     print("Model and SHAP tests\n")
     for fn in [
@@ -301,7 +305,7 @@ def main() -> None:
         test_model_can_veto_but_never_promote,
         test_veto_makes_a_candidate_unactionable,
         test_veto_retains_both_opinions,
-        test_hybrid_works_without_a_model,
+        test_hybrid_refuses_to_run_without_its_model,
     ]:
         with contextlib.suppress(AssertionError):
             fn()

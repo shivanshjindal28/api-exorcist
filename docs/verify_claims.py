@@ -340,6 +340,61 @@ def check_status_markers() -> list[str]:
     return problems
 
 
+#: Architecture-diagram node -> the file that exists exactly when it is built.
+#:
+#: The component diagram colours each box done or todo with a mermaid `class`
+#: line, and that diagram is the most-shown picture in the project: it is on a
+#: review slide. After Phase 4 and Phase 5 shipped it still drew Safe Kill, the
+#: audit log, the API and the dashboard as unbuilt, because every other check
+#: here reads tables and headings, not diagram colours.
+DIAGRAM_NODES: dict[str, str] = {
+    "GRAPH": "src/apix/graph/build.py",
+    "BLAST": "src/apix/graph/build.py",
+    "ML": "src/apix/engine/model.py",
+    "GATE": "src/apix/safekill/__init__.py",
+    "KILL": "src/apix/safekill/__init__.py",
+    "AUDIT": "src/apix/safekill/audit.py",
+    "API": "src/apix/api/app.py",
+    "UI": "src/apix/api/dashboard/index.html",
+    "ENF": "src/apix/enforce/__init__.py",
+}
+
+
+def check_diagram_status() -> list[str]:
+    """Diagram colours are status claims too; check them against the code."""
+    design = (ROOT / "docs" / "design-document.md").read_text(encoding="utf-8")
+    # Node ids are local to each diagram: the model-veto figure has its own
+    # GATE, and reading the whole document let its status overwrite this one's.
+    blocks = re.findall(r"^```mermaid\n(.*?)^```", design, re.M | re.S)
+    component = next((b for b in blocks if "Layer 5" in b), "")
+    if not component:
+        return ["design-document.md: component diagram (Layer 5) not found"]
+    status: dict[str, str] = {}
+    for m in re.finditer(
+        r"^\s*class ([A-Z0-9_,]+) (done|wip|todo)\s*$", component, re.M
+    ):
+        for node in m.group(1).split(","):
+            status[node] = m.group(2)
+
+    problems: list[str] = []
+    for node, path in DIAGRAM_NODES.items():
+        if node not in status:
+            problems.append(f"design-document.md: diagram node {node} has no status class")
+            continue
+        built = (ROOT / path).exists()
+        if built and status[node] != "done":
+            problems.append(
+                f"design-document.md: diagram draws {node} as {status[node]}, "
+                f"but it is built ({path} exists)"
+            )
+        elif not built and status[node] == "done":
+            problems.append(
+                f"design-document.md: diagram draws {node} as done, "
+                f"but {path} does not exist"
+            )
+    return problems
+
+
 def check_diagram_lists() -> list[str]:
     """Figure names and captions are positional; they must stay in step.
 
@@ -392,6 +447,7 @@ def main() -> int:
 
     failures: list[str] = (
         check_patterns_are_live(claims)
+        + check_diagram_status()
         + check_diagram_lists()
         + check_status_markers()
     )

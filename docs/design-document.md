@@ -94,7 +94,8 @@ flowchart TB
     classDef todo fill:#eeeeee,stroke:#999,color:#333,stroke-dasharray:4 3
     class GW,SPEC,TRAF,CODE,DNS,CICD,CONN,BUS,SINK,CORR,FEAT,CLI,GRAPH,BLAST done
     class RULES,ML,XAI done
-    class GATE,KILL,AUDIT,ENF,API,UI todo
+    class GATE,KILL,AUDIT,API,UI done
+    class ENF todo
 ```
 
 **Layer boundaries are enforced by dependency direction.** Layer 1 knows nothing of
@@ -292,6 +293,34 @@ flowchart TB
 canary control, and it holds a separate, write-scoped credential from the read tokens
 used for discovery.** A compromise of the scanner cannot disable an endpoint. This
 separation is a hard requirement of the banking deployment target.
+
+#### As built: the REST API and the dashboard (Phase 5)
+
+The FastAPI server and the React dashboard run as one process on one origin: the
+dashboard's production build ships inside the Python package and the API serves it,
+so there is no cross-origin configuration to get wrong and nothing to install beyond
+`pip`. The design above draws them as two boxes because they are two components; in
+deployment they are one service.
+
+Every route except a health check requires a bearer token, reads included, because
+the inventory is a map of an estate's weakest points. Tokens are 256-bit random values
+stored only as SHA-256 hashes, in two roles: a viewer reads, an approver also starts
+shadows and decides removals. The approver recorded in the audit log is the principal
+bound to the token, never a name supplied in the request, and request bodies reject
+unknown fields so there is no field to forge.
+
+Approval became asynchronous, as it is in a bank: the shadow window runs for weeks and
+a person decides afterwards. The Safe Kill controller is therefore split at the
+approval gate into `begin` (nomination to the gate) and `resolve` (the decision and
+everything after it). The split is behaviour-preserving: the same run writes a
+byte-identical audit chain. Where the command line turns unacknowledged anonymous
+traffic into `Denied`, the API returns 409 and leaves the decision open, so a person
+mid-decision can accept the risk explicitly or decline.
+
+The dashboard runs under a strict Content-Security-Policy (scripts, styles and
+connections from its own origin only, and no inline script in the build), keeps the
+token in `sessionStorage` for the life of the tab, and sends it only in the
+`Authorization` header.
 
 ---
 

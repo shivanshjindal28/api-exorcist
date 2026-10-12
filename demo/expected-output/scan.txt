@@ -1,4 +1,4 @@
-﻿Stage 1 — collection
+Stage 1: collection
   kong-gateway        19 signals
   openapi-spec        17 signals
   zeek-sensor         18 signals
@@ -7,7 +7,7 @@
   github-actions      19 signals
   TOTAL              122 signals
 
-Stage 2 — correlation
+Stage 2: correlation
   unified endpoints : 25
   written to        : data\inventory.json
   Elasticsearch     : not available (file output used)
@@ -40,7 +40,7 @@ Classification summary
 Endpoints requiring attention (12)
 
 [#####] GET /v1/kyc/documents/{id}/raw
-        verdict : ZOMBIE (99% confidence) — no meaningful use and largely invisible to the organisation
+        verdict : ZOMBIE (99% confidence): no meaningful use and largely invisible to the organisation
         because :
           + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
           + absent from both the OpenAPI spec and the gateway registry  [OPENAPI+GATEWAY, +2.5]
@@ -53,7 +53,7 @@ Endpoints requiring attention (12)
         action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
 
 [#####] POST /v1/internal/accounts/reindex
-        verdict : ZOMBIE (99% confidence) — no meaningful use and largely invisible to the organisation
+        verdict : ZOMBIE (99% confidence): no meaningful use and largely invisible to the organisation
         because :
           + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
           + absent from both the OpenAPI spec and the gateway registry  [OPENAPI+GATEWAY, +2.5]
@@ -66,7 +66,7 @@ Endpoints requiring attention (12)
         action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
 
 [####.] GET /v1/cards/{id}/pin
-        verdict : ZOMBIE (99% confidence) — no meaningful use and largely invisible to the organisation
+        verdict : ZOMBIE (99% confidence): no meaningful use and largely invisible to the organisation
         because :
           + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
           + absent from both the OpenAPI spec and the gateway registry  [OPENAPI+GATEWAY, +2.5]
@@ -79,7 +79,7 @@ Endpoints requiring attention (12)
         action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
 
 [####.] GET /v1/notify/templates/preview
-        verdict : ZOMBIE (98% confidence) — no meaningful use and largely invisible to the organisation
+        verdict : ZOMBIE (98% confidence): no meaningful use and largely invisible to the organisation
         because :
           + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
           + absent from both the OpenAPI spec and the gateway registry  [OPENAPI+GATEWAY, +2.5]
@@ -91,7 +91,7 @@ Endpoints requiring attention (12)
         action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
 
 [####.] POST /v1/debug/payments/replay
-        verdict : ZOMBIE (95% confidence) — no meaningful use and largely invisible to the organisation
+        verdict : ZOMBIE (95% confidence): no meaningful use and largely invisible to the organisation
         because :
           + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
           + absent from both the OpenAPI spec and the gateway registry  [OPENAPI+GATEWAY, +2.5]
@@ -101,7 +101,7 @@ Endpoints requiring attention (12)
         action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
 
 [###..] POST /v1/loans/scorecard/experiment
-        verdict : ZOMBIE (99% confidence) — no meaningful use and largely invisible to the organisation
+        verdict : ZOMBIE (99% confidence): no meaningful use and largely invisible to the organisation
         because :
           + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
           + absent from both the OpenAPI spec and the gateway registry  [OPENAPI+GATEWAY, +2.5]
@@ -113,7 +113,7 @@ Endpoints requiring attention (12)
         action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
 
 [###..] GET /v1/accounts/{id}/statement.pdf
-        verdict : ZOMBIE (95% confidence) — no meaningful use and largely invisible to the organisation
+        verdict : ZOMBIE (95% confidence): no meaningful use and largely invisible to the organisation
         because :
           + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
           + no meaningful use for over six months  [TRAFFIC, +2.0]
@@ -124,16 +124,16 @@ Endpoints requiring attention (12)
         action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
 
 [###..] POST /v1/notify/email/bulk
-        verdict : ORPHANED (65% confidence) — genuinely in use, but nobody owns it
+        verdict : ORPHANED (65% confidence): genuinely in use, but nobody owns it
         because :
           + carrying real traffic while no team owns it  [TRAFFIC+OPENAPI+CICD, +3.5]
           + serving real traffic above the significance threshold  [TRAFFIC, +1.5]
           + used within the last 30 days  [TRAFFIC, +1.0]
           + other services were observed calling this endpoint  [TRAFFIC, +1.0]
-        action  : Assign an owner. Do NOT schedule removal — this endpoint carries real traffic and disabling it would cause an outage.
+        action  : Assign an owner. Do NOT schedule removal: this endpoint carries real traffic and disabling it would cause an outage.
 
 [###..] GET /v1/accounts/{id}
-        verdict : DEPRECATED (62% confidence) — announced as retiring but still responding
+        verdict : DEPRECATED (62% confidence): announced as retiring but still responding
         because :
           + explicitly marked deprecated in the OpenAPI specification  [OPENAPI, +5.5]
           + serving real traffic above the significance threshold  [TRAFFIC, +1.0]
@@ -141,7 +141,7 @@ Endpoints requiring attention (12)
         action  : Confirm the retirement plan has a date. Deprecated endpoints that never get removed are how zombies are created.
 
 [##...] POST /v1/payments/wallet/topup
-        verdict : ZOMBIE (95% confidence) — no meaningful use and largely invisible to the organisation
+        verdict : ZOMBIE (95% confidence): no meaningful use and largely invisible to the organisation
         because :
           + no meaningful traffic in the capture window  [TRAFFIC, +3.5]
           + no meaningful use for over six months  [TRAFFIC, +2.0]
@@ -152,7 +152,7 @@ Endpoints requiring attention (12)
         action  : Candidate for Safe Kill. Blast radius must be computed and an approval recorded before any shutdown begins.
 
 [##...] POST /v2/payments/upi/pay
-        verdict : DEPRECATED (62% confidence) — announced as retiring but still responding
+        verdict : DEPRECATED (62% confidence): announced as retiring but still responding
         because :
           + explicitly marked deprecated in the OpenAPI specification  [OPENAPI, +5.5]
           + serving real traffic above the significance threshold  [TRAFFIC, +1.0]
@@ -160,11 +160,11 @@ Endpoints requiring attention (12)
         action  : Confirm the retirement plan has a date. Deprecated endpoints that never get removed are how zombies are created.
 
 [#....] GET /v1/cards/rewards/catalogue
-        verdict : ORPHANED (65% confidence) — genuinely in use, but nobody owns it
+        verdict : ORPHANED (65% confidence): genuinely in use, but nobody owns it
         because :
           + carrying real traffic while no team owns it  [TRAFFIC+OPENAPI+CICD, +3.5]
           + serving real traffic above the significance threshold  [TRAFFIC, +1.5]
           + used within the last 30 days  [TRAFFIC, +1.0]
           + other services were observed calling this endpoint  [TRAFFIC, +1.0]
-        action  : Assign an owner. Do NOT schedule removal — this endpoint carries real traffic and disabling it would cause an outage.
+        action  : Assign an owner. Do NOT schedule removal: this endpoint carries real traffic and disabling it would cause an outage.
 

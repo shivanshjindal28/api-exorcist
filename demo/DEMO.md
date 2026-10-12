@@ -189,6 +189,39 @@ requests before it catches the live ones."*
 
 ---
 
+### Step 4c: The dashboard, and approval over HTTP
+
+```powershell
+apix serve --as shivansh
+```
+
+Open the address it prints (`http://127.0.0.1:8600`) and paste the one-time token it
+prints. Show, in order:
+
+1. **Overview.** 25 endpoints, 8 zombies, and the banner on every page saying the
+   estate is simulated.
+2. **Endpoints**, then click `GET /v1/kyc/documents/{id}/raw`. The signed evidence
+   bars are the verdict's reasons; the source chips show which of the six sources
+   saw it, crossed out where they did not. *"Absence is the evidence."*
+3. **Safe Kill.** Start a shadow on that endpoint and on
+   `POST /v1/debug/payments/replay`. The KYC shadow is clean, so Approve is live.
+   The debug route saw 266 anonymous requests, so **Approve stays disabled** until
+   the risk is accepted in writing.
+4. Approve the KYC endpoint. Its path runs nominated to retired, **decided by
+   shivansh**.
+5. **Audit log**, then "Verify the whole chain". The approval entry's actor is the
+   name bound to the token.
+
+**Say:** *"The name on that approval comes from the token, not from anything the
+browser sends. The API rejects a request that even tries to include an approver
+field, so the audit log cannot be told who approved something."*
+
+**If asked "is the inventory public?":** *"No. Every route except a health check
+needs a token, reads included, because a list of unauthenticated endpoints is a
+map for an attacker."*
+
+---
+
 ### Step 5 — It works on real code
 
 ```powershell
@@ -221,7 +254,7 @@ straight from GitHub; it takes about 99 seconds, nearly all of it cloning.
 python -m pytest -q
 ```
 
-> **124 tests.** Including the ground-truth leakage guards, the removal gate, a
+> **126 tests.** Including the ground-truth leakage guards, the removal gate, a
 > test asserting no live endpoint is ever cleared for removal, and every Safe Kill
 > safety path forced and asserted: rejection, denial, automatic rollback, and
 > tamper detection in the audit chain.
@@ -276,7 +309,7 @@ plainly; the distinction is one a panel will probe.
 | **Removal gate** — classifier and graph must both agree | Done |
 | **Safe Kill**: rule-of-three shadow, named approval, canary, automatic rollback | Done |
 | **Hash-chained audit log**, tamper-evident, every transition recorded | Done |
-| Packaging, CLI, CI on 3.10/3.12, mypy strict, 124 tests | Done |
+| Packaging, CLI, CI on 3.10/3.12, mypy strict, 126 tests | Done |
 
 ### What is left
 
@@ -355,6 +388,7 @@ what this document exists to let you do.
 | 3 Blast radius | 0.3s | 2 min |
 | 4 Removal gate | 0.3s | 3 min |
 | 4b Safe Kill (three runs) | 1s | 4 min |
+| 4c Dashboard | 2s | 4 min |
 | 5 Real repository | 9s | 4 min |
 | 6 Tests | 2s | 2 min |
 

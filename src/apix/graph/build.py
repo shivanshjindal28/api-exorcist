@@ -75,7 +75,7 @@ class RemovalAssessment:
             suffix = f" (+{more} more)" if more > 0 else ""
             return (
                 f"blocked: {len(self.radius.all_services)} service(s) still "
-                f"depend on this endpoint — {names}{suffix}"
+                f"depend on this endpoint: {names}{suffix}"
             )
         return None
 

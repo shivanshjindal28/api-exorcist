@@ -38,7 +38,7 @@ LABEL_ACTION: dict[Classification, str] = {
         "get removed are how zombies are created."
     ),
     Classification.ORPHANED: (
-        "Assign an owner. Do NOT schedule removal — this endpoint carries real "
+        "Assign an owner. Do NOT schedule removal: this endpoint carries real "
         "traffic and disabling it would cause an outage."
     ),
     Classification.ZOMBIE: (
@@ -72,7 +72,7 @@ PARTIAL_ACTION: dict[Classification, str] = {
         "scan."
     ),
     Classification.ZOMBIE: (
-        "Investigate. NOT a removal candidate on this evidence — usage was "
+        "Investigate. NOT a removal candidate on this evidence: usage was "
         "never measured, and a repository cannot show what a service serves."
     ),
 }
@@ -88,7 +88,7 @@ def explain(v: Verdict, *, indent: str = "") -> str:
 
     if not v.is_determinate:
         lines.append(
-            f"{indent}        verdict : UNDETERMINED — no evidence was available; "
+            f"{indent}        verdict : UNDETERMINED. No evidence was available, so "
             "this endpoint was enumerated, not assessed"
         )
         lines.append(f"{indent}        action  : Connect more sources.")
@@ -98,7 +98,7 @@ def explain(v: Verdict, *, indent: str = "") -> str:
         # Report what was observed rather than forcing a lifecycle label that
         # the available evidence cannot support.
         lines.append(
-            f"{indent}        status  : FINDINGS ONLY — lifecycle cannot be "
+            f"{indent}        status  : FINDINGS ONLY. Lifecycle cannot be "
             "determined without usage data"
         )
         for statement in v.findings:
@@ -115,7 +115,7 @@ def explain(v: Verdict, *, indent: str = "") -> str:
     qualifier = " on partial evidence" if partial else ""
     lines.append(
         f"{indent}        verdict : {v.label.value} "
-        f"({v.confidence:.0%} confidence{qualifier}) — {meaning}"
+        f"({v.confidence:.0%} confidence{qualifier}): {meaning}"
     )
 
     support = v.supporting_reasons
@@ -140,7 +140,7 @@ def explain(v: Verdict, *, indent: str = "") -> str:
         unseen = ", ".join(sorted(_UNSEEN_SOURCES - v.sources_consulted))
         if unseen:
             lines.append(
-                f"{indent}        unknown : {unseen} not consulted — "
+                f"{indent}        unknown : {unseen} not consulted, so "
                 f"{len(v.abstained)} rule(s) abstained"
             )
 
@@ -161,7 +161,7 @@ def one_line(v: Verdict) -> str:
     """Compact single-line summary, for dense listings."""
     top = v.supporting_reasons[:3]
     why = "; ".join(r.statement for r in top) if top else "no positive evidence"
-    return f"{v.label.value:<11} {v.confidence:>4.0%}  {v.endpoint_id}  — {why}"
+    return f"{v.label.value:<11} {v.confidence:>4.0%}  {v.endpoint_id}  {why}"
 
 
 def audit_entry(v: Verdict) -> dict[str, Any]:

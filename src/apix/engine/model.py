@@ -252,9 +252,14 @@ class HybridClassifier:
         self.model = model or MLClassifier()
 
     def classify_all(self, records: list[InventoryRecord]) -> list[Verdict]:
+        # Raise, never degrade. Every caller that builds a hybrid asked for the
+        # veto explicitly (`--model`). Returning rules-only verdicts when the
+        # model is missing used to look exactly like a run where the model
+        # vetoed nothing, so a safety layer the operator requested could be
+        # absent with no sign of it. MLClassifier already refused to load
+        # silently; the hybrid, which is what `--model` actually uses, did not.
+        self.model.load()
         verdicts = self.rules.classify_all(records)
-        if not self.model.available:
-            return verdicts
 
         model_verdicts = {
             v.endpoint_id: v for v in self.model.classify_all(records)
