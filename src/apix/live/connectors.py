@@ -28,8 +28,6 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from apix.connectors.base import Connector, DiscoverySignal, Source
 from apix.extractors.base import ExtractedRoute, normalise_path
 from apix.extractors.semgrep_extractor import SemgrepExtractor
@@ -200,6 +198,12 @@ def _load_spec(path: Path) -> Any:
         return json.loads(text)
     # yaml.safe_load: never construct arbitrary Python objects from a file that
     # came out of someone else's repository.
+    # Imported here, not at module level: the REST API imports this module
+    # through the scanning code, and a server installed with only the api
+    # extra (the container image) has no PyYAML. A top-level import made the
+    # container fail to start; CI's container job caught it.
+    import yaml
+
     return yaml.safe_load(text)
 
 

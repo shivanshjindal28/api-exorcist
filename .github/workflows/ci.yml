@@ -45,7 +45,24 @@ jobs:
         run: mypy
 
       - name: Tests
-        run: pytest --cov=apix --cov-report=term-missing
+        shell: bash
+        run: |
+          set -o pipefail
+          pytest --cov=apix --cov-report=term-missing -rfE 2>&1 | tee pytest.log
+
+      # Raw logs need a signed-in GitHub account, annotations do not. Naming
+      # each failing test as an annotation means a failure can be diagnosed
+      # from the public API, which is how this project's CI is read.
+      - name: Name the failing tests
+        if: failure()
+        shell: bash
+        run: |
+          grep -E "^(FAILED|ERROR) " pytest.log | head -8 | while IFS= read -r line; do
+            echo "::error title=Test failed::${line//%/%25}"
+          done
+          grep -E "^E  " pytest.log | head -2 | while IFS= read -r line; do
+            echo "::error title=First assertion::${line//%/%25}"
+          done
 
       # Figures written in the documentation are claims about the system, and
       # they have drifted from it three times. Tests check code against code;
@@ -235,4 +252,10 @@ jobs:
 
       - name: Container logs on failure
         if: failure()
-        run: docker logs apix || true
+        shell: bash
+        run: |
+          docker logs apix || true
+          # As annotations too, readable without signing in. Tokens are never
+          # logged, and anything shaped like one is masked anyway.
+          docker logs apix 2>&1 | tail -5 | sed -E 's/apx_[A-Za-z0-9_-]+/apx_[masked]/g' \
+            | while IFS= read -r line; do echo "::error title=Container log::${line//%/%25}"; done

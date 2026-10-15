@@ -19,7 +19,7 @@ apix token NAME --role approver   # mint an API token; stores only its hash
 apix enforce --base origin/main   # judge a change's API surface (Phase 6)
 docker build -t api-exorcist .    # the deployable image (Phases 7-8)
 cd dashboard && npm ci && npm test && npm run build   # dashboard, 31 Vitest tests
-pytest                            # 257 tests
+pytest                            # 258 tests
 ruff check . && mypy              # lint + strict types
 APIX_REALWORLD=1 pytest tests/test_realworld.py   # real repos, known answers (network, ~6 min)
 

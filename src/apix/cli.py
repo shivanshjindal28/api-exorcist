@@ -576,8 +576,11 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         import uvicorn
 
         from apix.api.app import default_app
-    except ImportError:
-        print('  the API needs its extra: pip install -e ".[api]"')
+    except ImportError as exc:
+        # Name the module. "Needs its extra" alone hid that the missing piece
+        # was PyYAML, not the API extra, when the container failed to start.
+        print(f"  cannot start the API: {exc}.")
+        print('  Install it with: pip install -e ".[api]"')
         return EXIT_ERROR
 
     from apix.api.observe import configure_logging, log

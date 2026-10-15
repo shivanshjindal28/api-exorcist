@@ -530,3 +530,19 @@ if __name__ == "__main__":
             t()
     print(f"\n{_PASS} passed, {_FAIL} failed")
     sys.exit(1 if _FAIL else 0)
+
+
+def test_the_api_imports_without_the_scanning_extras() -> None:
+    """The container installs only the api extra. A top-level `import yaml`
+    reached through the scanning code stopped it starting; CI's container job
+    caught that, and this catches it without Docker."""
+    import subprocess
+
+    _skip_without_api("test_the_api_imports_without_the_scanning_extras")
+    code = ("import sys; sys.modules['yaml'] = None; sys.modules['semgrep'] = None; "
+            "import apix.api.app; print('ok')")
+    proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                          cwd=str(ROOT), env={**__import__("os").environ,
+                                              "PYTHONPATH": str(ROOT / "src")})
+    check("test_the_api_imports_without_the_scanning_extras",
+          proc.returncode == 0 and "ok" in proc.stdout, proc.stderr[-500:])
