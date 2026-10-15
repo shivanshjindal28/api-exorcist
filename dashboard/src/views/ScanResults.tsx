@@ -1,5 +1,4 @@
 import { Card, ErrorBox, Loading, Page, PageHead, useLoad, useSession } from "../common";
-import { IconPlus } from "../icons";
 import type { ScanJob } from "../types";
 
 export function when(iso: string | null): string {
@@ -27,14 +26,7 @@ export function ScanResults() {
   const head = (
     <PageHead
       title="Projects"
-      crumbs={[{ label: "Workspace" }, { label: "Projects" }]}
-      sub="Every scan, newest first. A project scanned more than once shows what changed since the previous scan."
-      actions={
-        <a className="btn" href="#scan">
-          <IconPlus />
-          New scan
-        </a>
-      }
+      sub="Every scan, newest first."
     />
   );
   if (error) return <Page head={head}><ErrorBox message={error} /></Page>;

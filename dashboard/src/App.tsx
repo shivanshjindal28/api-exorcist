@@ -1,17 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { ApiClient, session } from "./api";
-import { SessionContext } from "./common";
-import {
-  IconDashboard,
-  IconFlask,
-  IconGhost,
-  IconLogout,
-  IconMoon,
-  IconPlus,
-  IconProjects,
-  IconSun,
-} from "./icons";
+import { Menu, SessionContext } from "./common";
 import type { Principal } from "./types";
 import { Dashboard } from "./views/Dashboard";
 import { Login } from "./views/Login";
@@ -99,21 +89,14 @@ function useTheme(): [Theme, () => void] {
   return [theme, toggle];
 }
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
-}
-
-const NAV: { key: string; href: string; label: string; icon: ReactNode; match: (v: string, p: string | null) => boolean }[] = [
-  { key: "dashboard", href: "#dashboard", label: "Dashboard", icon: <IconDashboard />, match: (v) => v === "dashboard" },
+const NAV: { href: string; label: string; match: (v: string, p: string | null) => boolean }[] = [
+  { href: "#dashboard", label: "Overview", match: (v) => v === "dashboard" },
   {
-    key: "results",
     href: "#results",
     label: "Projects",
-    icon: <IconProjects />,
-    match: (v, p) => (v === "results" && !(p ?? "").startsWith("demo")) || v === "report",
+    match: (v, p) => (v === "results" && !(p ?? "").startsWith("demo")) || v === "report" || v === "scan",
   },
-  { key: "scan", href: "#scan", label: "New scan", icon: <IconPlus />, match: (v) => v === "scan" },
+  { href: "#results/demo/overview", label: "Demo bank", match: (v, p) => v === "results" && (p ?? "").startsWith("demo") },
 ];
 
 export function App() {
@@ -175,57 +158,44 @@ export function App() {
     );
   }
 
-  const demo = where.view === "results" && (where.param ?? "").startsWith("demo");
-
   return (
     <SessionContext.Provider value={{ api, principal, signOut }}>
       <div className="shell">
-        <aside className="sidebar">
-          <a className="sb-brand" href="#dashboard">
-            <span className="sb-logo">
-              <IconGhost size={18} />
-            </span>
-            <span className="sb-name">
-              API Exorcist
-              <span className="sb-edition">Inventory and retirement</span>
-            </span>
+        <header className="topnav">
+          <div className="topnav-inner">
+          <a className="wordmark" href="#dashboard">
+            API Exorcist
           </a>
-          <div className="sb-section">Workspace</div>
-          <nav className="sb-nav" aria-label="Sections">
+          <nav aria-label="Sections">
             {NAV.map((n) => (
-              <a key={n.key} href={n.href} aria-current={n.match(where.view, where.param) ? "page" : undefined}>
-                {n.icon}
+              <a key={n.href} href={n.href} aria-current={n.match(where.view, where.param) ? "page" : undefined}>
                 {n.label}
               </a>
             ))}
-            <a href="#results/demo/overview" aria-current={demo ? "page" : undefined}>
-              <IconFlask />
-              Demo bank
-              <span className="sb-count">sim</span>
-            </a>
           </nav>
-          <div className="sb-foot">
-            <div className="sb-user">
-              <span className="avatar" aria-hidden="true">
-                {initials(principal.name)}
-              </span>
-              <span className="sb-who">
-                <strong>{principal.name}</strong>
-                <span className="role">{principal.role}</span>
-              </span>
-            </div>
-            <div className="sb-tools">
-              <button onClick={toggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
-                {theme === "dark" ? <IconSun /> : <IconMoon />}
-                {theme === "dark" ? "Light" : "Dark"}
-              </button>
-              <button onClick={signOut}>
-                <IconLogout />
-                Sign out
-              </button>
-            </div>
+          <div className="topnav-right">
+            {where.view !== "scan" && (
+              <a className="btn small" href="#scan">
+                New scan
+              </a>
+            )}
+            <Menu
+              label={principal.name}
+              buttonClass="user-btn"
+              header={
+                <div className="menu-who">
+                  <strong>{principal.name}</strong>
+                  {principal.role === "approver" ? "Approver: can scan and decide" : "Viewer: read only"}
+                </div>
+              }
+              items={[
+                { label: theme === "dark" ? "Light theme" : "Dark theme", onSelect: toggleTheme },
+                { label: "Sign out", onSelect: signOut },
+              ]}
+            />
           </div>
-        </aside>
+          </div>
+        </header>
         <main className="main">{view.render(where.param)}</main>
       </div>
     </SessionContext.Provider>

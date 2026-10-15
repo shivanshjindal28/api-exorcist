@@ -11,7 +11,6 @@ import {
   canApprove,
   useSession,
 } from "../../common";
-import { IconUpload } from "../../icons";
 import type { Lifecycle, ScanJob, Traffic } from "../../types";
 import { when } from "./shared";
 
@@ -103,16 +102,12 @@ function ImportCard({
           gateway or load balancer already writes, ideally 30 to 90 days of them, and every
           endpoint is classified by the four lifecycle definitions.
         </p>
-        <div className="formats">
-          {["nginx / Apache", "AWS ALB", "Kong", "AWS API Gateway", "Envoy", "Traefik", "JSON lines", ".gz rotated"].map((f) => (
-            <span key={f} className="chip">
-              {f}
-            </span>
-          ))}
-        </div>
+        <p className="small muted" style={{ margin: 0 }}>
+          Reads nginx and Apache logs, AWS load balancer logs, and JSON lines from Kong, AWS API
+          Gateway, Envoy or Traefik. Gzip-rotated files are read directly.
+        </p>
         <div className="buttons">
           <label className="file-pick">
-            <IconUpload />
             {files.length ? `${files.length} file(s), ${(size / 1048576).toFixed(1)} MB` : "Choose log files"}
             <input
               className="visually-hidden"
@@ -261,7 +256,7 @@ function UsageReport({ job, traffic }: { job: ScanJob; traffic: Traffic }) {
                 <th className="r">Clients</th>
                 <th>Trend</th>
                 <th>Last success</th>
-                <th>Why</th>
+                <th>Why not in use</th>
               </tr>
             </thead>
             <tbody>
@@ -288,7 +283,9 @@ function UsageReport({ job, traffic }: { job: ScanJob; traffic: Traffic }) {
                       <Sparkline points={u.daily.map(([, n]) => n)} />
                     </td>
                     <td className="small">{u.last_success ? when(u.last_success) : <span className="muted">never</span>}</td>
-                    <td className="small muted">{u.reason}</td>
+                    <td className="small muted">
+                      {u.lifecycle === "ACTIVE" || u.lifecycle === "ORPHANED" ? "" : u.reason}
+                    </td>
                   </tr>
                 );
               })}

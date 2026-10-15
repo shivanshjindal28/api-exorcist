@@ -10,27 +10,16 @@ import {
   useLoad,
   useSession,
 } from "../common";
-import { IconGhost, IconPlus } from "../icons";
 import type { Portfolio } from "../types";
 import { when } from "./scan/shared";
 
 /** Every project's latest scan, and what across all of them needs attention first. */
 export function Dashboard() {
-  const { api, principal } = useSession();
+  const { api } = useSession();
   const { data, error, loading } = useLoad<Portfolio>(() => api.portfolio());
 
   const head = (
-    <PageHead
-      title="API estate"
-      crumbs={[{ label: "Workspace" }, { label: "Dashboard" }]}
-      sub={`Signed in as ${principal.name}. Every project's latest scan, ranked by what to look at first.`}
-      actions={
-        <a className="btn" href="#scan">
-          <IconPlus />
-          New scan
-        </a>
-      }
-    />
+    <PageHead title="Overview" sub="The latest scan of every project, and the endpoints to look at first." />
   );
 
   if (error) return <Page head={head}><ErrorBox message={error} /></Page>;
@@ -43,7 +32,6 @@ export function Dashboard() {
       <Page head={head}>
         <section className="card">
           <Empty
-            icon={<IconGhost size={24} />}
             title="No projects scanned yet"
             action={
               <div className="buttons">
@@ -72,7 +60,6 @@ export function Dashboard() {
       label: "Undocumented (shadow)",
       value: t.undocumented,
       note: t.endpoints ? `${Math.round((t.undocumented / t.endpoints) * 100)}% of the estate` : undefined,
-      tone: "tile-warn",
     },
     { label: "Zombie candidates", value: t.candidates, note: `${t.likely} likely`, tone: "tile-bad" },
     {
@@ -81,7 +68,7 @@ export function Dashboard() {
       note: "no traffic in the imported logs",
       tone: t.zombies ? "tile-bad" : undefined,
     },
-    { label: "Sensitive endpoints", value: t.high_sensitivity, note: "auth, payments, cards, KYC, admin", tone: "tile-info" },
+    { label: "Sensitive endpoints", value: t.high_sensitivity, note: "auth, payments, cards, KYC, admin" },
   ];
 
   return (
@@ -97,7 +84,7 @@ export function Dashboard() {
           ))}
         </div>
 
-        <Card title="Needs attention first" flush>
+        <Card title="Needs attention" flush>
           {data.top_risks.length === 0 ? (
             <p className="muted" style={{ padding: "0 1.25rem 1rem" }}>
               No zombie candidates across the estate.

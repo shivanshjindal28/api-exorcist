@@ -86,7 +86,8 @@ export function Loading({ what }: { what: string }) {
 }
 
 export function LabelBadge({ label }: { label: string }) {
-  return <span className={`badge badge-${label.toLowerCase()}`}>{label}</span>;
+  const word = label.charAt(0) + label.slice(1).toLowerCase();
+  return <span className={`badge badge-${label.toLowerCase()}`}>{word}</span>;
 }
 
 const STATE_TONE: Record<string, string> = {
@@ -150,20 +151,24 @@ export function PageHead({
   sub,
   actions,
   badge,
+  tabs,
 }: {
   title: ReactNode;
   crumbs?: Crumb[];
   sub?: ReactNode;
   actions?: ReactNode;
   badge?: ReactNode;
+  /** A page's own navigation, drawn on the header's bottom edge. */
+  tabs?: ReactNode;
 }) {
   return (
-    <header className="pagehead">
+    <header className={tabs ? "pagehead has-tabs" : "pagehead"}>
+      <div className="pagehead-inner">
       {crumbs.length > 0 && (
         <nav className="crumbs" aria-label="Breadcrumb">
           {crumbs.map((c, i) => (
             <span key={`${c.label}-${i}`}>
-              {i > 0 && <span className="sep">/ </span>}
+              {i > 0 && <span className="sep"> / </span>}
               {c.href ? <a href={c.href}>{c.label}</a> : c.label}
             </span>
           ))}
@@ -175,6 +180,8 @@ export function PageHead({
         {actions && <div className="buttons">{actions}</div>}
       </div>
       {sub && <div className="sub">{sub}</div>}
+      {tabs}
+      </div>
     </header>
   );
 }
@@ -266,10 +273,14 @@ export function Menu({
   label,
   icon,
   items,
+  header,
+  buttonClass = "secondary",
 }: {
   label: string;
   icon?: ReactNode;
   items: { label: string; hint?: string; onSelect: () => void; disabled?: boolean }[];
+  header?: ReactNode;
+  buttonClass?: string;
 }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -288,12 +299,19 @@ export function Menu({
   }, [open]);
   return (
     <div className="menu">
-      <button className="secondary" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button className={buttonClass} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         {icon}
         {label}
+        <span aria-hidden="true" className="muted">&#9662;</span>
       </button>
       {open && (
         <ul className="menu-list" role="menu">
+          {header && (
+            <li role="none">
+              {header}
+              <div className="menu-sep" />
+            </li>
+          )}
           {items.map((it) => (
             <li key={it.label} role="none">
               <button

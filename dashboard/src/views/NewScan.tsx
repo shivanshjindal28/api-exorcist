@@ -22,7 +22,7 @@ export function NewScan() {
       head={
         <PageHead
           title="New scan"
-          crumbs={[{ label: "Workspace" }, { label: "New scan" }]}
+          crumbs={[{ label: "Projects", href: "#results" }, { label: "New scan" }]}
           sub="Find every API in a project and what is wrong with it: undocumented, unowned, untouched for a year, superseded by a newer version, still in the code after leaving the documentation."
         />
       }

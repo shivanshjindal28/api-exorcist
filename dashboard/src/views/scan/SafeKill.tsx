@@ -177,7 +177,7 @@ function QueueRow({
           </button>
         </td>
         <td>
-          {e.candidate ? <CandidateBadge label={e.candidate.label} /> : <span className="muted">no</span>}
+          {e.candidate ? <CandidateBadge label={e.candidate.label} /> : <span className="muted">-</span>}
         </td>
         <td>{e.findings.length + shared}</td>
         <td className="small">{ago(e.last_change_days)}</td>

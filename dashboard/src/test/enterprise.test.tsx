@@ -97,7 +97,7 @@ describe("Dashboard", () => {
         sensitivity: "Authentication", level: "high", label: "Zombie (no traffic)", documented: true }],
     };
     withSession(<Dashboard />, { portfolio: vi.fn(async () => folio) });
-    expect(await screen.findByText("Needs attention first")).toBeTruthy();
+    expect(await screen.findByText("Needs attention")).toBeTruthy();
     expect(screen.getByText("POST /v2/check-otp").closest("a")?.getAttribute("href")).toBe(`#results/${JOB.id}/endpoints`);
     expect(screen.getByText("Zombie (no traffic)")).toBeTruthy();
     expect(screen.getByText("logs imported")).toBeTruthy();

@@ -1,5 +1,4 @@
 import { ErrorBox, LevelBadge, Loading, Page, PageHead, useLoad, useSession } from "../common";
-import { IconReport } from "../icons";
 import type { ScanAudit, ScanEndpoint, ScanJob } from "../types";
 import { CHECK_TEXT, when } from "./scan/shared";
 
@@ -65,7 +64,6 @@ export function ExecutiveReport({ id }: { id: string }) {
           Back to the scan
         </a>
         <button onClick={() => window.print()}>
-          <IconReport />
           Print or save as PDF
         </button>
       </div>

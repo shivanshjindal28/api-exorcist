@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../api";
 import { Card, ErrorBox, Loading, Menu, Page, PageHead, canApprove, useSession } from "../../common";
-import { IconDownload, IconRefresh, IconUpload } from "../../icons";
 import type { Review, ScanJob } from "../../types";
 import { Audit as DemoAudit } from "../Audit";
 import { Benchmark as DemoBenchmark } from "../Benchmark";
@@ -88,9 +87,9 @@ function DemoView({ tab: asked }: { tab: Tab }) {
       head={
         <PageHead
           title="Demo bank"
-          crumbs={[{ label: "Workspace" }, { label: "Demo bank" }]}
           badge={<span className="scan-status scan-demo">simulated</span>}
           sub="25 endpoints behind a simulated gateway, with traffic, DNS and a known answer key: the full engine when all six evidence sources exist."
+          tabs={<Tabs id={DEMO_ID} tab={tab} label="Demo bank views" tabs={DEMO_TABS} />}
         />
       }
     >
@@ -99,7 +98,6 @@ function DemoView({ tab: asked }: { tab: Tab }) {
           Simulated data. It shows lifecycle classification, the removal gate and Safe Kill
           working end to end. Nothing real is touched, and no figure here describes a real bank.
         </div>
-        <Tabs id={DEMO_ID} tab={tab} label="Demo bank views" tabs={DEMO_TABS} />
         {body}
       </div>
     </Page>
@@ -170,6 +168,19 @@ function RealScanView({ id, tab }: { id: string; tab: Tab }) {
           crumbs={crumbs}
           badge={<ScanStatusBadge status={job.status} />}
           actions={job.status === "done" ? <ScanActions job={job} /> : undefined}
+          tabs={
+            job.status === "done" && job.report ? (
+              <Tabs
+                id={id}
+                tab={tab}
+                label="Scan views"
+                counts={{
+                  endpoints: job.report.endpoints.length,
+                  usage: usage ? usage.ZOMBIE ?? 0 : undefined,
+                }}
+              />
+            ) : undefined
+          }
           sub={
             <div className="meta">
               <span>{KIND_LABEL[job.kind]} scan</span>
@@ -213,15 +224,6 @@ function RealScanView({ id, tab }: { id: string; tab: Tab }) {
 
       {job.status === "done" && job.report && (
         <>
-          <Tabs
-            id={id}
-            tab={tab}
-            label="Scan views"
-            counts={{
-              endpoints: job.report.endpoints.length,
-              usage: usage ? usage.ZOMBIE ?? 0 : undefined,
-            }}
-          />
           {tab === "overview" && <ScanOverviewTab job={job} />}
           {tab === "endpoints" && <ScanEndpointsTab job={job} onReviewed={onReviewed} />}
           {tab === "usage" && <ScanUsageTab job={job} onImported={setJob} />}
@@ -287,19 +289,16 @@ function ScanActions({ job }: { job: ScanJob }) {
       )}
       {approver && job.kind === "github" && (
         <button className="secondary" onClick={rescan} disabled={busy}>
-          <IconRefresh />
           {busy ? "Starting..." : "Re-scan"}
         </button>
       )}
       {approver && (
         <a className="btn secondary" href={`#results/${job.id}/usage`}>
-          <IconUpload />
           Import access logs
         </a>
       )}
       <Menu
         label="Export"
-        icon={<IconDownload />}
         items={[
           { label: "Executive report", hint: "printable summary, save as PDF", onSelect: () => { window.location.hash = `#report/${job.id}`; } },
           { label: "SARIF 2.1.0", hint: "GitHub code scanning, Azure DevOps", onSelect: () => download("sarif") },
