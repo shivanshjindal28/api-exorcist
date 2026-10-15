@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # phase* too: the build is developed on stacked phase branches, and a
+    # branch push used to run nothing, so CI never saw Phases 4 to 9.
+    branches: [main, "phase*"]
   pull_request:
   workflow_dispatch:
 
