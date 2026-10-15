@@ -470,7 +470,7 @@ def test_hidden_month_end_caller_is_caught_by_the_default_shadow() -> None:
 
 
 def test_demo_seeds_show_each_outcome() -> None:
-    """Pins the seeds demo/DEMO.md uses, so the script cannot drift from the code."""
+    """Pins the seeds that show each Safe Kill branch (CLI: apix safekill --seed)."""
     rolled, b3 = _hidden_caller_run(3, seed=3)
     retired, b1 = _hidden_caller_run(3, seed=1)
     check("test_demo_seeds_show_each_outcome",

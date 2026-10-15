@@ -407,7 +407,7 @@ which one it shows. A graph from code moves Safe Kill's dependency prerequisite 
 
 Tested against seven real public repositories, project scans concluded nothing:
 every endpoint carried the same findings (undocumented, unowned), so nothing was
-ranked, and OWASP crAPI's two intentional zombie endpoints, an old OTP check and
+ranked, and the two insecure old versions OWASP crAPI deliberately keeps beside their fixes, an old OTP check and
 an old token login left beside their newer versions, came out as ordinary rows.
 A repository holds no traffic, but it does hold evidence of decay, and scans now
 read it: a newer version of the same operation; deprecation in the specification

@@ -22,6 +22,7 @@ cd dashboard && npm ci && npm test && npm run build   # dashboard, 31 Vitest tes
 pytest                            # 258 tests
 ruff check . && mypy              # lint + strict types
 APIX_REALWORLD=1 pytest tests/test_realworld.py   # real repos, known answers (network, ~6 min)
+python demo/prescan.py OWASP/crAPI   # scan via the app's engine into data/scans (demo fallback)
 
 python docs/render_diagrams.py    # mermaid -> png (run before the two below)
 python docs/build_docx.py         # literature review, design doc, interim report
@@ -150,7 +151,8 @@ repository when a new framework or false positive turns up.
   `MSYS_NO_PATHCONV=1`.
 - **The repo lives inside OneDrive.** Syncing a live `.git` directory can
   corrupt it; `.git` should be excluded from sync.
-- **Remote:** `origin` is https://github.com/shivanshjindal28/api-exorcist (private).
+- **Remote:** `origin` is https://github.com/shivanshjindal28/api-exorcist (PUBLIC:
+  every push is publishing). CI runs on main, phase* branches and pull requests.
   No `gh` CLI here; plain git over HTTPS works through Git Credential Manager.
   CI only runs on what is pushed, so a check that passes locally is unproven there.
 

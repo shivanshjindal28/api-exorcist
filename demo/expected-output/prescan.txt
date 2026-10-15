@@ -1,0 +1,3 @@
+  done    OWASP/crAPI: 62 endpoints, 6 candidates (2 likely), 50s
+  done    erev0s/VAmPI: 14 endpoints, 2 candidates (0 likely), 8s
+  done    spring-petclinic/spring-petclinic-rest: 38 endpoints, 3 candidates (0 likely), 118s

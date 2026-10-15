@@ -31,8 +31,12 @@ safely turn one off.** That gap is this project's contribution.
 | **ZOMBIE** | No meaningful use, largely invisible | Candidate for Safe Kill |
 
 **Every one of those is defined in terms of *use*.** That single fact drives most of
-the architecture, and explains the system's most important behaviour — see
-[Repository scans abstain](#repository-scans-abstain-and-that-is-the-point).
+the architecture. With traffic (the demo bank), the engine classifies all four. On a
+code repository, which holds no traffic, it never claims a label it cannot prove:
+it ranks **zombie candidates** from the evidence the code does hold, labelled
+suspected, not proven. Scanned live, the two insecure old versions OWASP crAPI
+deliberately leaves beside their fixes come out on top; see
+[What a scan concludes on real code](#what-a-scan-concludes-on-real-code-zombie-candidates).
 
 ---
 
@@ -78,6 +82,10 @@ with Shift+F5 in VS Code, or Ctrl+C in the terminal.
 The command line is still there for scripting and CI (see the
 [command reference](#command-reference)); nothing needs it.
 
+Presenting it? [`demo/DEMO.md`](demo/DEMO.md) is the walkthrough, and
+`demo\prepare.ps1` scans three real repositories ahead of time so their reports are
+ready to open even without a network.
+
 ---
 
 ## Progress
@@ -94,6 +102,7 @@ The command line is still there for scripting and CI (see the
 | 6 | CI/CD enforcement: GitHub Action, judges only what a PR changes | ✅ done |
 | 7–8 | Deployment: container image, observability, security review | ✅ done |
 | 9 | Browser scans: upload a project folder or paste a GitHub link | ✅ done |
+| 10 | Zombie candidates from code evidence, tested on seven real repositories | ✅ done |
 | — | Live website scanning | ⬜ not in this version |
 
 ### What is built
@@ -121,6 +130,8 @@ The command line is still there for scripting and CI (see the
 | Container image: non-root, read-only filesystem, digest-pinned base, no pip | ✅ |
 | Observability: Prometheus metrics, JSON logs, request ids | ✅ |
 | Browser scans of an uploaded folder or a GitHub link, with a report of what could not be checked and why | ✅ |
+| Zombie candidates on real code: superseded versions, client use, deprecation, debug endpoints, shadow | ✅ |
+| Dependency graph drawn for every scan: calls, gateway routes and topics read from code | ✅ |
 
 **All eight phases are built, and the browser is now the way in.** Live
 website scanning is shown in the app but is not available in this version. What
@@ -134,6 +145,18 @@ store the operator does not control. Each is listed under
 ---
 
 ## Headline results
+
+**On real code**, scanned straight from GitHub (`tests/test_realworld.py` asserts
+these, and what must not be flagged):
+
+| Repository | What the scan puts at the top |
+|---|---|
+| OWASP crAPI | `POST .../v2/check-otp` and `POST .../v2.7/user/login-with-token`, old versions crAPI deliberately leaves beside their fixes (the v2 OTP check has no attempt limit; v3 locks after 10), as **likely zombies**: a newer version exists and its own web app calls only that one |
+| VAmPI | `/users/v1/_debug` and `/createdb`, debug endpoints shipped in the API |
+| spring-petclinic-rest | `GET /owners` and `GET /pets`, superseded by their v2 |
+| full-stack-fastapi-template | the six endpoints its generated client has and its front end never calls |
+
+**On the simulated estate**, where traffic and ground truth exist:
 
 **Classification** on the 25-endpoint estate: accuracy **0.960** (24/25), macro-F1
 **0.940**, **zombie recall 1.000 with zero live endpoints marked for removal**.
@@ -263,7 +286,7 @@ Consequences, all enforced in code:
 | `apix safekill --hidden-caller EP` | What-if: a month-end caller the capture never saw |
 | `apix safekill --evaluate` | Measure Safe Kill across 120 generated estates |
 | `apix safekill --verify PATH` | Verify an audit log's hash chain |
-| `apix serve` | The REST API on 127.0.0.1:8600; mints a one-time token if none set |
+| `apix serve` | The app: opens the browser signed in, on 127.0.0.1:8600 or the next free port |
 | `apix serve --log-format json --no-docs` | As deployed: JSON logs, no Swagger pages |
 | `apix token NAME --role approver` | Mint a token; prints it once, stores only its hash |
 | `apix enforce --base origin/main` | Judge what this change does to the API surface |
@@ -300,10 +323,11 @@ specification.
 Verified against that repository: **23 routes found, 1,497 commits walked, 15 workflow
 files detected.**
 
-### Repository scans abstain, and that is the point
+### Repository scans do not guess a lifecycle, and that is the point
 
 A repository has no gateway registry, no traffic sensor and no DNS. Since all four
-lifecycle classes are defined in terms of *use*, the system **refuses to classify**:
+lifecycle classes are defined in terms of *use*, the system **refuses to put a
+lifecycle label on any endpoint**:
 
 ```
   sources consulted   : CICD, CODE, OPENAPI
@@ -322,6 +346,11 @@ lifecycle classes are defined in terms of *use*, the system **refuses to classif
 A naive tool would see zero observed traffic and call all 23 zombies — and be wrong
 about every one, since this is a live template. **A tool that states what it cannot
 know is a tool a bank can deploy.**
+
+What it does instead is rank **zombie candidates** from the evidence a repository
+does hold (newer versions, the project's own clients, deprecation markers, debug
+endpoints), each labelled suspected and each with the sentences behind its score;
+see [What a scan concludes on real code](#what-a-scan-concludes-on-real-code-zombie-candidates).
 
 ---
 
@@ -707,7 +736,7 @@ first four and asserts what must not be flagged):
 
 | Repository | Endpoints | Candidates | What the top of the list says |
 |---|---|---|---|
-| OWASP crAPI | 62 | 6 | its two intentional zombies (OWASP API9, improper inventory management), `v2/check-otp` and `v2.7/user/login-with-token`, ranked first, as likely zombies |
+| OWASP crAPI | 62 | 6 | the two insecure old versions it deliberately keeps beside their fixes, `v2/check-otp` and `v2.7/user/login-with-token` (the pattern OWASP API9 describes), ranked first, as likely zombies |
 | VAmPI | 14 | 2 | `/users/v1/_debug` and `/createdb` |
 | spring-petclinic-rest | 38 | 3 | `GET /owners` and `GET /pets`, superseded by their v2 |
 | full-stack-fastapi-template | 23 | 6 | the six endpoints its generated client has but its front end never calls |
@@ -1258,7 +1287,7 @@ APIX_BUS=kafka APIX_GRAPH=neo4j apix scan
 | [`docs/interim-report.md`](docs/interim-report.md) | Interim report, Chapters 1–3 — introduction, literature survey, methodology and implementation, in the prescribed submission format |
 | [`docs/build_pptx.py`](docs/build_pptx.py) | Generates the review presentation from the same verified figures |
 | [`docs/papers/README.md`](docs/papers/README.md) | The source PDFs and their full-text verification status |
-| [`demo/DEMO.md`](demo/DEMO.md) | Review runbook — setup, six-step walkthrough, anticipated questions |
+| [`demo/DEMO.md`](demo/DEMO.md) | Presentation runbook: the browser walkthrough, anticipated questions, fallbacks |
 | [`CLAUDE.md`](CLAUDE.md) | Working notes: the non-negotiable rules and environment gotchas |
 
 Nine of the twelve paper PDFs are present; five have been checked against their full

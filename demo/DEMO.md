@@ -2,9 +2,12 @@
 
 API Exorcist · B.Tech CSE (Cyber Security), MPSTME/NMIMS
 
+Everything in this demo happens in the browser. The terminal is used once, to
+start the app.
+
 ---
 
-## 0. The day before — do this once
+## 0. The day before: prepare once
 
 Open PowerShell in the project folder and run:
 
@@ -12,475 +15,274 @@ Open PowerShell in the project folder and run:
 powershell -ExecutionPolicy Bypass -File demo\prepare.ps1
 ```
 
-This installs the package with the API, checks `git` / `semgrep` / `apix` and
-the dashboard build, **pre-clones the demo repository so the live scan needs no
-network**, warms the Semgrep cache, dry-runs every command with timings, checks
-enforcement gives its scripted result, **moves the old audit log into
-`data\archive\` so the demo starts with an empty one**, checks port 8600 is
-free, and runs the full test suite. About three minutes.
+It installs the package with the live scanner and the API, checks `git`,
+`semgrep` and the dashboard build, **moves earlier scans and audit logs into
+`data\archive\`** so the "All scans" list starts clean, and then **scans three
+real repositories from GitHub through the app's own scan engine**: OWASP crAPI,
+VAmPI and spring-petclinic-rest. Those finished reports appear under "All
+scans" in the browser, so if the room's network fails you still have real
+results to open. It ends with the full test suite. About five minutes, most of
+it cloning.
 
-If any line prints `!!` in red, fix it now, not in the room. Run it again an hour
-before presenting if you rehearsed in between: it resets the audit log each time.
-Red pip lines about *other* packages (transformers, huggingface-hub) are your
-Python environment, not this project, and are harmless.
+If any line prints `!!` in red, fix it now, not in the room. Red pip lines about
+*other* packages are your Python environment, not this project.
 
-**Why pre-clone matters.** `apix scan --github …` takes **~99 seconds**, almost
-all of it cloning. The same scan against the pre-cloned copy takes **~9 seconds**
-and works with the Wi-Fi off. Use the local form live; mention the GitHub form
-exists.
-
----
-
-## 1. VS Code setup — click by click
-
-Do this *before* the panel is watching.
-
-1. **File → Open Folder…** → select `Capstone\api-exorcist` → **Select Folder**
-2. **View → Appearance → Full Screen** (or `F11`) — removes desktop clutter
-3. Open a terminal: **Terminal → New Terminal** (or `` Ctrl+` ``)
-4. Drag the terminal's top border **upward** so it fills roughly two-thirds of
-   the window. The output is the demo; the code is the backdrop.
-5. **Make the terminal text large enough to read from the back of the room.**
-   Click once inside the terminal, then press **`Ctrl` + `=`** four or five
-   times. Check the coverage table still fits on one line — if it wraps, press
-   **`Ctrl` + `-`** once.
-6. **View → Command Palette** (`Ctrl+Shift+P`) → type `Toggle Light/Dark` →
-   choose **Light** if projecting. Dark themes wash out on most projectors.
-7. In the Explorer sidebar, pre-open these tabs so you can click straight to
-   them without hunting:
-   - `src/apix/engine/rules.py`
-   - `src/apix/simulated_env/estate.py`
-   - `docs/design-document.md`
-8. **Close the sidebar** (`Ctrl+B`) once those are open. Reopen only if asked.
-
-**Terminal check.** Run `apix version` — it should print in under a second. If
-`apix` is not recognised, run `pip install -e ".[dev,live]"` and reopen the
-terminal.
+**Timings to expect live:** VAmPI about 10 seconds, crAPI about 50 seconds,
+petclinic about two minutes (cloning dominates). Start crAPI live and talk while
+it runs; open the pre-scanned petclinic rather than waiting for it.
 
 ---
 
-## 2. Running the demo
+## 1. Starting the app
+
+In VS Code: open the `api-exorcist` folder and press **F5**. Or, in a terminal:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File demo\run.ps1
 ```
 
-Ten slides, each waiting for **Enter**. Nothing executes until you press it, so
-you can talk for as long as you like on each screen.
+The browser opens **already signed in** as you. If port 8600 is taken, the app
+picks the next free port and prints it; nothing to fix.
 
-| Slide | Runbook step below |
+Before the panel is watching: browser full screen (`F11`), zoom to 125% if the
+room is large, light theme if projecting.
+
+---
+
+## 2. The walkthrough
+
+### Step 1: The question (no clicks, 1 minute)
+
+**Say:** *"A zombie API is an endpoint that is still deployed and reachable but
+that nobody uses or maintains. A shadow API is one nobody documented. OWASP
+lists this as API9, improper inventory management. Banks have hundreds of these,
+and the hard part is not finding endpoints, it is knowing which ones are dead
+and removing them without causing an outage."*
+
+### Step 2: Scan a real repository, live (3 minutes)
+
+On **New scan**, option 2, paste `https://github.com/OWASP/crAPI` and press
+**Scan repository**. The progress lines stream while it clones and parses.
+
+**Say while it runs:** *"crAPI is OWASP's deliberately vulnerable API. Nothing
+from the repository is executed: we read its code with Semgrep, its OpenAPI
+specification and its git history, and we read what its own web app calls."*
+
+When it finishes, on **Overview**:
+
+> 62 endpoints. **6 zombie candidates, 2 likely zombies**, at the top:
+> `POST .../v2/check-otp` and `POST .../v2.7/user/login-with-token`.
+
+Open the **Zombie candidates** card and read the reasons on `v2/check-otp`
+aloud:
+
+> +3 a newer version exists, `v3/check-otp`. +2 the project's own client calls
+> the newer version and never this one. +2 its clients call 24 other identity
+> endpoints, but not this one. +1 unchanged for two years while the project is
+> still changing.
+
+**Then say why it matters:** *"This is not a cosmetic finding. In crAPI's own
+code the v3 OTP check locks after 10 wrong attempts; the v2 check has no limit,
+so a six-digit OTP can be brute-forced. The fix was shipped, and the old
+endpoint was left running beside it. That is exactly how a zombie happens."*
+
+**Be precise:** these are labelled *candidates*, suspected not proven. A
+repository has no traffic, so the scan never claims a lifecycle label it cannot
+prove (see Step 7).
+
+### Step 3: Endpoints (1 minute)
+
+**Endpoints** tab: every route with where it is defined (file and line), whether
+the specification documents it, its owner and when its code last changed.
+Filter to undocumented: 18 of them, shadow APIs by definition.
+
+### Step 4: Dependency graph (2 minutes)
+
+**Dependency graph** tab: services, the calls between them, gateway routes and
+message topics, read from the code. Click a service to see what it calls and
+what calls it.
+
+**Say:** *"Before anything is removed we have to know what breaks. In the demo
+bank, `GET /v2/accounts/{id}` has three direct callers, but removing it reaches
+nine services, five hops deep: **13 endpoints degraded**. That depth is not
+known in advance, which is why the dependency layer is a graph."*
+
+### Step 5: Safe Kill review queue (2 minutes)
+
+**Safe Kill** tab. On a code scan nothing is removed, because nothing proves an
+endpoint is unused (the card says why). Instead each candidate gets a human
+decision. Open `v2/check-otp`, read its signals, choose **Investigate for
+removal**, and add a note.
+
+### Step 6: Audit log (1 minute)
+
+**Audit log** tab: who started the scan, what it found (with the report's
+SHA-256), and your decision, with your name. Press **Verify the whole chain**.
+
+**Say:** *"Every entry is hash-chained to the one before. Editing any line,
+including the stored report, breaks the chain and this button says where."*
+
+### Step 7: Why it does not just say "zombie" (1 minute)
+
+Back on **Overview**, the card **"Why no endpoint is called a zombie here"**.
+
+**Say:** *"All four lifecycle classes are defined by use. A repository has no
+gateway, no traffic sensor, no DNS. So we rank candidates from the evidence the
+code does hold, and we say what evidence is missing. A tool that says what it
+cannot know is a tool a bank can deploy."*
+
+**Benchmark** tab on this scan: what a documentation-only inventory would have
+listed, against what the scan found.
+
+### Step 8: Two more real repositories (2 minutes)
+
+From **All scans**, open the pre-scanned reports:
+
+| Repository | Top of the list |
 |---|---|
-| 1 Benchmark, 2 Scan, 3 Blast radius, 4 Gate | Steps 1 to 4 |
-| 5 Safe Kill, three runs | Step 4b |
-| 6 Dashboard | Step 4c. The server opens in its own window and the browser opens by itself; the sign-in token is **already on your clipboard**, so press `Ctrl+V` in the sign-in box |
-| 7 Enforcement | Step 4d |
-| 8 Metrics | Step 4e, read with the same token, no copying |
-| 9 Real repository; 10 the test suite | Steps 5 and 6 |
+| VAmPI | `GET /users/v1/_debug` and `GET /createdb`: debug endpoints shipped in the API |
+| spring-petclinic-rest | `GET /owners` and `GET /pets`, superseded by their `v2`; and `GET /oops` |
 
-If you would rather type the commands yourself, they are below in order.
+**Say:** *"Different languages, different frameworks: Python with Connexion,
+Java with Spring. These results are asserted by a test that scans the real
+repositories, including what must not be flagged."*
 
----
+### Step 9: Run the demo, the full pipeline (5 minutes)
 
-### Step 1 — The problem
+On **New scan**, press **Not sure what to expect? Run the demo**. This opens
+the simulated bank, with a banner on every page saying so.
 
-```powershell
-apix benchmark
-```
+**Say first:** *"Code alone cannot prove an endpoint is dead. With traffic,
+gateway and DNS, it can. No bank publishes its real inventory, so this estate is
+simulated, with known answers, to measure the engine."*
 
-**Say:** *"Four configurations. Identical pipeline code — only the evidence
-sources differ, so any difference in outcome is caused by the correlation, not
-by a different algorithm."*
+1. **Overview**: 25 endpoints, 8 zombies.
+2. **Endpoints**, click `GET /v1/kyc/documents/{id}/raw`: no traffic, absent from
+   spec and gateway, still in DNS, unauthenticated. The source chips show which
+   of the six sources saw it. *"Absence is the evidence."*
+3. **Benchmark**: a conventional inventory (gateway plus specification) finds
+   **2 of 8** zombies; correlating six sources finds **8 of 8**. Accuracy 0.960,
+   zero live endpoints marked for removal.
+4. **Safe Kill**: **Start shadow** on the KYC endpoint and on
+   `POST /v1/debug/payments/replay`. The KYC shadow is clean, so Approve is live;
+   the debug route saw anonymous requests, so **Approve stays disabled** until the
+   risk is accepted in writing. Approve the KYC endpoint: nominated to retired,
+   decided by you.
+5. **Audit log**: Verify the whole chain. The approver's name comes from the
+   sign-in, never from anything the browser sends.
 
-**Point at:** the recall column.
+**If asked "why the 90-day shadow?":** *"To be 95% sure of seeing a caller that
+calls once a month you must watch ln(20) times 30 days, the rule of three.
+Across 120 generated estates the gate alone would have removed 49 live
+endpoints; with Safe Kill, none."*
 
-> A conventional API inventory — gateway plus specification, what most banks
-> actually have — finds **2 of 8** zombies. It classifies those two correctly; it
-never discovers the other six. Correlating six sources finds **8**.
+### Step 10 (optional): Stopping the next zombie at the pull request
 
-**Then point at the rules-usable column.** A gateway registry alone can evaluate
-**0 of 14** classification rules. It can list endpoints; it cannot say anything
-about them.
-
-**If asked "why zero?"** — because every classification rule needs evidence a
-registry does not hold. Rules whose sources were never consulted *abstain*
-rather than firing. An earlier version of this benchmark credited the baselines
-with traffic evidence they cannot observe, and reported 2 of 8. That was our
-bug, and correcting it made our own result look better, which is why it is
-written up in the design document rather than quietly changed.
-
----
-
-### Step 2 — Discovery, classification and explanation
-
-```powershell
-apix scan
-```
-
-**Say:** *"Six connectors, each a partial and imperfect witness. No source sees
-more than 76% of the estate. The correlation is what surfaces the rest."*
-
-**Point at:** a `[#####]` finding, and read its `because:` block aloud.
-
-> `GET /v1/kyc/documents/{id}/raw` — no meaningful traffic, absent from both the
-> spec and the gateway, still resolvable via DNS, unauthenticated. Raw identity
-> documents, on an endpoint nobody knows exists.
-
-**This is the answer to "can it use explainable AI".** Every verdict carries
-signed evidence contributions — the same additive shape SHAP produces, so the
-rule layer and the model layer will share one renderer.
-
----
-
-### Step 3 — Why removal is dangerous
-
-```powershell
-apix impact "GET /v2/accounts/{id}"
-```
-
-**Say:** *"Before anything can be removed, we have to know what breaks."*
-
-> Three direct callers. **Nine services. Five hops deep.** Thirteen endpoints
-> degraded.
-
-**The architectural point:** the depth is not known in advance. In SQL that is a
-recursive CTE whose cost grows per hop; in Cypher it is one variable-length path
-match. That is why the dependency layer is a graph.
-
----
-
-### Step 4 — How removal is made safe
-
-```powershell
-apix impact
-```
-
-**Say:** *"Both signals must agree. The classifier says an endpoint looks dead;
-the graph says nothing depends on it. Either alone is not enough."*
-
-> All 8 zombies are **isolated** — nothing observed calls them. That is *why*
-> they are safe, not a coincidence. All 3 deprecated endpoints still have live
-> callers and would be blocked even if the classifier misjudged them.
-
-**Say the limitation before they find it:** *"Isolated means no dependency was
-observed, not that none exists. A caller silent during the capture window is
-invisible here. That is exactly why this is a gate and not a proof, and why the
-approval step and canary rollout still come after it."*
-
----
-
-### Step 4b: Safe Kill, and the hidden caller
-
-```powershell
-apix safekill "GET /v1/cards/{id}/pin" --approve-as shivansh --hidden-caller "GET /v1/cards/{id}/pin"
-```
-
-**Say:** *"The gate cleared this endpoint. Now suppose a month-end batch job calls it
-every 25 days, and the traffic capture never saw it. Classifier and graph both missed
-it. Watch what Safe Kill does."*
-
-> The 90-day shadow names `month-end-recon-batch` three times and **rejects** the
-> removal. Nothing was refused. Nobody was harmed.
-
-**Then shorten the window, and say why it is wrong:**
-
-```powershell
-apix safekill "GET /v1/cards/{id}/pin" --approve-as shivansh --hidden-caller "GET /v1/cards/{id}/pin" --slowest-caller-days 3 --seed 3
-apix safekill "GET /v1/cards/{id}/pin" --approve-as shivansh --hidden-caller "GET /v1/cards/{id}/pin" --slowest-caller-days 3 --seed 1
-```
-
-> Seed 3: the shadow misses it, the canary refuses one real request, and the
-> controller **rolls back automatically**. Seed 1: it slips through everything and is
-> **retired into an outage**. At that window this happens 15 times in 40.
-
-**Say:** *"The 90 days is not a guess. To be 95% sure of catching a caller that calls
-once a month you have to watch for ln(20) times 30 days: the rule of three. These seeds
-were chosen to show each branch; the evaluation measures how often each happens."*
-
-**If asked "why not just a canary?":** *"We measured it. A canary with no shadow has
-no baseline for anonymous traffic, so scanner noise triggers rollbacks. It wrongly
-keeps 118 dead endpoints running, 15% of the attack surface, and refuses 67 real
-requests before it catches the live ones."*
-
----
-
-### Step 4c: The dashboard, and approval over HTTP
-
-```powershell
-apix serve --as shivansh
-```
-
-Open the address it prints (`http://127.0.0.1:8600`) and paste the one-time token it
-prints. Show, in order:
-
-1. **Overview.** 25 endpoints, 8 zombies, and the banner on every page saying the
-   estate is simulated.
-2. **Endpoints**, then click `GET /v1/kyc/documents/{id}/raw`. The signed evidence
-   bars are the verdict's reasons; the source chips show which of the six sources
-   saw it, crossed out where they did not. *"Absence is the evidence."*
-3. **Safe Kill.** Start a shadow on that endpoint and on
-   `POST /v1/debug/payments/replay`. The KYC shadow is clean, so Approve is live.
-   The debug route saw 266 anonymous requests, so **Approve stays disabled** until
-   the risk is accepted in writing.
-4. Approve the KYC endpoint. Its path runs nominated to retired, **decided by
-   shivansh**.
-5. **Audit log**, then "Verify the whole chain". The approval entry's actor is the
-   name bound to the token.
-
-**Say:** *"The name on that approval comes from the token, not from anything the
-browser sends. The API rejects a request that even tries to include an approver
-field, so the audit log cannot be told who approved something."*
-
-**If asked "is the inventory public?":** *"No. Every route except a health check
-needs a token, reads included, because a list of unauthenticated endpoints is a
-map for an attacker."*
-
----
-
-### Step 4d: Enforcement, the prevention half
+Only if time allows; this one is in the terminal:
 
 ```powershell
 python demo\make_enforce_demo.py demo\enforce-demo
 apix enforce --repo demo\enforce-demo --base main
 ```
 
-The script builds a small repository whose feature branch breaks every rule once.
+> Four errors and a warning, including `GET /v1/legacy/export` removed from the
+> spec with its handler left behind: **"Zombie in the making"**.
 
-> Four errors and a warning: an undocumented DELETE, a debug route that is
-> undocumented **and** unowned, and `GET /v1/legacy/export` removed from the spec
-> with its handler left behind, flagged as **"Zombie in the making"**. The health
-> check passes, exempt with its reason shown, because that exemption is in the
-> policy on `main`.
-
-**Say:** *"Every zombie in our estate was made the same way: someone deleted the
-route from the documentation and nobody deleted the code. This catches it at the
-commit that does it. And it only judges the change, so a bank with four hundred
-undocumented endpoints can switch it on today without every pull request failing."*
-
-If asked *"can't a developer just add their endpoint to the exemption list?"*:
-*"Not in the same pull request. The policy is read from main, never from the
-change being judged. An edit to it is flagged and only applies after it has been
-reviewed and merged. Our security review found that hole in the first version."*
+**Say:** *"Every zombie is made the same way: the route is deleted from the
+documentation and nobody deletes the code. This catches it at that commit, and
+it only judges the change, so a bank with hundreds of existing undocumented
+endpoints can switch it on today."*
 
 ---
 
-### Step 4e: Running it as a service
+## 3. Questions to expect
 
-With `apix serve` still running from step 4c, in a second terminal (paste the
-token it printed in place of `TOKEN`):
+**"Why would anyone use this instead of Semgrep?"**
+Semgrep is one of our inputs: it finds where routes are defined. It does not
+know that `v2/check-otp` has a `v3`, that the project's own web app only calls
+`v3`, that the spec does not document it, or that it has not changed in two
+years while the rest of the project has. API Exorcist correlates those sources
+into one ranked, explained list, draws the dependencies, and runs the removal
+through a review, a shadow period, a named approval and a tamper-evident audit
+log. Semgrep finds code; this decides what to do about an endpoint.
 
-```powershell
-curl.exe -s -H "Authorization: Bearer TOKEN" http://127.0.0.1:8600/metrics | Select-String "apix_endpoints|apix_audit_chain_ok|auth_failures"
-```
-
-> The estate's composition, the audit chain's health, and failed sign-ins by
-> reason, in the format every bank's monitoring already scrapes.
-
-**Say:** *"In production this runs as one container: non-root, read-only
-filesystem, and it refuses to start without configured credentials. The metric
-to alert on is `apix_audit_chain_ok`: if anyone edits the audit log, it drops to
-zero."* Build the image before the review if you want to show it; the build
-needs a network and takes about a minute.
-
----
-
-### Step 5 — It works on real code
-
-```powershell
-apix scan --local demo\repos\full-stack-fastapi-template --limit 3
-```
-
-**Say:** *"That was the simulation. This is a real repository off GitHub."*
-
-> 23 real routes. 1,497 commits walked for per-file staleness. Semgrep AST
-> matching — a route written inside a comment or a string literal is **not**
-> counted, which a regular expression cannot distinguish.
-
-**Point at `sources UNAVAILABLE` and `Lifecycle classification: NOT AVAILABLE`.**
-
-> A repository has no gateway, no traffic sensor, no DNS. All four lifecycle
-> classes are defined in terms of *use* — so without a usage source we report
-> **findings**, not a verdict. Nothing here is a removal candidate.
-
-That paragraph is the strongest thing in the demo. A tool that says what it
-cannot know is a tool a bank can deploy.
-
-**Mention, do not run:** `apix scan --github owner/repo` does the same thing
-straight from GitHub; it takes about 99 seconds, nearly all of it cloning.
-
----
-
-### Step 6 — It is tested
-
-```powershell
-python -m pytest
-```
-
-(Not `pytest -q`: the configuration already adds `-q`, and doubling it hides the
-summary line. The runner leaves out the two tests that drive real Semgrep, which
-take 45 seconds on their own; `prepare.ps1` and CI run all of them.)
-
-> **258 tests.** Including the ground-truth leakage guards, the removal gate, a
-> test asserting no live endpoint is ever cleared for removal, and every Safe Kill
-> safety path forced and asserted: rejection, denial, automatic rollback, and
-> tamper detection in the audit chain, plus every API route checked for
-authentication, a pull request that tries to exempt itself, and four processes
-writing the audit log at once.
-
-**Then, if there is time,** click to `src/apix/engine/rules.py` in VS Code and
-scroll to `RULES`. Say: *"Fifteen evidence rules. The weights were set from the
-class definitions before accuracy was measured, and deliberately never tuned
-against the answer key — otherwise the number would mean nothing."*
-
----
-
-## 3. What was asked, and what was delivered
-
-### The three concerns raised at the initial review
-
-| # | Concern | Status | Where to show it |
-|---|---|---|---|
-| 1 | Identify the dataset for the ML engine | **Delivered**, and a model trained on it | `apix dataset`; README, "The learned model" |
-| 2 | Can it use explainable AI | **Delivered and running** | Step 2 — every verdict carries signed evidence |
-| 3 | Comparative before/after study | **Delivered** | Step 1 — `apix benchmark`, reproducible figures |
-
-**On concern 1, be precise and do not overclaim.** The hand-written estate is
-**25 rows**, too few to train anything; the volume comes from the estate
-generator (120 estates), and the model is trained on that. Two numbers are easy
-to confuse, so keep them apart: **0.960 accuracy is the rule classifier** on the
-25-endpoint estate. On 120 generated estates the trained model edges the rules on
-macro-F1 (0.861 against 0.843) and, more importantly, produces no false zombies
-where the rules produce 14, which is why it is used as a **veto** over removals
-rather than as the decision-maker. All of it is synthetic; say so.
-
-### The documents
-
-| Deliverable | Status |
-|---|---|
-| Literature review, shown utilised in the implementation | **Done**: peer-reviewed sources verified against DBLP, with a traceability matrix mapping each to the module it justifies |
-| Design document, structural and behavioural | **Done**, with an as-built note for every phase where the build departed from the design, and why |
-| Implementation | **All eight phases built**: see below |
-
-### What is actually built
-
-| Capability | State |
-|---|---|
-| Six-source discovery with realistic blind spots | Done |
-| Multi-source correlation → unified inventory, 14 flags | Done |
-| Four-class rule classifier, deterministic and auditable | Done |
-| Per-verdict explanations with signed evidence | Done |
-| Source-availability handling — abstention, indeterminacy | Done |
-| Evaluation harness — per-class P/R/F1, confusion matrix | Done |
-| Comparative before/after benchmark | Done |
-| Labelled dataset, estate generator, trained model with SHAP | Done |
-| **Real GitHub repository scanning** — Semgrep AST, git history, CODEOWNERS | Done |
-| **Dependency graph + blast radius**, Neo4j backend | Done |
-| **Removal gate** — classifier and graph must both agree | Done |
-| **Safe Kill**: rule-of-three shadow, named approval, canary, automatic rollback | Done |
-| **Hash-chained audit log**, tamper-evident, every transition recorded | Done |
-| **REST API**: hashed tokens, viewer and approver roles, approval over HTTP | Done |
-| **Dashboard**: React + TypeScript, strict CSP, named approval | Done |
-| **CI/CD enforcement**: a GitHub Action that judges only what a pull request changes | Done |
-| **Container image**, Prometheus metrics, JSON logs, a security review with its fixes | Done |
-| Packaging, CLI, CI on 3.10/3.12, mypy strict, 258 tests | Done |
-
-### What is left, and why it is not in the repository
-
-| Remaining | Why |
-|---|---|
-| A gateway plugin implementing `EnforcementBackend` for a real gateway | Needs a bank's gateway to plug into; the interface it implements is built and tested |
-| An approval queue in a database, so the API can run as more than one replica | One replica is enough for a deployment of this size; stated as a limitation |
-| Anchoring the audit chain's head outside the operator's control | A deployment decision (WORM bucket, SIEM); the chain is what makes one small anchor sufficient |
-| Paper [2] Cassieri | Cited and used; the PDF is the one not yet in `docs/papers/` |
-
----
-
-## 4. Questions to expect
+**"I give you a random repository and it finds 0 candidates. So it does not work?"**
+Zero is an honest answer when there is no evidence: no older version beside a
+newer one, no client code to compare against, no deprecation, no debug route.
+The Zombie candidates card then lists which of those the repository lacks. A
+tool that invents zombies on a healthy project would remove live endpoints,
+which in a bank is an outage. If they hand you a repository live, scan it and
+read that card aloud.
 
 **"Is any of this real, or is it all simulated?"**
-The architecture is real; the estate is synthetic. Step 5 scans a real GitHub
-repository with no simulation involved. The estate exists because measuring
-detection accuracy requires ground truth, and no organisation publishes a real
-API inventory — it would be publishing a map of its attack surface.
+The repository scans are real: real code from GitHub, nothing simulated. The
+demo bank is simulated, and says so on every page, because measuring detection
+accuracy needs ground truth, and no bank publishes its inventory. The defensible
+claim is *"the engine recovers known decay patterns from partial, disagreeing
+evidence"*, never *"validated on production bank data"*.
 
-**"Why is the dataset synthetic?"**
-No public zombie-API corpus exists and there is a structural reason it never
-will. Generating it is not a shortcut around an available dataset; it is the
-only way to obtain ground-truth labels. State the limitation plainly: the
-defensible claim is *"the engine recovers known decay patterns from partial,
-disagreeing evidence"*, never *"validated on production bank data"*.
-
-**"You got 96% — isn't that suspiciously high?"**
+**"You got 96%. Isn't that suspiciously high?"**
 It is a rule classifier on 25 endpoints, and the weights were fixed before
-accuracy was measured. The single error is instructive: `POST /v1/kyc/aadhaar/ekyc`
-is genuinely deprecated but classified active — it is the one deprecated
-endpoint whose team never set the OpenAPI flag, exactly the behaviour Cassieri
-et al. documented. Its confidence is 0.803, the *same* as correct actives: the
-classifier is confidently wrong, because the observable evidence genuinely does
-not distinguish the cases. No model fixes that; only a new signal would.
+accuracy was measured. The one error, `POST /v1/kyc/aadhaar/ekyc`, is genuinely
+deprecated but classified active: its team never set the OpenAPI flag, exactly
+what Cassieri et al. observed. Its confidence is 0.803, the same as correct
+actives, because the evidence genuinely does not distinguish the cases.
 
 **"What if it deletes something important?"**
-Four independent barriers. The classifier must say ZOMBIE *and* have consulted
-a usage source. The graph must show nothing depends on it. A 90-day shadow must
-see no named caller, and a named human must approve. Only then does a canary
-start, and it rolls back automatically on the first breach. Across 120 estates
-the gate alone would have removed 49 live endpoints; with Safe Kill, none.
+On a code scan it deletes nothing. In the pipeline, four barriers: the
+classifier must say ZOMBIE having consulted a usage source; the graph must show
+nothing depends on it; a 90-day shadow must see no named caller and a named
+person must approve; then a canary rolls back automatically on the first breach.
+
+**"Why not just a canary rollout?"**
+We measured it. A canary with no shadow period has no baseline for anonymous
+traffic, so scanner noise triggers rollbacks: it wrongly keeps dead endpoints
+running, and it refuses 67 real
+requests before it catches the live ones.
 
 **"Why not just use machine learning?"**
-A new deployment has zero labels on day one. If the product needed a trained
-model it could not onboard a single customer. The rule engine works immediately
-and generates the labels the model later learns from. In deployment the audit
-log becomes the training set — every approved kill and every rollback is a
-human-verified label.
+A new deployment has zero labels on day one. The rule engine works immediately.
+The model is trained on data from the estate generator (120 generated estates);
+the trained model is used as a veto over removals, and in deployment the audit
+log becomes its training set.
 
-**"Is this production-ready?"**
-The software is built the way a bank would need it: tokens stored hashed, every
-route authenticated, a tamper-evident audit log, a hardened container, metrics,
-and a security review whose findings were fixed with tests. What it has not done
-is run against a real bank's traffic, and nothing here claims it has. The three
-items under "What is left" are what stands between this and a pilot.
-
-**"What stops a developer exempting their own endpoint?"**
-The policy is read from `main`, never from the pull request being judged. The
-first version read it from the pull request; the security review found that and
-it was fixed, with a test that fails if it ever comes back.
+**"Is it production-ready?"**
+Tokens stored hashed, every route authenticated, a hash-chained audit log, a
+hardened container, Prometheus metrics, CI on every push, and a security review
+whose findings were fixed with tests. It has not run against a real bank's
+traffic, and nothing here claims it has.
 
 **"How much of this did AI write?"**
-Answer honestly and specifically. The value you add is the review, the
-architectural decisions, and being able to defend every one of them — which is
-what this document exists to let you do.
+Answer honestly and specifically. What you add is the review, the architectural
+decisions, and being able to defend each of them.
 
 ---
 
-## 5. If something goes wrong
+## 4. If something goes wrong
 
 | Symptom | Fix |
 |---|---|
+| The browser did not open | Open the address printed in the terminal; the sign-in is in the link it prints |
+| "Port 8600 in use" | Nothing to do: the app takes the next free port and prints it |
+| A GitHub scan fails (no network, rate limit) | Open the pre-scanned report under **All scans**; say the room's network failed |
+| A scan is slow | Talk over it, or open the pre-scanned report of the same repository |
+| A scan of their repository finds 0 candidates | Read the Zombie candidates card aloud: it says which evidence the repository lacks |
 | `apix` not recognised | `pip install -e ".[dev,live,api]"`, then reopen the terminal |
-| Dashboard: "port 8600 in use" | Close the previous server window (or any other `apix serve`), then rerun `run.ps1` |
-| Dashboard sign-in rejected | The token on the clipboard was replaced. Close the server window and rerun slide 6; a fresh token is minted each time |
-| `apix scan` "fails" with exit code 1 | **That is correct.** Exit 1 means zombies were found, so it works as a CI gate |
-| Semgrep slow or missing | Skip Step 5. Everything else needs no Semgrep |
-| No network | Irrelevant — the whole demo runs offline after `prepare.ps1` |
-| Output wraps and looks messy | `Ctrl` + `-` in the terminal to reduce font size |
-| A command errors live | Say *"the reproducible figures are in `data/benchmark.json`"* and open it. Do not debug in front of the panel |
+| Anything else errors live | Do not debug in front of the panel. Switch to **Run the demo** |
 
 ---
 
-## 6. Timing
+## 5. Timing
 
-| Step | Runtime | Talk |
-|---|---|---|
-| 1 Benchmark | 0.3s | 3 min |
-| 2 Scan | 0.3s | 4 min |
-| 3 Blast radius | 0.3s | 2 min |
-| 4 Removal gate | 0.3s | 3 min |
-| 4b Safe Kill (three runs) | 1s | 4 min |
-| 4c Dashboard | 2s | 4 min |
-| 4d Enforcement | 10s | 3 min |
-| 4e As a service | 1s | 2 min |
-| 5 Real repository | 9s | 4 min |
-| 6 Tests | 60s | 1 min, talk over it |
+| Step | Talk |
+|---|---|
+| 1 The question | 1 min |
+| 2 Live crAPI scan (about 50 s to run) | 3 min |
+| 3 Endpoints, 4 Graph | 3 min |
+| 5 Safe Kill review, 6 Audit, 7 Why no verdict | 4 min |
+| 8 VAmPI and petclinic | 2 min |
+| 9 The demo bank | 5 min |
+| 10 Enforcement (optional) | 2 min |
 
-**About 25 seconds of execution, plus a minute of tests.** Talk over the test run,
-or skip slide 10 if time is short. Everything else is you talking, which is what
-is being assessed. Do not rush the explanations to reach the next command.
+About 18 minutes without step 10. Everything else is you explaining, which is
+what is being assessed.

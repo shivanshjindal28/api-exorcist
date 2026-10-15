@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "apix"
-version = "0.9.0"
+version = "1.0.0"
 description = "Autonomous discovery and safe elimination of zombie, shadow and orphaned APIs"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -83,7 +83,8 @@ dev = [
 apix = "apix.cli:main"
 
 [project.urls]
-Documentation = "https://github.com/OWNER/api-exorcist/tree/main/docs"
+Homepage = "https://github.com/shivanshjindal28/api-exorcist"
+Documentation = "https://github.com/shivanshjindal28/api-exorcist/tree/main/docs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/apix"]
