@@ -36,19 +36,21 @@ describe("choosing what to upload from a folder", () => {
 });
 
 describe("routing and sign-in", () => {
-  it("opens a scan's report from its link, and New scan by default", () => {
+  it("opens a scan's report from its link, and the dashboard by default", () => {
     expect(route("#results/abc123def456")).toEqual({ view: "results", param: "abc123def456" });
-    expect(route("#nonsense")).toEqual({ view: "scan", param: null });
+    expect(route("#scan")).toEqual({ view: "scan", param: null });
+    expect(route("#report/abc123def456")).toEqual({ view: "report", param: "abc123def456" });
+    expect(route("#nonsense")).toEqual({ view: "dashboard", param: null });
     // Links from before every scan had the five views still reach the demo.
     expect(route("#safekill")).toEqual({ view: "results", param: "demo/safekill" });
-    expect(route("")).toEqual({ view: "scan", param: null });
+    expect(route("")).toEqual({ view: "dashboard", param: null });
   });
 
   it("takes a sign-in token from the fragment and erases it from the address bar", () => {
     window.history.replaceState(null, "", "/#signin=apx_abc-DEF_123");
     expect(takeSigninToken()).toBe("apx_abc-DEF_123");
     expect(window.location.href).not.toContain("apx_");
-    expect(window.location.hash).toBe("#scan");
+    expect(window.location.hash).toBe("#dashboard");
     // Anything else in the fragment is not a token.
     window.history.replaceState(null, "", "/#signin=<script>");
     expect(takeSigninToken()).toBeNull();
@@ -159,11 +161,12 @@ describe("Scan report", () => {
     expect(screen.getByText(/Why no endpoint is called a zombie/)).toBeTruthy();
   });
 
-  it("has the same six views as the demo bank", async () => {
+  it("has the demo bank's six views, plus Usage for imported access logs", async () => {
     renderReport(DONE);
     const tabs = await screen.findByRole("navigation", { name: "Scan views" });
-    expect(Array.from(tabs.querySelectorAll("a")).map((a) => a.textContent)).toEqual([
-      "Overview", "Endpoints", "Dependency graph", "Safe Kill", "Audit log", "Benchmark",
+    const names = Array.from(tabs.querySelectorAll("a")).map((a) => a.childNodes[0]?.textContent);
+    expect(names).toEqual([
+      "Overview", "Endpoints", "Usage", "Dependency graph", "Safe Kill", "Audit log", "Benchmark",
     ]);
   });
 

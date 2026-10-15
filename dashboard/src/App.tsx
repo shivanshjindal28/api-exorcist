@@ -2,9 +2,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { ApiClient, session } from "./api";
 import { SessionContext } from "./common";
+import {
+  IconDashboard,
+  IconFlask,
+  IconGhost,
+  IconLogout,
+  IconMoon,
+  IconPlus,
+  IconProjects,
+  IconSun,
+} from "./icons";
 import type { Principal } from "./types";
+import { Dashboard } from "./views/Dashboard";
 import { Login } from "./views/Login";
 import { NewScan } from "./views/NewScan";
+import { ExecutiveReport } from "./views/Report";
 import { ScanResults } from "./views/ScanResults";
 import { ScanView } from "./views/scan/ScanView";
 
@@ -14,15 +26,17 @@ interface View {
 }
 
 const VIEWS: Record<string, View> = {
-  scan: { title: "New scan", render: () => <NewScan /> },
+  dashboard: { title: "Dashboard", render: () => <Dashboard /> },
   results: {
-    title: "Scan results",
-    // A scan id (or "demo") opens that scan's five views; without one, the list.
+    title: "Projects",
+    // A scan id (or "demo") opens that scan's views; without one, the list.
     render: (param) => (param ? <ScanView key={param.split("/")[0]} param={param} /> : <ScanResults />),
   },
+  scan: { title: "New scan", render: () => <NewScan /> },
+  report: { title: "Report", render: (param) => <ExecutiveReport id={param ?? ""} /> },
 };
 
-const HOME = "scan";
+const HOME = "dashboard";
 
 /** Where the demo bank's views used to live, before every scan had them. */
 const LEGACY_DEMO = new Set(["overview", "endpoints", "safekill", "audit", "benchmark"]);
@@ -48,6 +62,60 @@ export function takeSigninToken(): string | null {
   return m[1] ?? null;
 }
 
+// The theme is a per-viewer convenience, so browser storage is enough; it is
+// read defensively because storage can be unavailable.
+type Theme = "light" | "dark";
+const THEME_KEY = "apix.theme";
+
+function storedTheme(): Theme | null {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    return t === "light" || t === "dark" ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+function systemTheme(): Theme {
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function useTheme(): [Theme, () => void] {
+  const [theme, setTheme] = useState<Theme>(() => storedTheme() ?? systemTheme());
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+  const toggle = useCallback(() => {
+    setTheme((t) => {
+      const next = t === "dark" ? "light" : "dark";
+      try {
+        localStorage.setItem(THEME_KEY, next);
+      } catch {
+        // Not remembered; it still applies for this visit.
+      }
+      return next;
+    });
+  }, []);
+  return [theme, toggle];
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
+}
+
+const NAV: { key: string; href: string; label: string; icon: ReactNode; match: (v: string, p: string | null) => boolean }[] = [
+  { key: "dashboard", href: "#dashboard", label: "Dashboard", icon: <IconDashboard />, match: (v) => v === "dashboard" },
+  {
+    key: "results",
+    href: "#results",
+    label: "Projects",
+    icon: <IconProjects />,
+    match: (v, p) => (v === "results" && !(p ?? "").startsWith("demo")) || v === "report",
+  },
+  { key: "scan", href: "#scan", label: "New scan", icon: <IconPlus />, match: (v) => v === "scan" },
+];
+
 export function App() {
   const [token, setToken] = useState<string | null>(() => {
     const handed = takeSigninToken();
@@ -57,6 +125,7 @@ export function App() {
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [checked, setChecked] = useState(false);
   const [where, setWhere] = useState(() => route(window.location.hash));
+  const [theme, toggleTheme] = useTheme();
 
   const api = useMemo(() => (token ? new ApiClient(token) : null), [token]);
 
@@ -80,10 +149,18 @@ export function App() {
   }, [api, principal, signOut]);
 
   useEffect(() => {
-    const onHash = () => setWhere(route(window.location.hash));
+    const onHash = () => {
+      setWhere(route(window.location.hash));
+      window.scrollTo(0, 0);
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+
+  const view = VIEWS[where.view] ?? VIEWS[HOME]!;
+  useEffect(() => {
+    document.title = `${view.title} - API Exorcist`;
+  }, [view]);
 
   if (!checked) return null;
   if (!api || !principal) {
@@ -98,30 +175,59 @@ export function App() {
     );
   }
 
-  const view = VIEWS[where.view] ?? VIEWS[HOME]!;
+  const demo = where.view === "results" && (where.param ?? "").startsWith("demo");
 
   return (
     <SessionContext.Provider value={{ api, principal, signOut }}>
-      <header className="topbar">
-        <span className="brand">API Exorcist</span>
-        <nav aria-label="Sections">
-          {Object.keys(VIEWS).map((k) => (
-            <a key={k} href={`#${k}`} aria-current={k === where.view ? "page" : undefined}>
-              {VIEWS[k]!.title}
+      <div className="shell">
+        <aside className="sidebar">
+          <a className="sb-brand" href="#dashboard">
+            <span className="sb-logo">
+              <IconGhost size={18} />
+            </span>
+            <span className="sb-name">
+              API Exorcist
+              <span className="sb-edition">Inventory and retirement</span>
+            </span>
+          </a>
+          <div className="sb-section">Workspace</div>
+          <nav className="sb-nav" aria-label="Sections">
+            {NAV.map((n) => (
+              <a key={n.key} href={n.href} aria-current={n.match(where.view, where.param) ? "page" : undefined}>
+                {n.icon}
+                {n.label}
+              </a>
+            ))}
+            <a href="#results/demo/overview" aria-current={demo ? "page" : undefined}>
+              <IconFlask />
+              Demo bank
+              <span className="sb-count">sim</span>
             </a>
-          ))}
-        </nav>
-        <span className="who">
-          {principal.name} <span className="role">{principal.role}</span>
-          <button className="link" onClick={signOut}>
-            Sign out
-          </button>
-        </span>
-      </header>
-      <main className="content">
-        <h1>{view.title}</h1>
-        {view.render(where.param)}
-      </main>
+          </nav>
+          <div className="sb-foot">
+            <div className="sb-user">
+              <span className="avatar" aria-hidden="true">
+                {initials(principal.name)}
+              </span>
+              <span className="sb-who">
+                <strong>{principal.name}</strong>
+                <span className="role">{principal.role}</span>
+              </span>
+            </div>
+            <div className="sb-tools">
+              <button onClick={toggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
+                {theme === "dark" ? <IconSun /> : <IconMoon />}
+                {theme === "dark" ? "Light" : "Dark"}
+              </button>
+              <button onClick={signOut}>
+                <IconLogout />
+                Sign out
+              </button>
+            </div>
+          </div>
+        </aside>
+        <main className="main">{view.render(where.param)}</main>
+      </div>
     </SessionContext.Provider>
   );
 }

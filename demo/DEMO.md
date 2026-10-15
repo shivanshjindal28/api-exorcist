@@ -17,12 +17,13 @@ powershell -ExecutionPolicy Bypass -File demo\prepare.ps1
 
 It installs the package with the live scanner and the API, checks `git`,
 `semgrep` and the dashboard build, **moves earlier scans and audit logs into
-`data\archive\`** so the "All scans" list starts clean, and then **scans three
+`data\archive\`** so the Projects list starts clean, and then **scans three
 real repositories from GitHub through the app's own scan engine**: OWASP crAPI,
-VAmPI and spring-petclinic-rest. Those finished reports appear under "All
-scans" in the browser, so if the room's network fails you still have real
-results to open. It ends with the full test suite. About five minutes, most of
-it cloning.
+VAmPI and spring-petclinic-rest. Those finished reports appear under Projects
+in the browser, so if the room's network fails you still have real results to
+open. It also writes `demo\synthetic-crapi-access.log`, a **synthetic** access
+log for the usage step (step 3), and ends with the full test suite. About five
+minutes, most of it cloning.
 
 If any line prints `!!` in red, fix it now, not in the room. Red pip lines about
 *other* packages are your Python environment, not this project.
@@ -45,7 +46,8 @@ The browser opens **already signed in** as you. If port 8600 is taken, the app
 picks the next free port and prints it; nothing to fix.
 
 Before the panel is watching: browser full screen (`F11`), zoom to 125% if the
-room is large, light theme if projecting.
+room is large, and use the **Light** switch at the bottom of the sidebar if
+projecting (dark themes wash out on most projectors).
 
 ---
 
@@ -58,6 +60,12 @@ that nobody uses or maintains. A shadow API is one nobody documented. OWASP
 lists this as API9, improper inventory management. Banks have hundreds of these,
 and the hard part is not finding endpoints, it is knowing which ones are dead
 and removing them without causing an outage."*
+
+The app opens on the **Dashboard**: every project's latest scan, the estate's
+totals, and a **Needs attention first** table ranking endpoints across all
+projects by evidence weighted by what they handle (authentication, payments,
+cards, KYC, administration). Point at it: *"This is the screen a CISO opens on
+Monday."*
 
 ### Step 2: Scan a real repository, live (3 minutes)
 
@@ -88,13 +96,37 @@ endpoint was left running beside it. That is exactly how a zombie happens."*
 
 **Be precise:** these are labelled *candidates*, suspected not proven. A
 repository has no traffic, so the scan never claims a lifecycle label it cannot
-prove (see Step 7).
+prove (see Step 7). The next step is how they are proven.
 
-### Step 3: Endpoints (1 minute)
+### Step 3: Prove it with access logs (3 minutes)
 
-**Endpoints** tab: every route with where it is defined (file and line), whether
-the specification documents it, its owner and when its code last changed.
-Filter to undocumented: 18 of them, shadow APIs by definition.
+Open the **Usage** tab, choose `demo\synthetic-crapi-access.log`, press **Import
+and classify**.
+
+**Say first, before anything appears:** *"crAPI is a public project; nobody
+publishes production logs. This file is synthetic and says so in its first line.
+In a bank this is the nginx or load-balancer log that already exists."*
+
+> 2 proven zombies: the same two candidates, now with **no successful request in
+> 45 days**, and the sentence *"At 95% confidence it is called less than once
+> every 15 days."* Both show only failed requests from one address: *someone
+> probing it*. Every other endpoint is in use, and labelled **orphaned**,
+> because crAPI records no owners.
+
+Point at **Traffic the code does not explain** (routes served that no scanned
+code has: shadow APIs) and **Probing** (`/.env`, `/wp-login.php`).
+
+**Say:** *"Three rules stop this from inventing a zombie. Absence only counts for
+a service the logs actually cover. Under seven days of logs nothing is a zombie.
+And a 401 is not use: it is an attacker. Query strings are dropped and client
+addresses hashed as the file is read, because a log is the most sensitive file
+anyone will hand us."*
+
+### Step 3b: Endpoints (1 minute)
+
+**Endpoints** tab: every route, ordered by priority, with what it handles, its
+usage label, where it is defined (file and line) and whether the specification
+documents it. Filter to undocumented: 18 of them, shadow APIs by definition.
 
 ### Step 4: Dependency graph (2 minutes)
 
@@ -107,11 +139,20 @@ bank, `GET /v2/accounts/{id}` has three direct callers, but removing it reaches
 nine services, five hops deep: **13 endpoints degraded**. That depth is not
 known in advance, which is why the dependency layer is a graph."*
 
-### Step 5: Safe Kill review queue (2 minutes)
+### Step 5: Safe Kill: retirement plan and review (3 minutes)
 
-**Safe Kill** tab. On a code scan nothing is removed, because nothing proves an
-endpoint is unused (the card says why). Instead each candidate gets a human
-decision. Open `v2/check-otp`, read its signals, choose **Investigate for
+**Safe Kill** tab. The prerequisites card now shows usage evidence as present.
+Under **Retirement plans**, select `v2/check-otp`:
+
+> 1. Announce with `Deprecation` and `Sunset` headers (RFC 9745, RFC 8594), the
+>    nginx configuration written out. 2. Watch 90 days of fresh logs. 3. Answer
+>    `410 Gone`, reversibly. 4. Delete the handler, `AuthController.java` at the
+>    line shown, and its spec entry together.
+
+The plan says **blocked**: no owning team is recorded. *"Somebody has to own the
+decision and the rollback. The tool will not pretend otherwise."*
+
+Then in the **Review queue**, open `v2/check-otp`, choose **Investigate for
 removal**, and add a note.
 
 ### Step 6: Audit log (1 minute)
@@ -134,9 +175,17 @@ cannot know is a tool a bank can deploy."*
 **Benchmark** tab on this scan: what a documentation-only inventory would have
 listed, against what the scan found.
 
+### Step 7b: Take it to the rest of the bank (1 minute)
+
+**Export** (top right): **SARIF** drops the findings into GitHub code scanning
+next to the code; **Inventory (CSV)** goes to the GRC team; **OpenAPI stubs**
+starts the documentation for every shadow endpoint. Open **Executive report**:
+one printable page with the summary, priority actions, coverage and the audit
+chain's state. *"Print, save as PDF, send to the CISO."*
+
 ### Step 8: Two more real repositories (2 minutes)
 
-From **All scans**, open the pre-scanned reports:
+From **Projects**, open the pre-scanned reports:
 
 | Repository | Top of the list |
 |---|---|
@@ -206,6 +255,14 @@ into one ranked, explained list, draws the dependencies, and runs the removal
 through a review, a shadow period, a named approval and a tamper-evident audit
 log. Semgrep finds code; this decides what to do about an endpoint.
 
+**"Where would the usage data come from in a real bank?"**
+From the access logs its gateway and load balancers already write: nginx, an
+AWS load balancer, Kong, API Gateway, Envoy or Traefik, all read as they are.
+Nothing new is deployed, no agent is installed, and nothing touches production.
+A log only sees traffic that passes where it is written, so absence counts only
+for services the logs cover; a service-to-service call that bypasses the gateway
+still shows up in the dependency graph from code.
+
 **"I give you a random repository and it finds 0 candidates. So it does not work?"**
 Zero is an honest answer when there is no evidence: no older version beside a
 newer one, no client code to compare against, no deprecation, no debug route.
@@ -264,7 +321,7 @@ decisions, and being able to defend each of them.
 |---|---|
 | The browser did not open | Open the address printed in the terminal; the sign-in is in the link it prints |
 | "Port 8600 in use" | Nothing to do: the app takes the next free port and prints it |
-| A GitHub scan fails (no network, rate limit) | Open the pre-scanned report under **All scans**; say the room's network failed |
+| A GitHub scan fails (no network, rate limit) | Open the pre-scanned report under **Projects**; say the room's network failed |
 | A scan is slow | Talk over it, or open the pre-scanned report of the same repository |
 | A scan of their repository finds 0 candidates | Read the Zombie candidates card aloud: it says which evidence the repository lacks |
 | `apix` not recognised | `pip install -e ".[dev,live,api]"`, then reopen the terminal |
@@ -276,13 +333,14 @@ decisions, and being able to defend each of them.
 
 | Step | Talk |
 |---|---|
-| 1 The question | 1 min |
+| 1 The question, the dashboard | 2 min |
 | 2 Live crAPI scan (about 50 s to run) | 3 min |
-| 3 Endpoints, 4 Graph | 3 min |
-| 5 Safe Kill review, 6 Audit, 7 Why no verdict | 4 min |
+| 3 Usage proof from logs | 3 min |
+| 3b Endpoints, 4 Graph | 3 min |
+| 5 Retirement plan and review, 6 Audit, 7 Why no verdict, 7b Exports | 5 min |
 | 8 VAmPI and petclinic | 2 min |
-| 9 The demo bank | 5 min |
+| 9 The demo bank | 4 min |
 | 10 Enforcement (optional) | 2 min |
 
-About 18 minutes without step 10. Everything else is you explaining, which is
+About 22 minutes without step 10. If time is short, skip step 8. Everything else is you explaining, which is
 what is being assessed.

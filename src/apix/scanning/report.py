@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from apix import __version__
 from apix.connectors.base import Source
 from apix.live.scan import RepoScanResult
 
@@ -324,6 +325,7 @@ def repository_report(
                    "endpoint dead takes usage data, which a project's files do not hold.",
         },
         "details": {
+            "scanner_version": __version__,
             "commit": result.head_commit or None,
             "specifications": result.spec_files,
             "mount_prefixes": result.mount_prefixes,

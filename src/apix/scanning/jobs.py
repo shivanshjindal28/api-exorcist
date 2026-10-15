@@ -13,6 +13,8 @@ queue a new scan is refused rather than piling up work nobody is watching.
 
 from __future__ import annotations
 
+import builtins
+import copy
 import hashlib
 import json
 import logging
@@ -31,8 +33,12 @@ from urllib.parse import urlsplit
 from apix.live.repo import RepoError
 from apix.live.scan import scan_repository
 from apix.safekill.audit import AuditLog
+from apix.scanning.compare import changes
 from apix.scanning.report import OK, PARTIAL, check, repository_report
+from apix.scanning.sensitivity import enrich
 from apix.scanning.upload import SavedUpload
+from apix.traffic.logs import ParsedLogs, iter_requests
+from apix.traffic.usage import analyse
 
 log = logging.getLogger("apix.scans")
 
@@ -104,6 +110,9 @@ class ScanJob:
     progress: list[dict[str, str]] = field(default_factory=list)
     error: str | None = None
     report: dict[str, Any] | None = None
+    #: Usage evidence from imported access logs, kept apart from the report so
+    #: the report (whose hash is in the audit chain) never changes.
+    traffic: dict[str, Any] | None = None
 
     def say(self, message: str) -> None:
         self.progress.append({"at": _now(), "message": message})
@@ -121,6 +130,14 @@ class ScanJob:
             d["summary"] = self.report.get("summary", [])
             if full:
                 d["report"] = self.report
+        if self.traffic is not None:
+            d["traffic_summary"] = {
+                "imported_at": self.traffic.get("imported_at"),
+                "window_days": (self.traffic.get("window") or {}).get("days"),
+                "lifecycle": self.traffic.get("lifecycle", {}),
+            }
+            if full:
+                d["traffic"] = self.traffic
         return d
 
 
@@ -165,9 +182,126 @@ class JobManager:
             job = self._jobs.get(job_id)
             if job is None:
                 return None
-            d = job.to_dict()
+            d = copy.deepcopy(job.to_dict())
         d["reviews"] = self.reviews(job_id)
+        if d.get("report") is not None:
+            enrich(d["report"], d.get("traffic"))
+            prev = self.previous(job_id)
+            d["changes"] = changes(d, prev) if prev else None
         return d
+
+    def previous(self, job_id: str) -> dict[str, Any] | None:
+        """The latest finished scan of the same target before this one."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or job.kind != "github":
+                return None
+            earlier = [j for j in self._jobs.values()
+                       if j.target == job.target and j.status == "done" and j.report
+                       and j.created_at < job.created_at]
+            if not earlier:
+                return None
+            best = max(earlier, key=lambda j: j.created_at)
+            return copy.deepcopy(best.to_dict())
+
+    def portfolio(self) -> dict[str, Any]:
+        """Every project's latest finished scan, and the riskiest endpoints across them."""
+        with self._lock:
+            latest: dict[str, ScanJob] = {}
+            for j in self._jobs.values():
+                if j.status == "done" and j.report is not None:
+                    cur = latest.get(j.target)
+                    if cur is None or j.created_at > cur.created_at:
+                        latest[j.target] = j
+            snapshot = [copy.deepcopy(j.to_dict()) for j in latest.values()]
+        projects: list[dict[str, Any]] = []
+        risks: list[dict[str, Any]] = []
+        totals = {"projects": 0, "endpoints": 0, "undocumented": 0, "candidates": 0,
+                  "likely": 0, "zombies": 0, "high_sensitivity": 0, "reviewed": 0}
+        for d in sorted(snapshot, key=lambda x: x["created_at"], reverse=True):
+            report = d["report"]
+            enrich(report, d.get("traffic"))
+            usage = (d.get("traffic") or {}).get("endpoints") or {}
+            eps = report["endpoints"]
+            cands = report.get("candidates", [])
+            row: dict[str, Any] = {
+                "id": d["id"], "target": d["target"], "kind": d["kind"],
+                "scanned_at": d["finished_at"] or d["created_at"],
+                "endpoints": len(eps),
+                "undocumented": sum(1 for e in eps if not e.get("documented")),
+                "candidates": len(cands),
+                "likely": sum(1 for c in cands if c.get("label") == "Likely zombie"),
+                "zombies": sum(1 for u in usage.values() if u.get("lifecycle") == "ZOMBIE"),
+                "high_sensitivity": sum(1 for e in eps if e["sensitivity"]["level"] == "high"),
+                "reviewed": len(self.reviews(d["id"])),
+                "traffic": bool(d.get("traffic")),
+                "risk": max((e["priority"] for e in eps), default=0),
+            }
+            projects.append(row)
+            for k in totals:
+                if k != "projects":
+                    totals[k] += row[k]
+            for e in eps:
+                zombie = (usage.get(e["id"]) or {}).get("lifecycle") == "ZOMBIE"
+                if e.get("candidate") or zombie:
+                    risks.append({
+                        "scan": d["id"], "target": d["target"], "id": e["id"],
+                        "priority": e["priority"],
+                        "sensitivity": e["sensitivity"]["category"],
+                        "level": e["sensitivity"]["level"],
+                        "label": "Zombie (no traffic)" if zombie
+                        else (e.get("candidate") or {}).get("label"),
+                        "documented": bool(e.get("documented")),
+                    })
+        totals["projects"] = len(projects)
+        risks.sort(key=lambda r: (-r["priority"], r["target"], r["id"]))
+        return {"totals": totals, "projects": projects, "top_risks": risks[:15]}
+
+    # -- usage evidence from access logs ----------------------------------------
+    def import_traffic(self, job_id: str, files: builtins.list[tuple[str, bytes]],
+                       who: str) -> dict[str, Any]:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                raise NotReviewable(f"no scan {job_id}")
+            if job.status != "done" or job.report is None:
+                raise NotReviewable("only a finished scan can take access logs")
+            endpoints = copy.deepcopy(job.report["endpoints"])
+        parsed = ParsedLogs()
+        result = analyse(endpoints, iter_requests(files, parsed))
+        if not result["requests"]:
+            raise NotReviewable(
+                "no access-log entries were recognised in "
+                + (", ".join(f.name for f in parsed.files) or "the upload")
+                + ". Supported: nginx or Apache combined format, AWS ALB logs, and JSON "
+                "lines from gateways such as Kong, AWS API Gateway, Envoy or Traefik")
+        result["files"] = [f.to_dict() for f in parsed.files]
+        result["truncated"] = parsed.truncated
+        result["imported_at"] = _now()
+        result["imported_by"] = who
+        with self._lock:
+            replaced = job.traffic is not None
+            job.traffic = result
+        self._save(job)
+        digest = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
+        days = (result.get("window") or {}).get("days")
+        self._record(job_id, "USAGE_IMPORTED",
+                     f"{result['requests']:,} request(s)"
+                     + (f" over {days:g} day(s)" if days is not None else "")
+                     + f" from {len(parsed.files)} file(s)"
+                     + (", replacing the earlier import" if replaced else ""),
+                     who, {"usage_sha256": digest, "lifecycle": result["lifecycle"],
+                           "files": [f.name for f in parsed.files]})
+        return self.get(job_id) or {}
+
+    def rescan(self, job_id: str, who: str) -> dict[str, Any]:
+        with self._lock:
+            job = self._jobs.get(job_id)
+        if job is None:
+            raise ScanRefused(f"no scan {job_id}")
+        if job.kind != "github":
+            raise ScanRefused("an uploaded folder cannot be re-scanned; upload it again")
+        return self.submit_github(job.target, who)
 
     # -- the scan's own audit log: who started it, what it found, decisions ----
     def audit_log(self, job_id: str) -> AuditLog:

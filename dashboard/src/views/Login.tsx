@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { ApiClient, ApiError } from "../api";
+import { IconGhost } from "../icons";
 import type { Principal } from "../types";
 
 interface Props {
@@ -36,7 +37,12 @@ export function Login({ onSignIn, makeClient = (t) => new ApiClient(t) }: Props)
   return (
     <main className="login">
       <form className="card login-card" onSubmit={submit}>
-        <h1>API Exorcist</h1>
+        <h1>
+          <span className="sb-logo">
+            <IconGhost size={18} />
+          </span>
+          API Exorcist
+        </h1>
         <p className="muted">
           Started from VS Code (F5) or with <code>apix serve</code>, API Exorcist opens this
           page already signed in. If you see this instead, paste the token printed in the

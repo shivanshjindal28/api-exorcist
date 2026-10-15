@@ -1,4 +1,5 @@
-import { Card, ErrorBox, Loading, useLoad, useSession } from "../common";
+import { Card, ErrorBox, Loading, Page, PageHead, useLoad, useSession } from "../common";
+import { IconPlus } from "../icons";
 import type { ScanJob } from "../types";
 
 export function when(iso: string | null): string {
@@ -23,14 +24,28 @@ export function ScanResults() {
   const { api } = useSession();
   const { data, error, loading } = useLoad(() => api.scans());
 
-  if (error) return <ErrorBox message={error} />;
-  if (loading && !data) return <Loading what="scans" />;
+  const head = (
+    <PageHead
+      title="Projects"
+      crumbs={[{ label: "Workspace" }, { label: "Projects" }]}
+      sub="Every scan, newest first. A project scanned more than once shows what changed since the previous scan."
+      actions={
+        <a className="btn" href="#scan">
+          <IconPlus />
+          New scan
+        </a>
+      }
+    />
+  );
+  if (error) return <Page head={head}><ErrorBox message={error} /></Page>;
+  if (loading && !data) return <Page head={head}><Loading what="scans" /></Page>;
   if (!data) return null;
 
   return (
-    <Card title={`Scans (${data.length})`}>
+    <Page head={head}>
+    <Card title={`Scans (${data.length})`} flush>
       {data.length === 0 && (
-        <p>
+        <p style={{ padding: "0 1.25rem" }}>
           No scans yet. Start one from <a href="#scan">New scan</a>: upload a project folder
           or paste a GitHub link.
         </p>
@@ -86,5 +101,6 @@ export function ScanResults() {
         </table>
       </div>
     </Card>
+    </Page>
   );
 }

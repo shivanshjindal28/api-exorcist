@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { ApiError } from "../api";
-import { ErrorBox, canApprove, useLoad, useSession } from "../common";
+import { ErrorBox, Page, PageHead, canApprove, useLoad, useSession } from "../common";
 import { megabytes, pathOf, selectFiles } from "../folder";
 import type { Selection } from "../folder";
 import type { InputOption } from "../types";
@@ -18,12 +18,16 @@ export function NewScan() {
   const mayScan = canApprove(principal);
 
   return (
+    <Page
+      head={
+        <PageHead
+          title="New scan"
+          crumbs={[{ label: "Workspace" }, { label: "New scan" }]}
+          sub="Find every API in a project and what is wrong with it: undocumented, unowned, untouched for a year, superseded by a newer version, still in the code after leaving the documentation."
+        />
+      }
+    >
     <div className="stack">
-      <p className="lead">
-        Find the APIs in a project, and what is wrong with them: undocumented, unowned,
-        untouched for a year, still in the code after being removed from the
-        documentation. Choose what to scan.
-      </p>
       {!mayScan && (
         <div className="notice" role="note">
           You are signed in as a viewer: you can read every scan, but starting one needs
@@ -48,6 +52,7 @@ export function NewScan() {
         <DemoButton />
       </section>
     </div>
+    </Page>
   );
 }
 

@@ -16,6 +16,8 @@ import type {
   InventoryRecord,
   KillOutcome,
   Decision,
+  Portfolio,
+  RetirementPlan,
   Principal,
   Review,
   SafeKillState,
@@ -178,6 +180,52 @@ export class ApiClient {
     });
   }
 
+  portfolio(): Promise<Portfolio> {
+    return this.request("GET", "/v1/portfolio");
+  }
+
+  rescanProject(id: string): Promise<ScanJob> {
+    return this.request("POST", `/v1/scans/${encodeURIComponent(id)}/rescan`);
+  }
+
+  plan(id: string, endpointId: string): Promise<RetirementPlan> {
+    const q = new URLSearchParams({ endpoint: endpointId });
+    return this.request("GET", `/v1/scans/${encodeURIComponent(id)}/plan?${q.toString()}`);
+  }
+
+  /**
+   * Download an export. Fetched with the token in the header and handed to the
+   * browser as a blob, because a plain link would have to carry the token in
+   * its URL.
+   */
+  async download(id: string, format: "sarif" | "csv" | "openapi"): Promise<void> {
+    const res = await this.fetchImpl(
+      `/v1/scans/${encodeURIComponent(id)}/export/${format}`,
+      { headers: { Authorization: `Bearer ${this.token}` }, cache: "no-store", credentials: "omit" },
+    );
+    if (!res.ok) throw new ApiError(res.status, res.statusText);
+    const name =
+      /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ??
+      `apix-${id}.${format}`;
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  /** Access logs for a finished scan. Same upload path as a folder: progress matters. */
+  importTraffic(id: string, files: File[], onProgress?: (fraction: number) => void): Promise<ScanJob> {
+    return this.upload(
+      `/v1/scans/${encodeURIComponent(id)}/traffic`,
+      files.map((f) => ({ file: f, path: f.name })),
+      onProgress,
+    );
+  }
+
   scanGithub(url: string): Promise<ScanJob> {
     return this.request("POST", "/v1/scans/github", { url });
   }
@@ -191,11 +239,19 @@ export class ApiClient {
     files: { file: Blob; path: string }[],
     onProgress?: (fraction: number) => void,
   ): Promise<ScanJob> {
+    return this.upload("/v1/scans/upload", files, onProgress);
+  }
+
+  private upload(
+    path: string,
+    files: { file: Blob; path: string }[],
+    onProgress?: (fraction: number) => void,
+  ): Promise<ScanJob> {
     const form = new FormData();
     for (const f of files) form.append("files", f.file, f.path);
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/v1/scans/upload");
+      xhr.open("POST", path);
       xhr.setRequestHeader("Authorization", `Bearer ${this.token}`);
       xhr.withCredentials = false;
       xhr.upload.onprogress = (e) => {

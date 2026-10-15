@@ -44,6 +44,7 @@ with a 1000-character note.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import tempfile
@@ -78,8 +79,10 @@ from apix.scanning import (
     NotReviewable,
     ScanRefused,
     UploadRejected,
+    exports,
     save_files,
 )
+from apix.scanning.retire import plan as retire_plan
 from apix.scanning.upload import MAX_FILES, MAX_TOTAL_BYTES
 
 _bearer = HTTPBearer(auto_error=False)
@@ -88,6 +91,11 @@ MAX_BODY_BYTES = 64 * 1024
 #: the upload module, plus room for the multipart framing around the files.
 UPLOAD_PATH = "/v1/scans/upload"
 MAX_UPLOAD_BODY = MAX_TOTAL_BYTES + 16 * 1024 * 1024
+#: Access logs for a scan: the other large body. Rotated logs are usually
+#: gzipped, so 200 MB on the wire is weeks of a busy gateway.
+TRAFFIC_PATH = re.compile(r"^/v1/scans/[0-9a-f]{12}/traffic$")
+MAX_TRAFFIC_FILES = 50
+ScanId = Annotated[str, PathParam(pattern="^[0-9a-f]{12}$")]
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
@@ -230,7 +238,9 @@ def create_app(workspace: Workspace, tokens: TokenStore, *, docs: bool = True,
             if length is None:
                 response = JSONResponse({"detail": "Content-Length is required"}, 411)
             else:
-                cap = MAX_UPLOAD_BODY if request.url.path == UPLOAD_PATH else MAX_BODY_BYTES
+                large = (request.url.path == UPLOAD_PATH
+                         or TRAFFIC_PATH.match(request.url.path) is not None)
+                cap = MAX_UPLOAD_BODY if large else MAX_BODY_BYTES
                 if not length.isdigit() or int(length) > cap:
                     response = JSONResponse(
                         {"detail": f"request body over {cap // 1024} KiB"}, 413)
@@ -504,6 +514,91 @@ def create_app(workspace: Workspace, tokens: TokenStore, *, docs: bool = True,
             "job": job_id, "endpoint_id": body.endpoint_id,
             "decision": body.decision, "principal": who.name}})
         return {"reviews": reviews}
+
+
+    def _finished(job_id: str) -> dict[str, Any]:
+        job = scans.get(job_id)
+        if job is None:
+            raise HTTPException(404, f"no scan {job_id}")
+        if job.get("report") is None:
+            raise HTTPException(409, "this scan has not finished")
+        return job
+
+    @app.get("/v1/portfolio")
+    def portfolio(who: Viewer) -> dict[str, Any]:
+        """Every project's latest scan, and the riskiest endpoints across all of them."""
+        return scans.portfolio()
+
+    @app.post("/v1/scans/{job_id}/rescan", status_code=202)
+    def rescan_scan(who: Approver, job_id: ScanId) -> dict[str, Any]:
+        try:
+            job = scans.rescan(job_id, who.name)
+        except ScanRefused as exc:
+            raise HTTPException(422, str(exc)) from None
+        metrics.action("scan_github", "rescan")
+        return job
+
+    @app.post("/v1/scans/{job_id}/traffic")
+    async def import_traffic(request: Request, who: Approver, job_id: ScanId) -> dict[str, Any]:
+        """Access logs for a finished scan: usage evidence, matched endpoint by endpoint."""
+        try:
+            form = await request.form(max_files=MAX_TRAFFIC_FILES + 1, max_fields=10)
+        except Exception as exc:  # any parse failure is the client's
+            raise HTTPException(400, f"could not read the upload: {exc}") from None
+        files: list[tuple[str, bytes]] = []
+        try:
+            for item in form.getlist("files"):
+                if isinstance(item, str):
+                    continue
+                files.append((Path(item.filename or "log").name, await item.read()))
+        finally:
+            await form.close()
+        if not files:
+            raise HTTPException(422, "choose at least one access log file")
+        if len(files) > MAX_TRAFFIC_FILES:
+            raise HTTPException(422, f"at most {MAX_TRAFFIC_FILES} log files per import")
+        try:
+            job = await run_in_threadpool(scans.import_traffic, job_id, files, who.name)
+        except NotReviewable as exc:
+            raise HTTPException(404 if "no scan" in str(exc) else 422, str(exc)) from None
+        metrics.action("traffic_import", "done")
+        log.info("scan.traffic", extra={"fields": {
+            "job": job_id, "files": len(files), "principal": who.name,
+            "requests": (job.get("traffic") or {}).get("requests")}})
+        return job
+
+    @app.get("/v1/scans/{job_id}/plan")
+    def retirement_plan(
+        who: Viewer, job_id: ScanId,
+        endpoint: Annotated[str, Query(min_length=3, max_length=400)],
+    ) -> dict[str, Any]:
+        job = _finished(job_id)
+        row = next((e for e in job["report"]["endpoints"] if e["id"] == endpoint), None)
+        if row is None:
+            raise HTTPException(404, f"{endpoint!r} is not an endpoint this scan found")
+        usage = ((job.get("traffic") or {}).get("endpoints") or {}).get(endpoint)
+        return retire_plan(row, usage)
+
+    @app.get("/v1/scans/{job_id}/export/{fmt}")
+    def export(who: Viewer, job_id: ScanId, fmt: str) -> Response:
+        job = _finished(job_id)
+        name = re.sub(r"[^A-Za-z0-9._-]+", "-", job["target"].split("/", 1)[-1]).strip("-")
+        stem = f"apix-{name or 'scan'}-{job_id}"
+        traffic = job.get("traffic")
+        if fmt == "sarif":
+            body: str = json.dumps(exports.sarif(job, traffic), indent=2)
+            media, ext = "application/sarif+json", "sarif"
+        elif fmt == "csv":
+            body = exports.inventory_csv(job, traffic, job.get("reviews") or {})
+            media, ext = "text/csv; charset=utf-8", "csv"
+        elif fmt == "openapi":
+            body = json.dumps(exports.openapi_stubs(job), indent=2)
+            media, ext = "application/json", "openapi.json"
+        else:
+            raise HTTPException(404, "export formats: sarif, csv, openapi")
+        metrics.action("export", fmt)
+        return Response(body, media_type=media, headers={
+            "Content-Disposition": f'attachment; filename="{stem}.{ext}"'})
 
     # Mounted last, so every /v1 route above takes precedence over it.
     if (DASHBOARD_DIR / "index.html").exists():

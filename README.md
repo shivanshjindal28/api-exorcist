@@ -34,7 +34,8 @@ safely turn one off.** That gap is this project's contribution.
 the architecture. With traffic (the demo bank), the engine classifies all four. On a
 code repository, which holds no traffic, it never claims a label it cannot prove:
 it ranks **zombie candidates** from the evidence the code does hold, labelled
-suspected, not proven. Scanned live, the two insecure old versions OWASP crAPI
+suspected, not proven. Import the access logs the organisation already keeps and
+it **proves** them: every endpoint gets one of the four labels from real usage. Scanned live, the two insecure old versions OWASP crAPI
 deliberately leaves beside their fixes come out on top; see
 [What a scan concludes on real code](#what-a-scan-concludes-on-real-code-zombie-candidates).
 
@@ -103,6 +104,7 @@ ready to open even without a network.
 | 7–8 | Deployment: container image, observability, security review | ✅ done |
 | 9 | Browser scans: upload a project folder or paste a GitHub link | ✅ done |
 | 10 | Zombie candidates from code evidence, tested on seven real repositories | ✅ done |
+| 11 | Usage evidence from access logs, retirement plans, exports, drift, estate dashboard | ✅ done |
 | — | Live website scanning | ⬜ not in this version |
 
 ### What is built
@@ -123,7 +125,7 @@ ready to open even without a network.
 | Trained model with SHAP attribution, used as a veto over removals | ✅ |
 | Safe Kill: rule-of-three shadow window, named approval, 5/25/100 canary | ✅ |
 | Automatic rollback on breach, hash-chained append-only audit log | ✅ |
-| 258 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
+| 287 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
 | REST API: hashed bearer tokens, viewer and approver roles, approval over HTTP | ✅ |
 | Dashboard: React + TypeScript, same origin, strict CSP | ✅ |
 | CI/CD enforcement: undocumented, unowned and zombie-in-the-making endpoints | ✅ |
@@ -132,6 +134,10 @@ ready to open even without a network.
 | Browser scans of an uploaded folder or a GitHub link, with a report of what could not be checked and why | ✅ |
 | Zombie candidates on real code: superseded versions, client use, deprecation, debug endpoints, shadow | ✅ |
 | Dependency graph drawn for every scan: calls, gateway routes and topics read from code | ✅ |
+| Access-log import (nginx, ALB, Kong, API Gateway, Envoy, Traefik): real lifecycle labels on real code | ✅ |
+| Retirement plans: Deprecation and Sunset headers, a 90-day watch, 410 brownout, code removal | ✅ |
+| Exports: SARIF 2.1.0, inventory CSV, OpenAPI stubs for undocumented endpoints, executive report | ✅ |
+| Estate dashboard, data-sensitivity priority, drift between scans of the same repository | ✅ |
 
 **All eight phases are built, and the browser is now the way in.** Live
 website scanning is shown in the app but is not available in this version. What
@@ -677,7 +683,9 @@ change could edit the workflow itself; review of those paths is what closes that
 
 ## Scanning a project in the browser
 
-The app opens on **New scan**, with three ways in:
+The app opens on the **Dashboard**: every project's latest scan, the estate's
+totals, and the endpoints to look at first across all of them. **New scan** has
+three ways in:
 
 | Input | What happens | Needs |
 |---|---|---|
@@ -760,17 +768,84 @@ by combining what no single tool holds (code, specification, version structure,
 the project's own clients, history and the service dependency graph) and then
 carrying a removal through review, an audit trail and pull-request enforcement.
 
-### Every scan has the same six views
+### Proving it: usage evidence from access logs
 
-A finished scan, and the demo bank, open on the same tabs. On a real project
-each shows what can honestly be shown without traffic data:
+A candidate is suspected. To prove an endpoint dead takes usage, and every bank
+already records it: the access logs of its gateway or load balancer. On a scan's
+**Usage** view, upload them (several files, gzip-rotated ones included) and every
+endpoint is classified by the same four definitions the demo bank uses.
+
+| Read | Formats |
+|---|---|
+| Line formats | nginx and Apache `combined`/`common`; AWS Application Load Balancer |
+| JSON lines | Kong, AWS API Gateway, Envoy, Traefik, or any gateway whose field names are recognisable |
+
+Each request is matched to the endpoint whose route template it fits, the most
+literal first (`/users/me` before `/users/{id}`), and a gateway prefix the code
+never sees (`/api/...`) is found and reported. Three rules keep "no traffic" from
+being over-read, because a false ZOMBIE is an outage:
+
+1. **Absence counts only where the logs cover the service.** If a service has no
+   request at all, the logs come from somewhere else; nothing in it is called
+   unused, and the page names the service.
+2. **The window must be long enough.** Under seven days nothing is a zombie. Over
+   it, the rule of three bounds what was missed: no call in *W* days means, at 95%
+   confidence, fewer than one call every *W*/3 days, and the page says so per endpoint.
+3. **Failed requests are not use.** An endpoint that only ever answered 401, 403 or
+   404 has someone probing it, which is attack surface, not a customer.
+
+Requests that fit no endpoint in the code are listed as **traffic the code does
+not explain** (a shadow API served by something else) or, if they only failed,
+as **probing**. Logs are the most sensitive file anyone will hand this tool, so
+query strings (tokens, account numbers, OTPs) are dropped as each line is read,
+and client addresses become salted hashes used only to count distinct clients;
+the salt is random per import and never stored. The import is written to the
+scan's audit chain with a SHA-256 fingerprint of its result.
+
+**On public repositories this cannot be shown on real traffic**: no public project
+publishes its production logs. `demo/make_access_log.py` writes a log for a scan
+that says it is synthetic three ways (its first line, its RFC 5737 documentation
+addresses, and the file name you give it). On crAPI it leaves the two likely
+zombies without a successful request and has one address brute-force the old OTP
+check; the import then labels exactly those two ZOMBIE, with the reason.
+
+### Retirement plans, exports and drift
+
+- **Retirement plans** (Safe Kill view): for every endpoint the logs prove unused,
+  or every likely zombie before logs exist, a four-step plan with the gateway
+  configuration written out: announce with `Deprecation` and `Sunset` headers
+  (RFC 9745, RFC 8594), watch 90 days of fresh logs, answer `410 Gone` reversibly,
+  then delete the handler (file and line given) and its specification entry
+  together. A plan states what blocks it: use in the logs, no usage evidence, or
+  no owning team.
+- **Exports**: SARIF 2.1.0 for GitHub code scanning and most security dashboards,
+  an inventory CSV for a spreadsheet or a GRC tool (formula-like values defused),
+  an OpenAPI 3.1 skeleton of every undocumented endpoint so "needs documentation"
+  starts half done, and a printable **executive report** with priority actions,
+  coverage, and the audit chain's state.
+- **Drift**: each GitHub scan is compared with the previous scan of the same
+  repository: endpoints added, removed, newly undocumented, new candidates. When
+  both scans read the same commit, the page says the differences are the
+  scanner's, not the project's.
+- **Priority**: every endpoint carries a data category read from its path
+  (authentication, payments, cards, identity and KYC, administration, accounts,
+  personal data) and a priority that weights the evidence against it by what it
+  handles. The category is a heuristic and is labelled one: it orders the queue,
+  it never decides a removal.
+
+### Every scan has the same views
+
+A finished scan, and the demo bank, open on the same tabs; a project scan adds
+**Usage**. Without imported logs each view shows what can honestly be shown from
+code alone:
 
 | View | On a project scan |
 |---|---|
-| Overview | Headline counts, what was checked and why, findings across endpoints, review progress |
-| Endpoints | List and detail: where each endpoint is defined, which sources saw it (and which were never consulted), its findings, its decision |
+| Overview | Headline counts, usage summary, zombie candidates, exposure by data category, changes since the previous scan, what was checked and why |
+| Endpoints | List and detail, ordered by priority: where each endpoint is defined, what it handles, which sources saw it, its usage, its findings, its decision |
+| Usage | Import access logs; lifecycle from real usage, per-endpoint requests, clients and trend, traffic the code does not explain, probing |
 | Dependency graph | Services as boxes listing their endpoints, drawn in columns by dependency depth; calls, gateway routes and message topics as arrows. Click an endpoint for its blast radius, with the file and line behind every caller |
-| Safe Kill | Which of removal's four prerequisites the scan has (the inventory) and lacks (usage data, a dependency graph, gateway control), then a **review queue**: keep, needs documentation, needs an owner, or investigate for removal, recorded under the reviewer's name |
+| Safe Kill | Which of removal's four prerequisites the scan has and lacks, **retirement plans**, then a **review queue**: keep, needs documentation, needs an owner, or investigate for removal, recorded under the reviewer's name |
 | Audit log | The scan's own hash-chained log: who started it, a SHA-256 fingerprint of its report, every decision since; verifiable in one click |
 | Benchmark | What a documentation-only inventory would have listed against what the scan found. Coverage, not accuracy: a real project has no answer key, and the page says so |
 
@@ -793,7 +868,7 @@ its code alone is how outages happen; the code cannot show the month-end batch j
 that still calls it. **Run the demo** on New scan opens the simulated bank, where
 traffic and a gateway exist, with the full classification and Safe Kill.
 
-Reports are kept in `data/scans/` and listed under **Scan results**. Nothing from a
+Reports are kept in `data/scans/` and listed under **Projects**. Nothing from a
 scanned project is ever run: routes are read by static analysis and
 specifications are parsed as data. Uploaded file names that could point outside
 the upload (`../../x`, absolute paths, drive letters) are refused.
@@ -842,7 +917,7 @@ Security, in the browser as on the server:
 
 ```bash
 cd dashboard && npm ci && npm run dev      # hot-reload against a running `apix serve`
-npm test && npm run build                  # 31 Vitest tests; build into src/apix/api/dashboard
+npm test && npm run build                  # 40 Vitest tests; build into src/apix/api/dashboard
 ```
 
 ---
@@ -1086,7 +1161,8 @@ State these; do not hide them.
    look silent. Deliberately *not* mitigated in discovery — the right response to
    seasonal ambiguity is a human decision at the approval gate, not a wider window
    that hides it.
-4. **Repository scans cannot make lifecycle claims.** Enforced, not advisory.
+4. **Repository scans make lifecycle claims only from imported access logs.** From
+   code alone they rank candidates and never label one a zombie. Enforced, not advisory.
 5. **Router mount prefixes resolve only when literal.** A project mounting with
    `prefix=settings.API_V1_STR` needs cross-module constant resolution, which is not
    implemented. Those paths are flagged `prefix_resolved=False` rather than presented
@@ -1123,6 +1199,16 @@ State these; do not hide them.
     the option and says so; scan the project's folder or repository instead.
 15. **An uploaded folder has no history.** `.git` is left out of uploads, so
     staleness is reported as unknown. A GitHub scan includes it.
+16. **Access logs see only the traffic that passes where they are written.** A
+    service called directly by another service, bypassing the gateway, has no
+    lines in the gateway's log. That is why absence counts only for services the
+    logs demonstrably cover, and why the code's dependency graph still gates
+    removal; importing the internal load balancer's logs as well closes it.
+17. **Owners come from CODEOWNERS and `x-owner` in the specification only.** A
+    repository with neither shows every endpoint in use as ORPHANED, which is
+    correct by the definition and says what to fix, but is noisy until it is fixed.
+18. **Data categories are read from path words.** A heuristic, labelled as one: it
+    orders the queue and never decides a removal.
 16. **The container image has neither git nor Semgrep.** Scans started inside it
     report both as unavailable, with the reason; install them, or run the app
     directly, to scan.
@@ -1161,6 +1247,13 @@ src/apix/
     jobs.py                Background scans, GitHub link parsing, kept reports
     report.py              One report shape: counts, what was checked and why, endpoints
     upload.py              Saving an uploaded folder without letting a name escape it
+    sensitivity.py         What an endpoint handles, from its path; priority
+    retire.py              Retirement plans: Deprecation/Sunset, 90-day watch, 410, removal
+    exports.py             SARIF 2.1.0, inventory CSV, OpenAPI stubs
+    compare.py             Drift between two scans of the same repository
+  traffic/
+    logs.py                nginx/Apache, AWS ALB and JSON-lines gateway logs; no query strings, hashed clients
+    usage.py               Request to endpoint, then the four lifecycle labels from real use
   enforce/
     config.py              Rules, severities, and exemptions that must give a reason
     snapshot.py            One commit's API surface: routes, spec entries, owners
@@ -1196,7 +1289,7 @@ src/apix/
 dashboard/                 React + TypeScript source; builds into src/apix/api/dashboard
 Dockerfile                 The deployable image: API and dashboard, non-root, read-only
 action.yml                 The GitHub Action; action-constraints.txt pins what it installs
-tests/                     258 tests, three ground-truth leakage guards
+tests/                     287 tests, three ground-truth leakage guards
 demo/                      Review runbook, paced demo runner, expected output
 docs/                      Literature review, design document, interim report,
                            source papers, diagram renderer, Word and
@@ -1220,7 +1313,7 @@ pip install -e ".[dev,live,ml]" && pre-commit install
 pytest && ruff check . && mypy && python docs/verify_claims.py
 ```
 
-**258 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 31 Vitest
+**287 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 40 Vitest
 tests under TypeScript strict mode (`cd dashboard && npm test`).
 
 ### Optional extras

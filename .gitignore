@@ -75,3 +75,6 @@ dashboard/.vite/
 
 # Built by demo/make_enforce_demo.py for the enforcement demo; a nested git repo.
 demo/enforce-demo/
+
+# Synthetic access logs written by demo/make_access_log.py; regenerated, never committed.
+demo/synthetic-*.log

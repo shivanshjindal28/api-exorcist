@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { Card } from "../../common";
-import type { Review, ScanJob } from "../../types";
+import { useEffect, useState } from "react";
+import { ApiError } from "../../api";
+import { Card, ErrorBox, LifecycleBadge, Loading, MethodPath, useSession } from "../../common";
+import type { RetirementPlan, Review, ScanJob } from "../../types";
 import { CandidateBadge } from "./Candidates";
 import { ReviewBadge, ReviewControls, ago } from "./shared";
 
@@ -12,7 +13,22 @@ function prerequisites(job: ScanJob): { step: string; status: Status; why: strin
   const consulted = job.report?.sources?.consulted ?? [];
   const found = (job.report?.endpoints.length ?? 0) > 0;
   const graph = job.report?.graph;
+  const imported = job.traffic ?? null;
+  const days = imported?.window.days ?? 0;
   const traffic = consulted.includes("TRAFFIC");
+  const usage: { status: Status; why: string } = traffic
+    ? { status: "ok", why: "observed traffic" }
+    : imported
+      ? days >= 90
+        ? { status: "ok", why: `${imported.requests.toLocaleString()} requests over ${days} days of imported access logs` }
+        : {
+            status: "partial",
+            why: `${days} days of access logs imported; 90 give 95% confidence of catching a caller that calls once a month`,
+          }
+      : {
+          status: "unavailable",
+          why: "needs traffic logs from a gateway or a network sensor; a project's files have none. Import access logs on the Usage view",
+        };
   return [
     {
       step: "An inventory of the endpoints",
@@ -21,8 +37,8 @@ function prerequisites(job: ScanJob): { step: string; status: Status; why: strin
     },
     {
       step: "Usage data, to classify an endpoint as a zombie",
-      status: traffic ? "ok" : "unavailable",
-      why: "needs traffic logs from a gateway or a network sensor; a project's files have none",
+      status: usage.status,
+      why: usage.why,
     },
     {
       step: "A dependency graph, to prove nothing calls it",
@@ -35,8 +51,10 @@ function prerequisites(job: ScanJob): { step: string; status: Status; why: strin
     },
     {
       step: "Control of the gateway, to shadow, canary and roll back",
-      status: consulted.includes("GATEWAY") ? "ok" : "unavailable",
-      why: "Safe Kill acts through the gateway in front of the API; none is connected",
+      status: consulted.includes("GATEWAY") ? "ok" : imported ? "partial" : "unavailable",
+      why: imported
+        ? "no gateway is connected, so each retirement plan below gives the exact gateway change to apply, and to reverse, by hand"
+        : "Safe Kill acts through the gateway in front of the API; none is connected",
     },
   ];
 }
@@ -66,10 +84,12 @@ export function ScanSafeKillTab({
 
   return (
     <div className="stack">
-      <Card title="Why nothing is removed from a project scan">
+      <Card title={job.traffic ? "What removal needs, and what this scan has" : "Why nothing is removed from a project scan"}>
         <p>
-          Safe Kill removes an endpoint only after four things hold. A project scan
-          provides the first and part of the third; the rest need the running system.
+          Safe Kill removes an endpoint only after four things hold.{" "}
+          {job.traffic
+            ? "Imported access logs supply the usage evidence; the gateway changes are applied by your team from the plans below."
+            : "A project scan provides the first and part of the third; the rest need the running system."}
         </p>
         <ul className="checks">
           {steps.map((s) => (
@@ -87,6 +107,8 @@ export function ScanSafeKillTab({
           a gateway exist.
         </p>
       </Card>
+
+      <RetirementPlans job={job} />
 
       <Card title={`Review queue (${Object.keys(reviews).length} of ${report.endpoints.length} decided)`}>
         <p className="muted small">
@@ -188,5 +210,119 @@ function QueueRow({
         </tr>
       )}
     </>
+  );
+}
+
+/** Step-by-step retirement for the endpoints the evidence points at. */
+function RetirementPlans({ job }: { job: ScanJob }) {
+  const report = job.report!;
+  const usage = job.traffic?.endpoints ?? null;
+  const targets = usage
+    ? report.endpoints.filter((e) => usage[e.id]?.lifecycle === "ZOMBIE")
+    : report.endpoints.filter((e) => e.candidate?.label === "Likely zombie");
+  const ordered = [...targets].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+  const [chosen, setChosen] = useState<string | null>(ordered[0]?.id ?? null);
+
+  return (
+    <Card title={`Retirement plans (${ordered.length})`}>
+      {ordered.length === 0 ? (
+        <p className="muted small" style={{ margin: 0 }}>
+          {usage
+            ? "The imported logs show no endpoint unused for the whole window, so nothing is ready to retire."
+            : "No likely zombie in this scan. Plans are drafted for likely zombies, and for every endpoint the imported access logs prove unused."}
+        </p>
+      ) : (
+        <div className="split">
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Endpoint</th>
+                  <th>{usage ? "Usage" : "Evidence"}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ordered.map((e) => (
+                  <tr key={e.id} className={chosen === e.id ? "selected" : undefined}>
+                    <td>
+                      <button className="link" onClick={() => setChosen(e.id)} aria-pressed={chosen === e.id}
+                        aria-label={`Retirement plan for ${e.id}`}>
+                        <MethodPath method={e.method} path={e.path} />
+                      </button>
+                    </td>
+                    <td>
+                      {usage?.[e.id] ? <LifecycleBadge label={usage[e.id]!.lifecycle} /> : (
+                        <span className="small">{e.candidate?.label}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {chosen && <PlanView jobId={job.id} endpointId={chosen} />}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function PlanView({ jobId, endpointId }: { jobId: string; endpointId: string }) {
+  const { api } = useSession();
+  const [plan, setPlan] = useState<RetirementPlan | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    setPlan(null);
+    setError(null);
+    api
+      .plan(jobId, endpointId)
+      .then((p) => live && setPlan(p))
+      .catch((e: unknown) => live && setError(e instanceof ApiError ? e.message : String(e)));
+    return () => {
+      live = false;
+    };
+  }, [api, jobId, endpointId]);
+
+  if (error) return <ErrorBox message={error} />;
+  if (!plan) return <Loading what="the plan" />;
+  return (
+    <div className="plan">
+      <div className="buttons">
+        {plan.ready ? (
+          <span className="state state-good">ready to start</span>
+        ) : (
+          <span className="state state-warn">blocked</span>
+        )}
+        <span className="muted small">Proposed sunset {plan.sunset}</span>
+      </div>
+      {plan.blockers.length > 0 && (
+        <ul className="blockers small">
+          {plan.blockers.map((b) => (
+            <li key={b}>{b}</li>
+          ))}
+        </ul>
+      )}
+      <ol className="plan-steps">
+        {plan.steps.map((st) => (
+          <li key={st.title}>
+            <h4>{st.title}</h4>
+            <p className="small">{st.detail}</p>
+            {st.snippet && (
+              <>
+                <div className="snippet-label">{st.snippet_label}</div>
+                <pre className="snippet">{st.snippet}</pre>
+              </>
+            )}
+            {st.where && st.where.length > 0 && (
+              <p className="small">
+                Handler: <code>{st.where.join(", ")}</code>
+              </p>
+            )}
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }

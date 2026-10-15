@@ -18,11 +18,12 @@ apix serve                        # THE APP: opens the browser signed in (F5 in 
 apix token NAME --role approver   # mint an API token; stores only its hash
 apix enforce --base origin/main   # judge a change's API surface (Phase 6)
 docker build -t api-exorcist .    # the deployable image (Phases 7-8)
-cd dashboard && npm ci && npm test && npm run build   # dashboard, 31 Vitest tests
-pytest                            # 258 tests
+cd dashboard && npm ci && npm test && npm run build   # dashboard, 40 Vitest tests
+pytest                            # 287 tests
 ruff check . && mypy              # lint + strict types
 APIX_REALWORLD=1 pytest tests/test_realworld.py   # real repos, known answers (network, ~6 min)
 python demo/prescan.py OWASP/crAPI   # scan via the app's engine into data/scans (demo fallback)
+python demo/make_access_log.py data/scans/<id>.json demo/synthetic-access.log   # SYNTHETIC logs for the Usage demo
 
 python docs/render_diagrams.py    # mermaid -> png (run before the two below)
 python docs/build_docx.py         # literature review, design doc, interim report
@@ -169,7 +170,9 @@ src/apix/
   safekill/        shadow, approval, canary, rollback, hash-chained audit
   api/             REST API: hashed bearer tokens, roles, approval over HTTP
   api/observe.py   Prometheus metrics and JSON logs; labels are route templates
-  scanning/        browser scans: uploaded folder or GitHub link, background jobs
+  scanning/        browser scans: uploaded folder or GitHub link, background jobs;
+                   exports (SARIF/CSV/OpenAPI), retirement plans, drift, sensitivity
+  traffic/         access-log import: parse nginx/ALB/JSON logs, usage -> lifecycle
   enforce/         CI enforcement; action.yml at the repo root runs it on PRs
   api/dashboard/   the BUILT dashboard (committed; CI checks it is current)
   evaluation/      metrics, the comparative benchmark, Safe Kill evaluation

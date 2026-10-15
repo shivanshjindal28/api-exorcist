@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
-import { Card } from "../../common";
+import { Card, LevelBadge, LifecycleBadge, MethodPath, Priority, Sparkline } from "../../common";
 import type { Review, ScanJob } from "../../types";
 import { CandidateBadge } from "./Candidates";
-import { ReviewBadge, ReviewControls, SourceChips, ago, consultedSources } from "./shared";
+import { ReviewBadge, ReviewControls, SourceChips, ago, consultedSources, when } from "./shared";
 
-type Filter = "all" | "candidates" | "findings" | "undocumented" | "unreviewed";
+type Filter = "all" | "candidates" | "findings" | "undocumented" | "unreviewed" | "sensitive" | "zombie";
 
 export function ScanEndpointsTab({
   job,
@@ -16,6 +16,7 @@ export function ScanEndpointsTab({
   const report = job.report!;
   const reviews = job.reviews ?? {};
   const consulted = consultedSources(job);
+  const usage = job.traffic?.endpoints ?? null;
   const [filter, setFilter] = useState<Filter>(
     report.endpoints.some((e) => e.candidate) ? "candidates" : "all",
   );
@@ -32,9 +33,11 @@ export function ScanEndpointsTab({
       if (filter === "findings" && !e.findings.length) return false;
       if (filter === "undocumented" && e.documented) return false;
       if (filter === "unreviewed" && reviews[e.id]) return false;
-      return !q || `${e.id} ${e.file ?? ""}`.toLowerCase().includes(q);
-    });
-  }, [report, filter, query, reviews]);
+      if (filter === "sensitive" && e.sensitivity?.level !== "high") return false;
+      if (filter === "zombie" && usage?.[e.id]?.lifecycle !== "ZOMBIE") return false;
+      return !q || `${e.id} ${e.file ?? ""} ${e.sensitivity?.category ?? ""}`.toLowerCase().includes(q);
+    }).sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || a.id.localeCompare(b.id));
+  }, [report, filter, query, reviews, usage]);
 
   const e = report.endpoints.find((x) => x.id === selected) ?? null;
 
@@ -59,6 +62,8 @@ export function ScanEndpointsTab({
             <option value="findings">With their own findings</option>
             <option value="undocumented">Undocumented</option>
             <option value="unreviewed">Not yet reviewed</option>
+            <option value="sensitive">Sensitive (auth, payments, cards, KYC, admin)</option>
+            {usage && <option value="zombie">Proven zombies (no traffic)</option>}
           </select>
           <input type="search" placeholder="Filter by path or file" value={query}
             onChange={(ev) => setQuery(ev.target.value)} aria-label="Filter endpoints" />
@@ -67,9 +72,11 @@ export function ScanEndpointsTab({
           <table>
             <thead>
               <tr>
+                <th title="Priority">Pri.</th>
                 <th>Endpoint</th>
-                <th>Candidate</th>
-                <th>Documented</th>
+                <th>Handles</th>
+                <th>{usage ? "Usage" : "Candidate"}</th>
+                <th>Spec</th>
                 <th>Decision</th>
               </tr>
             </thead>
@@ -77,15 +84,25 @@ export function ScanEndpointsTab({
               {shown.map((x) => (
                 <tr key={x.id} className={x.id === selected ? "selected" : undefined}>
                   <td>
+                    <Priority value={x.priority} />
+                  </td>
+                  <td>
                     <button className="link" onClick={() => setSelected(x.id)}
                       aria-label={`Details for ${x.id}`} aria-pressed={x.id === selected}>
-                      <code>
-                        <span className="method">{x.method}</span> {x.path}
-                      </code>
+                      <MethodPath method={x.method} path={x.path} />
                     </button>
                   </td>
                   <td>
-                    {x.candidate ? <CandidateBadge label={x.candidate.label} /> : <span className="muted">no</span>}
+                    {x.sensitivity && <LevelBadge level={x.sensitivity.level} category={x.sensitivity.category} />}
+                  </td>
+                  <td>
+                    {usage?.[x.id] ? (
+                      <LifecycleBadge label={usage[x.id]!.lifecycle} />
+                    ) : x.candidate ? (
+                      <CandidateBadge label={x.candidate.label} />
+                    ) : (
+                      <span className="muted">no</span>
+                    )}
                   </td>
                   <td>{x.documented ? "yes" : <span className="warn-text">no</span>}</td>
                   <td>
@@ -104,9 +121,7 @@ export function ScanEndpointsTab({
         ) : (
           <div className="stack">
             <p>
-              <code>
-                <span className="method">{e.method}</span> {e.path}
-              </code>
+              <MethodPath method={e.method} path={e.path} />
               {e.deprecated_in_spec && <span className="tag">deprecated in spec</span>}
             </p>
             <dl className="facts">
@@ -131,7 +146,33 @@ export function ScanEndpointsTab({
               <dd>{e.owner ?? <span className="muted">none known</span>}</dd>
               <dt>Code last changed</dt>
               <dd>{ago(e.last_change_days)}</dd>
+              {e.sensitivity && (
+                <>
+                  <dt>Handles</dt>
+                  <dd>
+                    <LevelBadge level={e.sensitivity.level} category={e.sensitivity.category} />{" "}
+                    <span className="muted small">from {e.sensitivity.because}</span>
+                  </dd>
+                </>
+              )}
+              <dt>Priority</dt>
+              <dd>
+                <Priority value={e.priority} />
+              </dd>
             </dl>
+            {usage?.[e.id] && (
+              <div>
+                <h3>
+                  Usage <LifecycleBadge label={usage[e.id]!.lifecycle} />
+                </h3>
+                <p className="small" style={{ margin: "0 0 0.4rem" }}>{usage[e.id]!.reason}</p>
+                <Sparkline points={usage[e.id]!.daily.map(([, n]) => n)} width={260} height={36} />
+                <p className="muted small" style={{ margin: "0.3rem 0 0" }}>
+                  {usage[e.id]!.requests.toLocaleString()} request(s), last success{" "}
+                  {usage[e.id]!.last_success ? when(usage[e.id]!.last_success) : "never in the window"}
+                </p>
+              </div>
+            )}
             {e.candidate && (
               <div className="cand-detail">
                 <h3>

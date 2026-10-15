@@ -64,6 +64,12 @@ python demo\prescan.py OWASP/crAPI erev0s/VAmPI spring-petclinic/spring-petclini
 if ($LASTEXITCODE -eq 0) { Ok "all three are under 'All scans' in the app" } `
     else { Bad "a scan failed (network?); rerun this script before presenting" }
 
+# --------------------------------------- 4b. synthetic logs for the Usage demo
+Step "4b" "Writing a SYNTHETIC access log for crAPI (labelled as such inside)"
+python demo\make_access_log.py OWASP/crAPI demo\synthetic-crapi-access.log
+if ($LASTEXITCODE -eq 0) { Ok "demo\synthetic-crapi-access.log: import it on crAPI's Usage view" } `
+    else { Bad "could not write the synthetic log (is the crAPI scan above done?)" }
+
 # ------------------------------------------- 5. the optional enforcement step
 Step 5 "Checking the enforcement demo (optional step 10)"
 if (Test-Path "demo\enforce-demo") { Remove-Item -Recurse -Force "demo\enforce-demo" }

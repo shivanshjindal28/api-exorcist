@@ -201,6 +201,133 @@ export interface ScanEndpoint {
   candidate?: Candidate | null;
   referenced_by?: string[];
   service?: string;
+  /** Added when a report is read (apix/scanning/sensitivity.py). */
+  sensitivity?: Sensitivity;
+  priority?: number;
+}
+
+export interface Sensitivity {
+  category: string;
+  level: "high" | "medium" | "low";
+  because: string;
+}
+
+export type Lifecycle = "ACTIVE" | "DEPRECATED" | "ORPHANED" | "ZOMBIE" | "INDETERMINATE";
+
+export interface EndpointUsage {
+  requests: number;
+  ok: number;
+  failed: number;
+  server_errors: number;
+  clients: number;
+  clients_capped: boolean;
+  first_seen: string | null;
+  last_seen: string | null;
+  last_success: string | null;
+  daily: [string, number][];
+  lifecycle: Lifecycle;
+  reason: string;
+}
+
+export interface UnmatchedRoute {
+  method: string;
+  path: string;
+  requests: number;
+  ok: number;
+  failed: number;
+  clients: number;
+  last_seen: string | null;
+}
+
+export interface Traffic {
+  window: { start: string | null; end: string | null; days: number | null };
+  requests: number;
+  matched: number;
+  preflight: number;
+  unmatched: number;
+  gateway_prefixes: string[];
+  lifecycle: Partial<Record<Lifecycle, number>>;
+  endpoints: Record<string, EndpointUsage>;
+  shadow_routes: UnmatchedRoute[];
+  shadow_routes_total: number;
+  probing: UnmatchedRoute[];
+  probing_total: number;
+  uncovered_services: string[];
+  files: { name: string; lines: number; parsed: number; format: string; note: string }[];
+  truncated: boolean;
+  imported_at: string;
+  imported_by: string;
+}
+
+export interface ScanChanges {
+  previous: { id: string; finished_at: string | null; commit: string | null };
+  same_commit?: boolean;
+  added: string[];
+  added_undocumented: string[];
+  removed: string[];
+  became_undocumented: string[];
+  became_documented: string[];
+  new_candidates: string[];
+  resolved_candidates: string[];
+  unchanged: number;
+}
+
+export interface PlanStep {
+  title: string;
+  detail: string;
+  snippet?: string;
+  snippet_label?: string;
+  where?: string[];
+}
+
+export interface RetirementPlan {
+  endpoint_id: string;
+  ready: boolean;
+  blockers: string[];
+  sunset: string;
+  steps: PlanStep[];
+}
+
+export interface PortfolioProject {
+  id: string;
+  target: string;
+  kind: ScanKind;
+  scanned_at: string;
+  endpoints: number;
+  undocumented: number;
+  candidates: number;
+  likely: number;
+  zombies: number;
+  high_sensitivity: number;
+  reviewed: number;
+  traffic: boolean;
+  risk: number;
+}
+
+export interface PortfolioRisk {
+  scan: string;
+  target: string;
+  id: string;
+  priority: number;
+  sensitivity: string;
+  level: Sensitivity["level"];
+  label: string;
+  documented: boolean;
+}
+
+export interface Portfolio {
+  totals: {
+    projects: number;
+    endpoints: number;
+    undocumented: number;
+    candidates: number;
+    likely: number;
+    zombies: number;
+    high_sensitivity: number;
+    reviewed: number;
+  };
+  projects: PortfolioProject[];
+  top_risks: PortfolioRisk[];
 }
 
 export interface CandidateSignal {
@@ -248,6 +375,14 @@ export interface ScanJob {
   summary?: SummaryItem[];
   report?: ScanReport;
   reviews?: Record<string, Review>;
+  traffic?: Traffic | null;
+  traffic_summary?: {
+    imported_at: string;
+    window_days: number | null;
+    lifecycle: Partial<Record<Lifecycle, number>>;
+  };
+  /** Against the previous finished scan of the same GitHub repository. */
+  changes?: ScanChanges | null;
 }
 
 export type Decision = "keep" | "document" | "assign-owner" | "investigate";

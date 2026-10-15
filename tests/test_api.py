@@ -192,9 +192,10 @@ def test_viewer_can_read_but_not_act() -> None:
                 for m, p in _routes(client) if m == "POST"}
     check("test_viewer_can_read_but_not_act",
           acts and all(c == 403 for c in acts.values())
-          # A scan id that does not exist is a 404, which is still an answer
-          # given to the viewer, not a refusal of them.
-          and all(c == 200 or (c == 404 and "{job_id}" in p) for p, c in reads.items()),
+          # A scan id that does not exist is a 404, and a missing required
+          # query (a plan names its endpoint) a 422: both still answers given
+          # to the viewer, not a refusal of them.
+          and all(c == 200 or (c in (404, 422) and "{job_id}" in p) for p, c in reads.items()),
           f"reads {reads}, acts {acts}")
 
 
