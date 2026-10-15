@@ -102,8 +102,10 @@ def traffic_view(records: list[Any], labels: dict[str, str]) -> dict[str, Any]:
     ])
 
 
-def code_view(records: list[Any], deps: Any, findings: dict[str, int]) -> dict[str, Any]:
-    """A project scan: edges read from the code (apix.live.deps)."""
+def code_view(records: list[Any], deps: Any, findings: dict[str, int],
+              client_matches: list[tuple[Any, str]] | None = None) -> dict[str, Any]:
+    """A project scan: edges read from the code (apix.live.deps), plus the
+    endpoints the project's own clients reference (apix.live.clients)."""
     from apix.live.deps import match_endpoint, route_matches
 
     graph = InMemoryGraph()
@@ -139,6 +141,17 @@ def code_view(records: list[Any], deps: Any, findings: dict[str, int]) -> dict[s
                       "label": f"{call.method} {call.path}",
                       "evidence": evidence + " (no endpoint in this repository matches)",
                       "file": call.file, "line": call.line})
+
+    seen_client: set[tuple[str, str]] = set()
+    for ref, target in client_matches or []:
+        if (ref.service, target) in seen_client:
+            continue
+        seen_client.add((ref.service, target))
+        services.setdefault(ref.service, {"id": ref.service, "kind": "service"})
+        graph.add_call(ref.service, target)
+        edges.append({"kind": "calls", "from": ref.service, "to": target, "client": True,
+                      "evidence": f"{ref.via} in {ref.file}:{ref.line}",
+                      "file": ref.file, "line": ref.line})
 
     for route in deps.routes:
         services.setdefault(route.gateway_service,

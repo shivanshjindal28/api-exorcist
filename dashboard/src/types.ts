@@ -197,6 +197,23 @@ export interface ScanEndpoint {
   flags: string[];
   findings: string[];
   risk: number;
+  /** Absent in reports saved before candidates were computed. */
+  candidate?: Candidate | null;
+  referenced_by?: string[];
+  service?: string;
+}
+
+export interface CandidateSignal {
+  key: string;
+  weight: number;
+  text: string;
+}
+
+export interface Candidate {
+  endpoint_id: string;
+  score: number;
+  label: string;
+  signals: CandidateSignal[];
 }
 
 export interface ScanReport {
@@ -204,6 +221,7 @@ export interface ScanReport {
   checks: ScanCheck[];
   endpoints: ScanEndpoint[];
   repository_findings: string[];
+  candidates?: Candidate[];
   /** Absent (or null) in reports saved before the graph was built from code. */
   graph?: GraphView | null;
   /** Absent from reports saved before sources were recorded. */

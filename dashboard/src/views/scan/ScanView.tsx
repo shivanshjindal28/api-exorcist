@@ -166,7 +166,12 @@ function RealScanView({ id, tab }: { id: string; tab: Tab }) {
           {tab === "endpoints" && <ScanEndpointsTab job={job} onReviewed={onReviewed} />}
           {tab === "graph" &&
             (job.report.graph ? (
-              <GraphPanel view={job.report.graph} />
+              <GraphPanel
+                view={job.report.graph}
+                candidates={Object.fromEntries(
+                  (job.report.candidates ?? []).map((c) => [c.endpoint_id, c.label]),
+                )}
+              />
             ) : (
               <Card title="Dependency graph">
                 <p className="muted">

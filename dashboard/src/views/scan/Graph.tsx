@@ -21,7 +21,14 @@ export function DemoGraphTab() {
   return data ? <GraphPanel view={data} /> : null;
 }
 
-export function GraphPanel({ view }: { view: GraphView }) {
+export function GraphPanel({
+  view,
+  candidates = {},
+}: {
+  view: GraphView;
+  /** endpoint id -> candidate label, drawn in red. */
+  candidates?: Record<string, string>;
+}) {
   const [selected, setSelected] = useState<Selection>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const lay = useMemo(() => layout(view, expanded), [view, expanded]);
@@ -185,7 +192,7 @@ export function GraphPanel({ view }: { view: GraphView }) {
                       >
                         <rect x={b.x + 4} y={y} width={b.w - 8} height={ROW_H - 2} rx={4} className="grow-bg" />
                         <circle cx={b.x + 14} cy={y + ROW_H / 2 - 1} r={4}
-                          className={`dot dot-${(e?.label ?? (e?.isolated ? "isolated" : "depended")).toLowerCase()}`} />
+                          className={`dot dot-${(e?.label ?? (candidates[id] ? "candidate" : e?.isolated ? "isolated" : "depended")).toLowerCase()}`} />
                         <text x={b.x + 24} y={y + 15} className="grow-text">
                           <title>{label}</title>
                           {label.length > 36 ? `${label.slice(0, 35)}...` : label}
@@ -232,6 +239,7 @@ function Legend({ basis }: { basis: GraphView["basis"] }) {
       {basis === "code" && <li><span className="lg lg-topic" /> message topic</li>}
       <li><span className="dot-inline dot-depended" /> something depends on it</li>
       <li><span className="dot-inline dot-isolated" /> nothing found depending on it</li>
+      {basis === "code" && <li><span className="dot-inline dot-candidate" /> zombie candidate</li>}
     </ul>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Card } from "../../common";
 import type { Review, ScanJob } from "../../types";
+import { CandidateBadge } from "./Candidates";
 import { ReviewBadge, ReviewControls, ago } from "./shared";
 
 /** What Safe Kill needs before it may remove anything, and whether this scan has it. */
@@ -52,10 +53,12 @@ export function ScanSafeKillTab({
   const steps = prerequisites(job);
   const [open, setOpen] = useState<string | null>(null);
 
-  // Most findings first, then unreviewed first: the queue a reviewer works down.
+  // Unreviewed first, then the strongest zombie candidates: the queue a
+  // reviewer works down.
   const queue = [...report.endpoints].sort(
     (a, b) =>
       Number(Boolean(reviews[a.id])) - Number(Boolean(reviews[b.id])) ||
+      (b.candidate?.score ?? 0) - (a.candidate?.score ?? 0) ||
       b.findings.length - a.findings.length ||
       b.risk - a.risk ||
       a.id.localeCompare(b.id),
@@ -96,6 +99,7 @@ export function ScanSafeKillTab({
             <thead>
               <tr>
                 <th>Endpoint</th>
+                <th>Candidate</th>
                 <th>Findings</th>
                 <th>Last changed</th>
                 <th>Decision</th>
@@ -150,6 +154,9 @@ function QueueRow({
             </code>
           </button>
         </td>
+        <td>
+          {e.candidate ? <CandidateBadge label={e.candidate.label} /> : <span className="muted">no</span>}
+        </td>
         <td>{e.findings.length + shared}</td>
         <td className="small">{ago(e.last_change_days)}</td>
         <td>
@@ -158,7 +165,17 @@ function QueueRow({
       </tr>
       {open && (
         <tr className="detail-row">
-          <td colSpan={4}>
+          <td colSpan={5}>
+            {e.candidate && (
+              <ul className="signals">
+                {e.candidate.signals.map((s) => (
+                  <li key={s.text} className={s.weight < 0 ? "sig-against" : undefined}>
+                    <span className="sig-weight">{s.weight > 0 ? `+${s.weight}` : s.weight}</span>
+                    {s.text}
+                  </li>
+                ))}
+              </ul>
+            )}
             {e.findings.length > 0 && (
               <ul className="findings">
                 {e.findings.map((f) => (

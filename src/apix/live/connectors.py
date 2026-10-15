@@ -23,6 +23,7 @@ repository scan from calling every endpoint a zombie.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -32,7 +33,7 @@ import yaml
 from apix.connectors.base import Connector, DiscoverySignal, Source
 from apix.extractors.base import ExtractedRoute, normalise_path
 from apix.extractors.semgrep_extractor import SemgrepExtractor
-from apix.live.repo import RepoScan
+from apix.live.repo import RepoScan, service_of
 
 #: The sources a repository scan can actually speak for.
 REPO_SOURCES: frozenset[Source] = frozenset(
@@ -54,27 +55,31 @@ class RepoCodeConnector(Connector):
     def collect(self) -> Iterator[DiscoverySignal]:
         self.routes = self.extractor.extract(self.scan.root)
         for r in self.routes:
-            age = self.scan.age_of(r.file)
-            owner = self.scan.owner_of(r.file)
-            yield DiscoverySignal(
-                source=self.source,
-                endpoint_id=r.endpoint_id,
-                service=_service_of(r.file),
-                method=r.method,
-                path=r.path,
-                version=_version_of(r.path),
-                attributes={
-                    "handler_exists_in_code": True,
-                    "days_since_last_commit": age,
-                    "source_file": r.file,
-                    "source_line": r.line,
-                    "handler_function": r.function,
-                    "framework": r.framework,
-                    # CODEOWNERS is a genuine ownership signal and the reason a
-                    # repository scan can answer "who owns this?" at all.
-                    "codeowner": owner,
-                },
-            )
+            yield self.signal_for(r)
+
+    def signal_for(self, r: ExtractedRoute) -> DiscoverySignal:
+        """The CODE signal for one route; also used for spec-wired handlers."""
+        age = self.scan.age_of(r.file)
+        owner = self.scan.owner_of(r.file)
+        return DiscoverySignal(
+            source=self.source,
+            endpoint_id=r.endpoint_id,
+            service=_service_of(r.file),
+            method=r.method,
+            path=r.path,
+            version=_version_of(r.path),
+            attributes={
+                "handler_exists_in_code": True,
+                "days_since_last_commit": age,
+                "source_file": r.file,
+                "source_line": r.line,
+                "handler_function": r.function,
+                "framework": r.framework,
+                # CODEOWNERS is a genuine ownership signal and the reason a
+                # repository scan can answer "who owns this?" at all.
+                "codeowner": owner,
+            },
+        )
 
 
 class RepoOpenAPIConnector(Connector):
@@ -106,10 +111,11 @@ class RepoOpenAPIConnector(Connector):
         paths = doc.get("paths") or {}
         if not isinstance(paths, dict):
             return
+        prefix = _server_prefix(doc)
         for raw_path, ops in paths.items():
             if not isinstance(ops, dict):
                 continue
-            path = normalise_path(str(raw_path))
+            path = normalise_path(prefix + str(raw_path))
             for verb, op in ops.items():
                 if verb.upper() not in (
                     "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"
@@ -131,6 +137,8 @@ class RepoOpenAPIConnector(Connector):
                         "owner_team": _owner_from_spec(doc, op),
                         "declared_auth": _auth_from_spec(doc, op),
                         "spec_file": self.scan.rel(spec_path),
+                        "operation_id": op.get("operationId"),
+                        "spec_summary": str(op.get("summary") or "")[:200],
                     },
                 )
 
@@ -170,6 +178,22 @@ class RepoCICDConnector(Connector):
 
 
 # ---------------------------------------------------------------------------
+def _server_prefix(doc: dict[str, Any]) -> str:
+    """The path every operation sits under: Swagger 2 basePath, or OpenAPI 3's
+    first server URL's path. "/owners" under a server of "/petclinic/api" is
+    served at /petclinic/api/owners, which is the path the code declares."""
+    base = doc.get("basePath")
+    if isinstance(base, str) and base.startswith("/"):
+        return base.rstrip("/")
+    servers = doc.get("servers")
+    if isinstance(servers, list) and servers and isinstance(servers[0], dict):
+        url = str(servers[0].get("url") or "")
+        path = re.sub(r"^[a-z]+://[^/]*", "", url)
+        if path.startswith("/") and "{" not in path:
+            return path.rstrip("/")
+    return ""
+
+
 def _load_spec(path: Path) -> Any:
     text = path.read_text(encoding="utf-8", errors="ignore")
     if path.suffix.lower() == ".json":
@@ -181,10 +205,7 @@ def _load_spec(path: Path) -> Any:
 
 def _service_of(rel_path: str) -> str:
     """Infer a service name from where the file sits in the tree."""
-    parts = [p for p in rel_path.split("/") if p]
-    if len(parts) > 1:
-        return parts[0]
-    return "root"
+    return service_of(rel_path)
 
 
 def _version_of(path: str) -> str:
@@ -195,12 +216,19 @@ def _version_of(path: str) -> str:
 
 
 def _owner_from_spec(doc: dict[str, Any], op: dict[str, Any]) -> str | None:
-    tags = op.get("tags")
-    if isinstance(tags, list) and tags:
-        return str(tags[0])
-    contact = (doc.get("info") or {}).get("contact") or {}
-    name = contact.get("name")
-    return str(name) if name else None
+    """An owner the spec states explicitly (x-owner / x-team), or None.
+
+    Tags are functional groupings ("users", "books"), not teams, and the info
+    contact is whoever answers questions about the document. Reading either as
+    an owner made VAmPI report every endpoint as owned when it names no owner
+    anywhere. Enforcement has always used this same rule.
+    """
+    for source in (op, doc.get("info") or {}, doc):
+        if isinstance(source, dict):
+            for key in ("x-owner", "x-team", "x-owning-team"):
+                if source.get(key):
+                    return str(source[key])
+    return None
 
 
 def _auth_from_spec(doc: dict[str, Any], op: dict[str, Any]) -> str | None:

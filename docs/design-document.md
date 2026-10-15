@@ -403,6 +403,26 @@ what can call an endpoint (code) and what does (traffic), and the page states
 which one it shows. A graph from code moves Safe Kill's dependency prerequisite to
 "partly met", never "met": callers outside the repository cannot appear in it.
 
+#### As built: zombie candidates from code evidence
+
+Tested against seven real public repositories, project scans concluded nothing:
+every endpoint carried the same findings (undocumented, unowned), so nothing was
+ranked, and OWASP crAPI's two intentional zombie endpoints, an old OTP check and
+an old token login left beside their newer versions, came out as ordinary rows.
+A repository holds no traffic, but it does hold evidence of decay, and scans now
+read it: a newer version of the same operation; deprecation in the specification
+or the code; whether the project's own clients (a front end, a generated SDK,
+another service) still reference an endpoint; debug and test endpoints shipped
+in the API; undocumented endpoints among documented neighbours; and handlers
+frozen while the rest of the project changes. Each signal carries a weight and a
+sentence, use by a client counts against, and endpoints are ranked as zombie
+candidates, labelled suspected rather than proven, because proof takes usage
+data. The same tests found and fixed: clone failures on Windows long paths,
+handlers wired by an OpenAPI operationId (Connexion, API-first code generation)
+going unseen, OpenAPI tags read as owners, and a route split in two because code
+and specification named its parameter differently. Real repositories with known
+answers are now part of the test suite.
+
 ---
 
 ## 3. Behavioural view

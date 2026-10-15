@@ -337,3 +337,27 @@ button[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 1px
 .arrowhead-dim { fill: #d0d5dd; }
 .evidence-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.45rem; }
 .evidence-list li { border-left: 3px solid var(--line); padding-left: 0.5rem; overflow-wrap: anywhere; }
+
+/* ---- zombie candidates --------------------------------------------------- */
+.candidates { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.3rem; }
+.candidates > li { border: 1px solid var(--line); border-radius: 6px; }
+.candidates > li.open { border-color: #fda29b; }
+.cand-row { display: grid; grid-template-columns: 13rem minmax(0, 1fr) 8rem; gap: 0.75rem; align-items: center; width: 100%; padding: 0.45rem 0.6rem; text-decoration: none !important; }
+.cand-row code { overflow-wrap: anywhere; }
+.cand-score { display: grid; grid-template-columns: 1fr 1.5rem; gap: 0.4rem; align-items: center; font-weight: 700; text-align: right; }
+.cand { display: inline-block; justify-self: start; font-size: 0.72rem; font-weight: 700; padding: 0.1rem 0.5rem; border-radius: 999px; white-space: nowrap; color: #fff; }
+.cand-likely { background: var(--zombie); }
+.cand-superseded { background: #c4320a; }
+.cand-deprecated { background: var(--deprecated); }
+.cand-debug { background: #7a2e0e; }
+.cand-unused { background: var(--orphaned); }
+.cand-shadow { background: #475467; }
+.cand-other { background: #667085; }
+.signals { list-style: none; margin: 0; padding: 0.2rem 0.75rem 0.6rem; display: grid; gap: 0.25rem; font-size: 0.88rem; }
+.signals li { display: grid; grid-template-columns: 2.2rem 1fr; gap: 0.4rem; }
+.sig-weight { font-family: ui-monospace, Consolas, monospace; font-weight: 700; color: var(--bad); text-align: right; }
+.sig-against .sig-weight { color: var(--good); }
+.sig-against { color: var(--muted); }
+.cand-detail h3 { display: flex; gap: 0.5rem; align-items: center; }
+.dot-candidate, .dot-inline.dot-candidate { fill: var(--zombie); background: var(--zombie); }
+@media (max-width: 760px) { .cand-row { grid-template-columns: 1fr; } }

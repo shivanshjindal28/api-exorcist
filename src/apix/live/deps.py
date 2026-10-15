@@ -34,14 +34,15 @@ from pathlib import Path
 from typing import Any
 
 from apix.extractors.spring import routes_for
-from apix.live.repo import RepoScan
+from apix.live.repo import RepoScan, service_of
 
 _CODE_SUFFIXES = {".java", ".kt", ".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
 _CONFIG_SUFFIXES = {".yml", ".yaml"}
 _MAX_FILE_BYTES = 1_000_000
 _TEST_PATH = re.compile(
     r"(^|/)(test|tests|__tests__|spec|e2e|testing)(/|$)|"
-    r"(Test|Tests|IT)\.(java|kt)$|(^|/)test_[^/]*\.py$|_test\.py$|\.(test|spec)\.[jt]sx?$",
+    r"(Test|Tests|IT)\.(java|kt)$|(^|/)test_[^/]*\.py$|(^|/)tests?\.py$|_tests?\.py$|"
+    r"\.(test|spec)\.[jt]sx?$",
 )
 
 # -- HTTP -----------------------------------------------------------------
@@ -134,9 +135,6 @@ class CodeDependencies:
     test_files_skipped: int = 0
 
 
-def service_of(rel_path: str) -> str:
-    parts = [p for p in rel_path.split("/") if p]
-    return parts[0] if len(parts) > 1 else "root"
 
 
 def _line_of(text: str, pos: int) -> int:

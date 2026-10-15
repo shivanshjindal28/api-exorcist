@@ -297,3 +297,49 @@ describe("Safe Kill with a graph drawn from code", () => {
     expect(screen.getByText(/not callers outside the repository/)).toBeTruthy();
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// Zombie candidates
+import { CandidatesCard } from "../views/scan/Candidates";
+
+describe("Zombie candidates card", () => {
+  it("ranks candidates and shows the evidence behind the top one", () => {
+    const job: ScanJob = {
+      ...DONE,
+      report: {
+        ...DONE.report!,
+        candidates: [
+          {
+            endpoint_id: "POST /identity/api/auth/v2/check-otp", score: 8, label: "Likely zombie",
+            signals: [
+              { key: "superseded", weight: 3, text: "a newer version of this operation exists: POST /identity/api/auth/v3/check-otp" },
+              { key: "superseded", weight: 2, text: "this project's own client calls the newer version and never this one" },
+            ],
+          },
+          { endpoint_id: "GET /users/v1/_debug", score: 2, label: "Debug or test endpoint", signals: [] },
+        ],
+      },
+    };
+    render(<CandidatesCard job={job} />);
+    expect(screen.getByText("Zombie candidates (2)")).toBeTruthy();
+    expect(screen.getByText("Likely zombie")).toBeTruthy();
+    expect(screen.getByText(/calls the newer version and never this one/)).toBeTruthy();
+  });
+
+  it("explains an empty result by the evidence the repository lacks", () => {
+    const job: ScanJob = { ...DONE, report: { ...DONE.report!, candidates: [] } };
+    render(<CandidatesCard job={job} />);
+    expect(screen.getByText("Zombie candidates: none")).toBeTruthy();
+    // The fixture is versioned (/v1/...) but undocumented, with no client.
+    expect(screen.queryByText(/no versioned paths/)).toBeNull();
+    expect(screen.getByText(/no API specification/)).toBeTruthy();
+    expect(screen.getByText(/no front end, SDK or other client/)).toBeTruthy();
+    expect(screen.getByText(/property of the repository, not a failure/)).toBeTruthy();
+  });
+
+  it("asks for a rescan when the report predates candidates", () => {
+    render(<CandidatesCard job={DONE} />);
+    expect(screen.getByText(/made before zombie candidates were computed/)).toBeTruthy();
+  });
+});

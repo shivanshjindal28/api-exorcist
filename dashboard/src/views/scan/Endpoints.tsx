@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { Card } from "../../common";
 import type { Review, ScanJob } from "../../types";
+import { CandidateBadge } from "./Candidates";
 import { ReviewBadge, ReviewControls, SourceChips, ago, consultedSources } from "./shared";
 
-type Filter = "all" | "findings" | "undocumented" | "unreviewed";
+type Filter = "all" | "candidates" | "findings" | "undocumented" | "unreviewed";
 
 export function ScanEndpointsTab({
   job,
@@ -15,13 +16,19 @@ export function ScanEndpointsTab({
   const report = job.report!;
   const reviews = job.reviews ?? {};
   const consulted = consultedSources(job);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>(
+    report.endpoints.some((e) => e.candidate) ? "candidates" : "all",
+  );
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<string | null>(report.endpoints[0]?.id ?? null);
+  // Open on the strongest candidate, the endpoint a reviewer wants first.
+  const [selected, setSelected] = useState<string | null>(
+    report.candidates?.[0]?.endpoint_id ?? report.endpoints[0]?.id ?? null,
+  );
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return report.endpoints.filter((e) => {
+      if (filter === "candidates" && !e.candidate) return false;
       if (filter === "findings" && !e.findings.length) return false;
       if (filter === "undocumented" && e.documented) return false;
       if (filter === "unreviewed" && reviews[e.id]) return false;
@@ -48,6 +55,7 @@ export function ScanEndpointsTab({
           <select value={filter} onChange={(ev) => setFilter(ev.target.value as Filter)}
             aria-label="Which endpoints">
             <option value="all">All</option>
+            <option value="candidates">Zombie candidates</option>
             <option value="findings">With their own findings</option>
             <option value="undocumented">Undocumented</option>
             <option value="unreviewed">Not yet reviewed</option>
@@ -60,8 +68,8 @@ export function ScanEndpointsTab({
             <thead>
               <tr>
                 <th>Endpoint</th>
+                <th>Candidate</th>
                 <th>Documented</th>
-                <th>Owner</th>
                 <th>Decision</th>
               </tr>
             </thead>
@@ -76,8 +84,10 @@ export function ScanEndpointsTab({
                       </code>
                     </button>
                   </td>
+                  <td>
+                    {x.candidate ? <CandidateBadge label={x.candidate.label} /> : <span className="muted">no</span>}
+                  </td>
                   <td>{x.documented ? "yes" : <span className="warn-text">no</span>}</td>
-                  <td>{x.owner ?? <span className="muted">none</span>}</td>
                   <td>
                     <ReviewBadge review={reviews[x.id]} />
                   </td>
@@ -122,6 +132,33 @@ export function ScanEndpointsTab({
               <dt>Code last changed</dt>
               <dd>{ago(e.last_change_days)}</dd>
             </dl>
+            {e.candidate && (
+              <div className="cand-detail">
+                <h3>
+                  <CandidateBadge label={e.candidate.label} /> score {e.candidate.score}
+                </h3>
+                <ul className="signals">
+                  {e.candidate.signals.map((s) => (
+                    <li key={s.text} className={s.weight < 0 ? "sig-against" : undefined}>
+                      <span className="sig-weight">{s.weight > 0 ? `+${s.weight}` : s.weight}</span>
+                      {s.text}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {e.referenced_by && e.referenced_by.length > 0 && (
+              <div>
+                <h3>Used by this project&apos;s clients</h3>
+                <ul className="findings small">
+                  {e.referenced_by.map((r) => (
+                    <li key={r}>
+                      <code>{r}</code>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div>
               <h3>Sources</h3>
               <SourceChips e={e} consulted={consulted} />

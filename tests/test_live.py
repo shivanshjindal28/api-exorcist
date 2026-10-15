@@ -162,21 +162,36 @@ def test_ambiguous_mount_prefixes_are_not_guessed() -> None:
     )
 
 
+def _variable_mount(project: dict[str, str]) -> tuple[list, SemgrepExtractor]:
+    """Parse a mount by settings.API_V1_STR inside a throwaway project.
+
+    The project is a temporary directory on purpose: run against this
+    repository, the resolver found the API_V1_STR assignment in a demo clone
+    that exists only on one laptop, so the test passed or failed by machine.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        for rel, text in project.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(text, encoding="utf-8")
+        ex = SemgrepExtractor()
+        data = {"results": [
+            _result("apix-py-include-router", "", "main.py",
+                    message="APIXMOUNT|prefix=settings.API_V1_STR"),
+            _result("apix-py-fastapi-get", '"/users"', "api/u.py", 5),
+        ]}
+        return ex._parse(data, root), ex
+
+
 def test_a_prefix_set_by_a_variable_marks_routes_unresolved() -> None:
-    """`prefix=settings.API_V1_STR` has a value only the running project knows.
+    """`prefix=settings.API_V1_STR` whose value the project never spells out.
 
     It used to be dropped silently, which left every route looking resolved:
     the web report showed /users where the deployed path is /api/v1/users.
     """
-    ex = SemgrepExtractor()
-    data = {
-        "results": [
-            _result("apix-py-include-router", "", "main.py",
-                    message="APIXMOUNT|prefix=settings.API_V1_STR"),
-            _result("apix-py-fastapi-get", '"/users"', "api/u.py", 5),
-        ]
-    }
-    routes = ex._parse(data, ROOT)
+    routes, ex = _variable_mount({"app/main.py": "API_V1_STR = os.environ['X']\n"})
     check(
         "test_a_prefix_set_by_a_variable_marks_routes_unresolved",
         len(routes) == 1
@@ -184,6 +199,18 @@ def test_a_prefix_set_by_a_variable_marks_routes_unresolved() -> None:
         and not routes[0].prefix_resolved
         and ex.variable_mounts == ["settings.API_V1_STR"],
         f"got {[(r.path, r.prefix_resolved) for r in routes]}, {ex.variable_mounts}",
+    )
+
+
+def test_a_variable_prefix_the_project_spells_out_is_applied() -> None:
+    """FastAPI's template: API_V1_STR: str = "/api/v1" in its settings class."""
+    routes, ex = _variable_mount({
+        "app/core/config.py": 'class Settings:\n    API_V1_STR: str = "/api/v1"\n'})
+    check(
+        "test_a_variable_prefix_the_project_spells_out_is_applied",
+        [(r.path, r.prefix_resolved) for r in routes] == [("/api/v1/users", True)]
+        and ex.resolved_mounts == {"settings.API_V1_STR": "/api/v1"},
+        f"got {[(r.path, r.prefix_resolved) for r in routes]}, {ex.resolved_mounts}",
     )
 
 
@@ -306,6 +333,7 @@ def main() -> None:
         test_single_mount_prefix_is_applied,
         test_ambiguous_mount_prefixes_are_not_guessed,
         test_a_prefix_set_by_a_variable_marks_routes_unresolved,
+        test_a_variable_prefix_the_project_spells_out_is_applied,
         test_flask_methods_are_read_from_the_decorator,
         test_declared_path_is_retained,
         test_repo_scan_declares_only_three_sources,

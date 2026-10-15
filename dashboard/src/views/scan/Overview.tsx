@@ -1,5 +1,6 @@
 import { Card } from "../../common";
 import type { ScanJob } from "../../types";
+import { CandidatesCard } from "./Candidates";
 import { CHECK_TEXT, DECISIONS } from "./shared";
 
 export function ScanOverviewTab({ job }: { job: ScanJob }) {
@@ -27,6 +28,8 @@ export function ScanOverviewTab({ job }: { job: ScanJob }) {
           </div>
         ))}
       </div>
+
+      <CandidatesCard job={job} />
 
       <div className="split split-even">
           <Card title="Findings">

@@ -92,6 +92,32 @@ def _matched_source(res: dict[str, Any]) -> str:
     return "" if lines.strip() == "requires login" else lines
 
 
+def resolve_constant(repo_root: Path, expr: str) -> str | None:
+    """The single string value an expression like settings.API_V1_STR is
+    assigned anywhere in the repository's Python, or None if none or several.
+
+    Matches `NAME = "/x"` and `NAME: str = "/x"`, the forms settings classes
+    and modules use. Only values that look like a path are accepted.
+    """
+    name = expr.strip().split(".")[-1]
+    if not re.fullmatch(r"[A-Za-z_]\w*", name):
+        return None
+    pattern = re.compile(
+        rf"^\s*{re.escape(name)}\s*(?::\s*[\w\[\], .|]+)?=\s*[\"'](/[^\"']*)[\"']", re.M)
+    values: set[str] = set()
+    for p in repo_root.rglob("*.py"):
+        if any(part in {".git", "node_modules", "venv", ".venv", "site-packages"}
+               for part in p.parts):
+            continue
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if name in text:
+            values.update(m.group(1) for m in pattern.finditer(text))
+    return next(iter(values)) if len(values) == 1 else None
+
+
 def _clean(literal: str) -> str:
     """Strip quotes from a matched string literal."""
     return literal.strip().strip("\"'").strip()
@@ -168,6 +194,19 @@ class SemgrepExtractor:
         results = data.get("results", [])
         file_prefix, mount_prefixes, variable_mounts = self._collect_prefixes(
             results, repo_root)
+        # A prefix held in a variable is often spelled out as a literal
+        # elsewhere: FastAPI's template mounts with settings.API_V1_STR, and its
+        # config says API_V1_STR: str = "/api/v1". Reading that assignment is
+        # reading text, not running the project, so when exactly one value is
+        # found it is used, and the variable is recorded as resolved.
+        self.resolved_mounts: dict[str, str] = {}
+        if not mount_prefixes and len(variable_mounts) == 1:
+            expr = next(iter(variable_mounts))
+            value = resolve_constant(repo_root, expr)
+            if value:
+                self.resolved_mounts[expr] = value
+                mount_prefixes = {value.rstrip("/")}
+                variable_mounts = set()
         self.variable_mounts = sorted(variable_mounts)
         # A single mount prefix used consistently across the application (the
         # overwhelmingly common case, e.g. everything under /api/v1) can be

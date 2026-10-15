@@ -114,7 +114,7 @@ The command line is still there for scripting and CI (see the
 | Trained model with SHAP attribution, used as a veto over removals | ✅ |
 | Safe Kill: rule-of-three shadow window, named approval, 5/25/100 canary | ✅ |
 | Automatic rollback on breach, hash-chained append-only audit log | ✅ |
-| 223 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
+| 257 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
 | REST API: hashed bearer tokens, viewer and approver roles, approval over HTTP | ✅ |
 | Dashboard: React + TypeScript, same origin, strict CSP | ✅ |
 | CI/CD enforcement: undocumented, unowned and zombie-in-the-making endpoints | ✅ |
@@ -676,6 +676,61 @@ and zombie are all defined by *use*, and a project's files cannot show use; the
 report says this rather than guessing. The **Demo bank** pages show the full
 classification and Safe Kill on the simulated estate, where usage data exists.
 
+### What a scan concludes on real code: zombie candidates
+
+A repository holds no traffic, so it cannot prove an endpoint is dead. It does
+hold evidence that one is, and every report now opens with the endpoints that
+evidence points at, ranked, each with the sentences behind its score:
+
+| Signal | Weight | Real example |
+|---|---|---|
+| A newer version of the same operation exists | +3 | crAPI: `POST /identity/api/auth/v2/check-otp` beside `v3` |
+| ...and the project's own client calls only the newer one | +2 | crAPI's web app calls `v3/check-otp`, never `v2` |
+| Marked deprecated in the specification or the code (`@Deprecated`, `deprecated=True`) | +3 | |
+| The project's own clients use its neighbours but not it (front end, generated SDK) | +2 | the FastAPI template's React app never calls `readItem()` |
+| A debug or test endpoint shipped in the API | +2 | VAmPI: `/users/v1/_debug`, `/createdb` |
+| Undocumented while the specification documents its neighbours | +2 | crAPI: `POST /identity/management/admin/lockUser` |
+| An internal endpoint a public gateway route also matches | +1 | |
+| Unchanged for a year while the rest of the project changes | +1 | |
+| Referenced by a client, or called by another service | -2 | |
+
+A score of 2 makes an endpoint a candidate; "Likely zombie" needs 4 and a
+newer version, a deprecation, or no client use of an endpoint frozen for a year.
+Every candidate is labelled suspected, not proven: confirming one takes usage
+data, which is what Safe Kill's shadow window collects before anything is
+removed. Health probes, metrics, token-key and documentation endpoints are never
+candidates, and neither are admin endpoints merely because a front end does not
+call them.
+
+Measured on seven public repositories (`tests/test_realworld.py` checks the
+first four and asserts what must not be flagged):
+
+| Repository | Endpoints | Candidates | What the top of the list says |
+|---|---|---|---|
+| OWASP crAPI | 62 | 6 | its two intentional zombies (OWASP API9, improper inventory management), `v2/check-otp` and `v2.7/user/login-with-token`, ranked first, as likely zombies |
+| VAmPI | 14 | 2 | `/users/v1/_debug` and `/createdb` |
+| spring-petclinic-rest | 38 | 3 | `GET /owners` and `GET /pets`, superseded by their v2 |
+| full-stack-fastapi-template | 23 | 6 | the six endpoints its generated client has but its front end never calls |
+| spring-petclinic-microservices | 16 | 0 | |
+| node-express-realworld-example-app | 20 | 0 | |
+| digital-banking-platform | 27 | 0 | |
+
+The last three hold no evidence that tells their endpoints apart: no versions,
+no deprecations, no specification, and no front end that covers their services.
+The report says exactly that, and says what would. Before this, every one of
+the seven reported the same thing about every endpoint; the same testing also
+fixed clone failures on Windows long paths, handlers wired by an OpenAPI
+`operationId` (Connexion, API-first code generation) going unseen, OpenAPI tags
+read as owners, prefixes set by a variable left unresolved, and a route split in
+two because code and specification named its parameter differently.
+
+**Why use this rather than Semgrep alone?** Semgrep is one sensor inside API
+Exorcist: it answers "where are the routes?". API Exorcist answers "which of
+them are dead or dangerous, how sure are we, and is it safe to remove them?",
+by combining what no single tool holds (code, specification, version structure,
+the project's own clients, history and the service dependency graph) and then
+carrying a removal through review, an audit trail and pull-request enforcement.
+
 ### Every scan has the same six views
 
 A finished scan, and the demo bank, open on the same tabs. On a real project
@@ -758,7 +813,7 @@ Security, in the browser as on the server:
 
 ```bash
 cd dashboard && npm ci && npm run dev      # hot-reload against a running `apix serve`
-npm test && npm run build                  # 28 Vitest tests; build into src/apix/api/dashboard
+npm test && npm run build                  # 31 Vitest tests; build into src/apix/api/dashboard
 ```
 
 ---
@@ -1030,11 +1085,16 @@ State these; do not hide them.
     Someone who can rewrite the whole file can recompute the whole chain.
     `apix_audit_chain_ok` catches an edit, not a rewrite; the deployment answer
     is to ship the head hash to a store the operator does not control.
-13. **Live website scanning is not available in this version.** The app shows
+13. **Candidates from code are suspected, not proven.** Use by callers outside
+    the repository cannot be seen, and a gateway that rewrites paths (Spring
+    Cloud Gateway's StripPrefix) can hide a front end's calls; coverage below 30%
+    therefore never counts as evidence of non-use. Django and Go routes are not
+    extracted yet, so their endpoints are seen only through the specification.
+14. **Live website scanning is not available in this version.** The app shows
     the option and says so; scan the project's folder or repository instead.
-14. **An uploaded folder has no history.** `.git` is left out of uploads, so
+15. **An uploaded folder has no history.** `.git` is left out of uploads, so
     staleness is reported as unknown. A GitHub scan includes it.
-15. **The container image has neither git nor Semgrep.** Scans started inside it
+16. **The container image has neither git nor Semgrep.** Scans started inside it
     report both as unavailable, with the reason; install them, or run the app
     directly, to scan.
 ---
@@ -1107,7 +1167,7 @@ src/apix/
 dashboard/                 React + TypeScript source; builds into src/apix/api/dashboard
 Dockerfile                 The deployable image: API and dashboard, non-root, read-only
 action.yml                 The GitHub Action; action-constraints.txt pins what it installs
-tests/                     223 tests, three ground-truth leakage guards
+tests/                     257 tests, three ground-truth leakage guards
 demo/                      Review runbook, paced demo runner, expected output
 docs/                      Literature review, design document, interim report,
                            source papers, diagram renderer, Word and
@@ -1131,7 +1191,7 @@ pip install -e ".[dev,live,ml]" && pre-commit install
 pytest && ruff check . && mypy && python docs/verify_claims.py
 ```
 
-**223 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 28 Vitest
+**257 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 31 Vitest
 tests under TypeScript strict mode (`cd dashboard && npm test`).
 
 ### Optional extras

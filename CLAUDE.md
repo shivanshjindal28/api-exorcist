@@ -18,9 +18,10 @@ apix serve                        # THE APP: opens the browser signed in (F5 in 
 apix token NAME --role approver   # mint an API token; stores only its hash
 apix enforce --base origin/main   # judge a change's API surface (Phase 6)
 docker build -t api-exorcist .    # the deployable image (Phases 7-8)
-cd dashboard && npm ci && npm test && npm run build   # dashboard, 28 Vitest tests
-pytest                            # 223 tests
+cd dashboard && npm ci && npm test && npm run build   # dashboard, 31 Vitest tests
+pytest                            # 257 tests
 ruff check . && mypy              # lint + strict types
+APIX_REALWORLD=1 pytest tests/test_realworld.py   # real repos, known answers (network, ~6 min)
 
 python docs/render_diagrams.py    # mermaid -> png (run before the two below)
 python docs/build_docx.py         # literature review, design doc, interim report
@@ -117,6 +118,18 @@ deprecated endpoint whose team never set the OpenAPI flag, exactly what
 Cassieri et al. [2] observed. Its confidence is 0.803, identical to correct
 ACTIVEs: confidently wrong, because the observable evidence genuinely does not
 distinguish the cases.
+
+## Test against real repositories, not only our own fixtures
+
+Fixtures written by whoever wrote the scanner are shaped like the scanner, so
+they keep passing while real projects break. In October 2026 a seven-repository
+check found: Windows refused long paths (crAPI, petclinic), Connexion and
+API-first Spring handlers were invisible (0 of 14, 0 of 37), OpenAPI tags were
+read as owners, and crAPI's two real zombies came out as ordinary rows. Every
+scan read "nothing distinguishes these endpoints". `tests/test_realworld.py`
+now checks known answers on real projects, including what must NOT be flagged.
+Run it before any change to extraction, clients, evidence or ranking, and add a
+repository when a new framework or false positive turns up.
 
 ## Environment gotchas
 

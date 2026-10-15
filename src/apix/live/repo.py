@@ -56,6 +56,20 @@ _CODEOWNERS_LOCATIONS = (
 )
 
 
+#: Folders that hold services rather than being one. In crAPI every file sat under
+#: services/, so the whole repository read as one service called "services".
+_SERVICE_CONTAINERS = {"services", "apps", "packages", "microservices", "modules",
+                       "projects", "components", "svc"}
+
+
+def service_of(rel_path: str) -> str:
+    """The service a repository file belongs to, inferred from where it sits."""
+    parts = [p for p in rel_path.replace("\\", "/").split("/") if p]
+    if len(parts) > 2 and parts[0].lower() in _SERVICE_CONTAINERS:
+        return parts[1]
+    return parts[0] if len(parts) > 1 else "root"
+
+
 class RepoError(RuntimeError):
     """Raised when a repository cannot be acquired or read."""
 
@@ -94,7 +108,11 @@ class RepoScan:
         dest = Path(td.name) / slug.split("/")[-1]
         url = f"https://github.com/{slug}.git"
 
-        cmd = ["git", "clone", "--filter=blob:none", "--quiet"]
+        # core.longpaths: Windows refuses paths over 260 characters by default,
+        # and real repositories exceed it. OWASP crAPI's vendored Go modules
+        # failed to check out with "Filename too long", which left a scan with
+        # a half-written tree. Ignored on every other platform.
+        cmd = ["git", "-c", "core.longpaths=true", "clone", "--filter=blob:none", "--quiet"]
         if depth:
             cmd += ["--depth", str(depth)]
         cmd += [url, str(dest)]
@@ -139,7 +157,7 @@ class RepoScan:
     # ------------------------------------------------------------------
     def _git(self, *args: str) -> str:
         proc = subprocess.run(
-            ["git", "-C", str(self.root), *args],
+            ["git", "-c", "core.longpaths=true", "-C", str(self.root), *args],
             capture_output=True, text=True, timeout=600,
         )
         return proc.stdout if proc.returncode == 0 else ""
