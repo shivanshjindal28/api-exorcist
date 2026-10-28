@@ -61,6 +61,13 @@ def merge_base(repo: Path, base_ref: str) -> str:
     return _git(repo, "merge-base", base_ref, "HEAD")
 
 
+def ignored_directories(repo: Path) -> list[str]:
+    """Repo-relative directories in the working tree that git ignores."""
+    out = _git(repo, "ls-files", "--others", "--ignored", "--exclude-standard",
+               "--directory")
+    return [line.rstrip("/") for line in out.splitlines() if line.endswith("/")]
+
+
 @contextlib.contextmanager
 def checkout(repo: Path, commit: str) -> Iterator[Path]:
     """A detached, temporary worktree of `commit`, removed on exit."""
@@ -102,7 +109,10 @@ def run_enforcement(
         base = take_snapshot(base_root, extractor)
         base_policy = _read(base_root / CONFIG_FILE)
         cfg = config or EnforceConfig.load(base_root)
-    head = take_snapshot(repo, extractor)
+    # Files git ignores can never be part of a commit, so they are not part of
+    # the change. Scanned anyway, a cloned repository under an ignored folder
+    # lent its /api/v1 mount to every route here, and each looked newly added.
+    head = take_snapshot(repo, extractor, ignored_directories(repo))
     if config is None:
         # The worktree is gone; name the policy by what it is, not a temp path.
         cfg = dataclasses.replace(cfg, source=(

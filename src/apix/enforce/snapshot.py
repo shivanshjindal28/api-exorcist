@@ -10,6 +10,7 @@ the same reason a repository scan abstains from one.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -72,13 +73,19 @@ class Snapshot:
         return entry.owner if entry else None
 
 
-def take_snapshot(root: Path, extractor: RouteExtractor) -> Snapshot:
+def take_snapshot(
+    root: Path, extractor: RouteExtractor, exclude: Sequence[str] = ()
+) -> Snapshot:
+    """`exclude` names repo-relative directories to leave out entirely."""
     scan = RepoScan.from_path(root)
     snap = Snapshot(root=root, _scan=scan)
-    for route in extractor.extract(root):
+    for route in extractor.extract(root, exclude):
         snap.routes.setdefault(route.endpoint_id, route)
+    prefixes = tuple(d.rstrip("/") + "/" for d in exclude)
     for spec_path in scan.spec_files:
         rel = scan.rel(spec_path)
+        if rel.startswith(prefixes):
+            continue
         try:
             doc = _load_spec(spec_path)
         except Exception as exc:

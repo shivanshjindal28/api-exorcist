@@ -190,6 +190,12 @@ def audit_entry(v: Verdict) -> dict[str, Any]:
         ],
         "recommended_action": LABEL_ACTION[v.label],
         "actionable": v.is_actionable,
+        # The complete arithmetic: every rule that fired with its weight for
+        # each class (columns sum to all_class_scores), and the rules that
+        # could not be evaluated because their source was never consulted.
+        "score_table": v.score_table,
+        "abstained": v.abstained,
+        "sources_consulted": sorted(v.sources_consulted),
     }
 
 

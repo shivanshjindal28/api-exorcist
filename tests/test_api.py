@@ -271,9 +271,13 @@ def test_decision_before_shadow_is_refused() -> None:
           f"{r.status_code} {r.text}")
 
 
-def test_unacknowledged_anonymous_traffic_leaves_the_decision_open() -> None:
-    """409 rather than an irreversible DENIED, and accepting it then proceeds."""
-    _skip_without_api("test_unacknowledged_anonymous_traffic_leaves_the_decision_open")
+def test_unidentified_traffic_can_never_be_approved() -> None:
+    """409 with the advice, the decision stays open, and there is no override.
+
+    Asking to accept the risk is rejected as an unknown field, and declining
+    still works: the one decision that can be made.
+    """
+    _skip_without_api("test_unidentified_traffic_can_never_be_approved")
     with _client() as (client, approver, viewer):
         client.post("/v1/safekill/shadow", json={"endpoint_id": DEBUG}, headers=approver)
         refused = client.post("/v1/safekill/decision",
@@ -281,17 +285,22 @@ def test_unacknowledged_anonymous_traffic_leaves_the_decision_open() -> None:
                               headers=approver)
         still_pending = [p["endpoint_id"] for p in
                          client.get("/v1/safekill", headers=viewer).json()["pending"]]
-        accepted = client.post(
+        override = client.post(
             "/v1/safekill/decision",
             json={"endpoint_id": DEBUG, "approve": True, "accept_unidentified": True},
             headers=approver,
         )
-    check("test_unacknowledged_anonymous_traffic_leaves_the_decision_open",
-          refused.status_code == 409 and "unidentified" in refused.text
+        declined = client.post("/v1/safekill/decision",
+                               json={"endpoint_id": DEBUG, "approve": False},
+                               headers=approver)
+    check("test_unidentified_traffic_can_never_be_approved",
+          refused.status_code == 409 and "authentication" in refused.text
           and DEBUG in still_pending
-          and accepted.status_code == 200 and accepted.json()["state"] == "RETIRED",
+          and override.status_code == 422
+          and declined.status_code == 200 and declined.json()["state"] == "DENIED",
           f"refused {refused.status_code}, pending {still_pending}, "
-          f"accepted {accepted.status_code} {accepted.text[:120]}")
+          f"override {override.status_code}, declined {declined.status_code} "
+          f"{declined.text[:120]}")
 
 
 def test_shadow_is_idempotent() -> None:

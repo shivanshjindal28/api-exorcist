@@ -51,16 +51,14 @@ describe("Safe Kill view", () => {
     expect(screen.getByText(/signed in as a viewer/)).toBeTruthy();
   });
 
-  it("will not approve over anonymous traffic until the risk is accepted", async () => {
-    const user = userEvent.setup();
-    const { decide } = renderSafeKill("approver", vi.fn(async () => ({})));
+  it("never offers approval over unidentified traffic, and says what to do", async () => {
+    renderSafeKill("approver", vi.fn(async () => ({})));
     const approve = await screen.findByRole("button", { name: /Approve/ });
     expect((approve as HTMLButtonElement).disabled).toBe(true);
-
-    await user.click(screen.getByRole("checkbox"));
-    expect((approve as HTMLButtonElement).disabled).toBe(false);
-    await user.click(approve);
-    expect(decide).toHaveBeenCalledWith("POST /v1/debug/payments/replay", true, true, "");
+    // No way to accept the risk: the override that once retired this endpoint is gone.
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.getByText(/This removal cannot be approved/)).toBeTruthy();
+    expect(screen.getByText(/Put authentication in front of the/)).toBeTruthy();
   });
 
   it("lets an approver decline without accepting anything", async () => {
@@ -71,7 +69,7 @@ describe("Safe Kill view", () => {
     await user.click(
       await screen.findByRole("button", { name: "Decline removal of POST /v1/debug/payments/replay" }),
     );
-    expect(decide).toHaveBeenCalledWith("POST /v1/debug/payments/replay", false, false, "");
+    expect(decide).toHaveBeenCalledWith("POST /v1/debug/payments/replay", false, "");
   });
 });
 

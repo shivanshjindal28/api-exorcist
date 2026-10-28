@@ -330,9 +330,9 @@ Approval became asynchronous, as it is in a bank: the shadow window runs for wee
 a person decides afterwards. The Safe Kill controller is therefore split at the
 approval gate into `begin` (nomination to the gate) and `resolve` (the decision and
 everything after it). The split is behaviour-preserving: the same run writes a
-byte-identical audit chain. Where the command line turns unacknowledged anonymous
-traffic into `Denied`, the API returns 409 and leaves the decision open, so a person
-mid-decision can accept the risk explicitly or decline.
+byte-identical audit chain. A candidate whose shadow saw unidentified traffic can
+never be approved: the command line turns it into `Denied`, and the API returns 409
+and leaves the decision open so that a person can decline it.
 
 The dashboard runs under a strict Content-Security-Policy (scripts, styles and
 connections from its own origin only, and no inline script in the build), keeps the
@@ -463,7 +463,7 @@ sequenceDiagram
     rect rgb(240,248,244)
         note over PIPE,ST: Stage 3: reporting
         PIPE->>ST: coverage_report()
-        ST-->>CLI: no source exceeds 76%<br/>6 invisible to both authorities
+        ST-->>CLI: no authority exceeds 76%<br/>6 invisible to both authorities
         CLI-->>OP: ranked findings
     end
 ```
@@ -801,8 +801,8 @@ caught it and rolled back automatically.
 Three further properties hold by construction. Nothing passes `AwaitingApproval`
 without a named decision, and with no approver the walk stops there. Rollback is
 performed by the controller, never a person. And an unauthenticated endpoint carrying
-anonymous traffic is declined unless a human explicitly accepts that risk, because a
-forgotten integration and a scanner are indistinguishable on the wire.
+anonymous traffic can never be approved, by anyone, because a forgotten integration
+and a scanner are indistinguishable on the wire.
 
 The controller never sees the simulated world: it is barred from importing it by the
 same AST guard that protects the classifier, and learns about traffic only through

@@ -21,6 +21,7 @@ here in a form whose type library will not load, so early-bound Dispatch
 fails with TYPE_E_CANTLOADLIBRARY. IDispatch does not need the type library.
 
 Usage:
+    python docs/finalise_docx.py                        # every report in docs/
     python docs/finalise_docx.py <file.docx> [<file.docx> ...]
 """
 
@@ -110,8 +111,29 @@ def finalise(word, path: Path) -> None:
         doc.Close(WD_DO_NOT_SAVE if doc.Saved is False else -1)
 
 
+def _targets(argv: list[str]) -> list[Path]:
+    """The files to finalise.
+
+    With no arguments, every built report in docs/. Wildcards are expanded
+    here rather than left to the shell, because PowerShell passes `docs/*.docx`
+    through literally, and the command in CLAUDE.md then found no file at all.
+    Word's own lock files (`~$name.docx`) are skipped.
+    """
+    patterns = argv or [str(Path(__file__).resolve().parent / "*.docx")]
+    found: list[Path] = []
+    for pattern in patterns:
+        p = Path(pattern)
+        matches = sorted(p.parent.glob(p.name)) if any(c in p.name for c in "*?[") else [p]
+        found += [m.resolve() for m in matches if not m.name.startswith("~$")]
+    return found
+
+
 def main(argv: list[str]) -> int:
-    if not argv:
+    targets = _targets(argv)
+    missing = [t for t in targets if not t.exists()]
+    if not targets or missing:
+        for t in missing:
+            print(f"  not found: {t}")
         print(__doc__)
         return 2
     import win32com.client.dynamic as dyn
@@ -120,8 +142,8 @@ def main(argv: list[str]) -> int:
     word.Visible = False
     word.DisplayAlerts = False
     try:
-        for arg in argv:
-            finalise(word, Path(arg).resolve())
+        for target in targets:
+            finalise(word, target)
     finally:
         word.Quit()
     return 0

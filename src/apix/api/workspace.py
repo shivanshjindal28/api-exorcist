@@ -54,10 +54,6 @@ class NotACandidate(LookupError):
     pass
 
 
-class NeedsAcknowledgement(RuntimeError):
-    """Approval refused because anonymous traffic was not explicitly accepted."""
-
-
 @dataclass
 class Workspace:
     audit_path: Path
@@ -211,7 +207,6 @@ class Workspace:
         *,
         approver: str,
         approve: bool,
-        accept_unidentified: bool,
         note: str,
     ) -> KillOutcome:
         """Apply a named person's decision. `approver` comes from their token."""
@@ -222,12 +217,9 @@ class Workspace:
             )
             if request is None:
                 raise NotAwaitingApproval(f"{endpoint_id} is not awaiting approval")
-            if approve and request.warnings and not accept_unidentified:
-                # Through the CLI an unacknowledged warning becomes DENIED. Here
-                # the caller is a person mid-decision, so the irreversible
-                # terminal state is not forced on them: they are told why, and
-                # can resend accepting the risk or explicitly declining.
-                raise NeedsAcknowledgement("; ".join(request.warnings))
+            # An approval over unidentified traffic raises UnidentifiedTraffic
+            # from the controller and leaves the candidate pending: the person
+            # is told why, and can still decline.
             outcome = self.controller.resolve(
                 endpoint_id,
                 Decision(approved=approve, approver=approver, human=True, note=note),

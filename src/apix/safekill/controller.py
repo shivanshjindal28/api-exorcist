@@ -92,26 +92,21 @@ class NoApprover:
 class NamedApprover:
     """A person who has put their name to approving clean candidates.
 
-    Unidentified traffic during the shadow window is the one case the controller
-    cannot resolve on its own: on the wire, a forgotten integration without
-    credentials and a scanner look the same. Those candidates are declined
-    unless the approver has explicitly accepted that risk too.
+    Unidentified traffic during the shadow window is the one case nobody can
+    resolve: on the wire, a forgotten integration without credentials and a
+    scanner look the same. Those candidates are declined, with the advice that
+    resolves them.
     """
 
     name: str
-    accept_unidentified: bool = False
 
     def decide(self, request: ApprovalRequest) -> Decision:
-        if request.warnings and not self.accept_unidentified:
+        if request.warnings:
             return Decision(
                 approved=False,
                 approver=self.name,
                 human=True,
-                note=(
-                    "unidentified traffic during shadow, not acknowledged. "
-                    "Put authentication in front of it and re-run the shadow "
-                    "window: legitimate callers will then identify themselves"
-                ),
+                note=f"unidentified traffic during shadow. {UNIDENTIFIED_ADVICE}",
             )
         return Decision(approved=True, approver=self.name, human=True)
 
@@ -182,6 +177,19 @@ def _obs_dict(o: WindowObservation) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 class NotAwaitingApproval(LookupError):
     """A decision was offered for an endpoint that is not waiting for one."""
+
+
+#: What to do instead of approving a candidate with unidentified traffic.
+UNIDENTIFIED_ADVICE = (
+    "Without caller credentials this traffic cannot be told apart from a "
+    "legitimate integration, so the removal cannot be approved. Put "
+    "authentication in front of the endpoint and run its shadow again: "
+    "legitimate callers will then identify themselves. Otherwise, decline."
+)
+
+
+class UnidentifiedTraffic(PermissionError):
+    """An approval of a candidate whose shadow saw unidentifiable traffic."""
 
 
 @dataclass
@@ -314,12 +322,18 @@ class SafeKillController:
 
     def resolve(self, endpoint_id: str, decision: Decision) -> KillOutcome:
         """Apply a decision to a candidate waiting at the approval gate."""
-        try:
-            walk, request = self._pending.pop(endpoint_id)
-        except KeyError:
-            raise NotAwaitingApproval(
-                f"{endpoint_id} is not awaiting approval"
-            ) from None
+        if endpoint_id not in self._pending:
+            raise NotAwaitingApproval(f"{endpoint_id} is not awaiting approval")
+        _, waiting = self._pending[endpoint_id]
+        if (decision.approved and waiting.warnings
+                and not self.policy.allow_unidentified_override):
+            # Refused before anything changes: the candidate stays pending, so
+            # the only decision left to make is the one that can be made.
+            raise UnidentifiedTraffic(
+                f"{endpoint_id} cannot be approved: {' '.join(waiting.warnings)} "
+                f"{UNIDENTIFIED_ADVICE}"
+            )
+        walk, request = self._pending.pop(endpoint_id)
         ep = endpoint_id
         baseline = request.baseline_per_day
 
@@ -344,7 +358,10 @@ class SafeKillController:
                 evidence={
                     "refuse_fraction": fraction,
                     "days": stage_days,
-                    **({"approved_by": decision.approver, "human": decision.human}
+                    **({"approved_by": decision.approver, "human": decision.human,
+                        **({"note": decision.note} if decision.note else {}),
+                        **({"overrode_unidentified": request.warnings}
+                           if request.warnings else {})}
                        if i == 0 else {}),
                 },
             )

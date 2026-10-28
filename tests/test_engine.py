@@ -428,6 +428,26 @@ def test_reasons_reference_real_evidence_keys() -> None:
     check("test_reasons_reference_real_evidence_keys", not bad, f"unknown: {set(bad)}")
 
 
+def test_score_table_is_the_whole_arithmetic() -> None:
+    """The table the dashboard shows must add up to the decision, exactly.
+
+    `reasons` omits rules with no weight for the assigned label, so summing
+    them does not reproduce the scores; the score table must.
+    """
+    from apix.pipeline import run_discovery
+
+    bad = []
+    for rec in run_discovery(verbose=False, persist=False):
+        v = RuleClassifier().classify(rec)
+        for cls, score in v.scores.items():
+            total = sum(row["weights"][cls] for row in v.score_table)
+            if abs(total - score) > 1e-9:
+                bad.append((v.endpoint_id, cls, total, score))
+        if len(v.score_table) != v.rules_fired:
+            bad.append((v.endpoint_id, "rows", len(v.score_table), v.rules_fired))
+    check("test_score_table_is_the_whole_arithmetic", not bad, str(bad[:3]))
+
+
 def test_audit_entry_is_complete() -> None:
     """An auditor must be able to reconstruct the decision from the log alone."""
     v = RuleClassifier().classify(_record(owner_team=None))
@@ -578,6 +598,7 @@ def main() -> None:
         test_every_verdict_carries_reasons,
         test_verdict_scores_every_class,
         test_reasons_reference_real_evidence_keys,
+        test_score_table_is_the_whole_arithmetic,
         test_audit_entry_is_complete,
         test_explanations_render_without_error,
         test_metrics_on_known_pairs,

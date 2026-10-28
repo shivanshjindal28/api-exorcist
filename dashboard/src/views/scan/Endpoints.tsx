@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Card, LevelBadge, LifecycleBadge, MethodPath, Priority, Sparkline } from "../../common";
 import type { Review, ScanJob } from "../../types";
+import { RealApiEvidence } from "../explain";
 import { CandidateBadge } from "./Candidates";
 import { ReviewBadge, ReviewControls, SourceChips, ago, consultedSources, when } from "./shared";
 
@@ -160,6 +161,10 @@ export function ScanEndpointsTab({
                 <Priority value={e.priority} />
               </dd>
             </dl>
+            <div>
+              <h3>Is this a real API?</h3>
+              <RealApiEvidence e={e} />
+            </div>
             {usage?.[e.id] && (
               <div>
                 <h3>

@@ -1,8 +1,40 @@
+<div align="center">
+
 # API Exorcist
 
 **Autonomous discovery and safe elimination of zombie, shadow and orphaned APIs.**
 
-Capstone project — B.Tech CSE (Cyber Security), MPSTME, NMIMS University · 2026–2027
+[![CI](https://github.com/shivanshjindal28/api-exorcist/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/shivanshjindal28/api-exorcist/actions/workflows/ci.yml)
+![Python 3.10 | 3.12](https://img.shields.io/badge/python-3.10%20%7C%203.12-3776ab)
+![mypy strict](https://img.shields.io/badge/types-mypy%20strict-2a6db2)
+![ruff](https://img.shields.io/badge/lint-ruff-d7ff64)
+![React + TypeScript](https://img.shields.io/badge/dashboard-React%20%2B%20TypeScript-3178c6)
+[![MIT licence](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
+
+Capstone project · B.Tech CSE (Cyber Security) · MPSTME, NMIMS University · 2026–2027
+
+[Quick start](#quick-start) · [Screens](#screens) · [Headline results](#headline-results) · [How it works](#how-it-works) · [Safe Kill](#safe-kill) · [Team](#team)
+
+</div>
+
+<p align="center">
+  <img src="docs/diagrams/screen-endpoints.png" alt="A scan of OWASP crAPI: its zombie candidates, ranked, with the evidence behind the top one" width="900">
+  <br>
+  <sub>A live scan of OWASP crAPI. The two insecure old versions it keeps beside their fixes come out on top, each with the evidence behind its score.</sub>
+</p>
+
+---
+
+### At a glance
+
+| | |
+|---|---|
+| **Finds** | Endpoints from six partial witnesses (code, specification, gateway, traffic, DNS, CI/CD), correlated so that what is *missing* from a source becomes evidence |
+| **Judges** | ACTIVE, DEPRECATED, ORPHANED or ZOMBIE from 15 evidence rules, every verdict carrying its signed reasons; rules abstain when their source is absent |
+| **Removes safely** | Removal gate, 90-day shadow, named approval, 5/25/100 canary, automatic rollback, hash-chained audit log |
+| **Prevents** | A GitHub Action fails pull requests that add undocumented, unowned or zombie-in-the-making endpoints |
+| **Measured on real code** | Public repositories, checked independently of the scanner: 126 of 127 endpoints agree with independent truth lists, 167 of 167 trace to the line that declares them, and all 25 reasons given for zombie candidates are true in the source |
+| **Measured on simulated estates** | Correlation finds **8 of 8** zombies where a conventional inventory finds 2; across 120 generated estates, Safe Kill turns the gate's 49 would-be outages into **0**. The estates are synthetic; the engine is the same |
 
 ---
 
@@ -44,6 +76,7 @@ deliberately leaves beside their fixes come out on top; see
 ## Contents
 
 - [Quick start](#quick-start)
+- [Screens](#screens)
 - [Scanning a project in the browser](#scanning-a-project-in-the-browser)
 - [Progress](#progress)
 - [Headline results](#headline-results)
@@ -59,6 +92,7 @@ deliberately leaves beside their fixes come out on top; see
 - [Project layout](#project-layout)
 - [Development](#development)
 - [Documentation](#documentation)
+- [Team](#team)
 
 ---
 
@@ -89,6 +123,17 @@ ready to open even without a network.
 
 ---
 
+## Screens
+
+| | |
+|---|---|
+| ![Dependency graph of OWASP crAPI](docs/diagrams/screen-graph.png) | ![Is this a real API? The evidence behind one endpoint](docs/diagrams/screen-real-api.png) |
+| **Dependency graph**, read from the code: what calls each endpoint, and so what removing it would break | **Is this a real API?** The file and line that declare it, and which sources confirm it |
+| ![How a verdict was reached: the full score table](docs/diagrams/screen-classify.png) | ![Safe Kill: unidentified traffic can never be approved](docs/diagrams/screen-sk-anonymous.png) |
+| **How it was classified**: every rule, its contribution, and the rules that abstained | **Safe Kill**: the five steps, and an endpoint that can never be approved because its callers cannot be identified |
+
+---
+
 ## Progress
 
 | Phase | | |
@@ -105,6 +150,7 @@ ready to open even without a network.
 | 9 | Browser scans: upload a project folder or paste a GitHub link | ✅ done |
 | 10 | Zombie candidates from code evidence, tested on seven real repositories | ✅ done |
 | 11 | Usage evidence from access logs, retirement plans, exports, drift, estate dashboard | ✅ done |
+| 12 | Mentor review: classification and Safe Kill explained in the app, scans validated against independent truth, comparative analysis | ✅ done |
 | — | Live website scanning | ⬜ not in this version |
 
 ### What is built
@@ -125,7 +171,7 @@ ready to open even without a network.
 | Trained model with SHAP attribution, used as a veto over removals | ✅ |
 | Safe Kill: rule-of-three shadow window, named approval, 5/25/100 canary | ✅ |
 | Automatic rollback on breach, hash-chained append-only audit log | ✅ |
-| 287 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
+| 299 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
 | REST API: hashed bearer tokens, viewer and approver roles, approval over HTTP | ✅ |
 | Dashboard: React + TypeScript, same origin, strict CSP | ✅ |
 | CI/CD enforcement: undocumented, unowned and zombie-in-the-making endpoints | ✅ |
@@ -161,6 +207,21 @@ these, and what must not be flagged):
 | VAmPI | `/users/v1/_debug` and `/createdb`, debug endpoints shipped in the API |
 | spring-petclinic-rest | `GET /owners` and `GET /pets`, superseded by their v2 |
 | full-stack-fastapi-template | the six endpoints its generated client has and its front end never calls |
+
+**Are those endpoints real, and are the zombies zombies?** Checked independently of
+the scanner (final report, Section 4.8):
+
+| Check | Result |
+|---|---|
+| Endpoints found in code against independent truth lists (generated clients, API-first specs, route files read by hand), five repositories | **126 of 127 agree** (precision and recall 0.992) |
+| Every endpoint reported from code traced to the line that declares it, six repositories | **167 of 167** |
+| Every reason given for every zombie candidate checked against the project's source | **25 of 25 true** |
+
+The one disagreement is spring-petclinic-rest, where the truth list itself is wrong:
+its spec documents a `GET /oops` with no handler, and omits a root route the code
+serves. The first run of this check scored 107 of 127 and exposed two extractor
+defects (routers built and mounted in the same file, and a route read from an
+end-to-end test). Both were fixed and are covered by tests.
 
 **On the simulated estate**, where traffic and ground truth exist:
 
@@ -505,11 +566,14 @@ refusing a real request (`--seed 3`) or retires the endpoint into an outage
 
 `POST /v1/debug/payments/replay` is the most dangerous endpoint in the estate:
 unauthenticated, able to replay financial transactions, and receiving three anonymous
-requests a day. Safe Kill declines it. On an unauthenticated endpoint a forgotten
-partner integration and an attacker's scanner are indistinguishable on the wire, so
-the decision goes to a named human, along with the recommendation that resolves it:
-put authentication in front of it and re-run the shadow, and legitimate callers will
-identify themselves.
+requests a day. Safe Kill will never remove it. On an unauthenticated endpoint a
+forgotten partner integration and an attacker's scanner are indistinguishable on the
+wire, so no person can know what they would be accepting: approval is refused, by the
+controller, the API and the dashboard alike, and the only decision left is to
+decline. The way forward is the recommendation that comes with it: put
+authentication in front of the endpoint and re-run the shadow, and legitimate callers
+will identify themselves. (An earlier version let an approver tick "accept the risk",
+and the endpoint was retired; that override is gone.)
 
 ### The audit log
 
@@ -581,9 +645,9 @@ Four decisions, each made for a security reason:
   audit log credits the person who actually holds the token.
 - **Tokens are stored only as SHA-256 hashes**, so the configuration is not a
   secret. They are 256-bit random values, so no slow hash is needed.
-- **Approval over HTTP never forces an irreversible denial.** Where the CLI turns
-  unacknowledged anonymous traffic into DENIED, the API returns 409 and leaves the
-  decision open, so a person mid-decision can accept the risk explicitly or decline.
+- **Unidentified traffic can never be approved.** An approval over it returns 409
+  with the advice, and the decision stays open so the person can decline; there is no
+  field to accept the risk, and sending one is rejected.
 
 `apix serve` binds to localhost and refuses any other address without
 `--allow-remote`, because bearer tokens over plain HTTP travel in cleartext. Every
@@ -739,8 +803,8 @@ removed. Health probes, metrics, token-key and documentation endpoints are never
 candidates, and neither are admin endpoints merely because a front end does not
 call them.
 
-Measured on seven public repositories (`tests/test_realworld.py` checks the
-first four and asserts what must not be flagged):
+Measured on eight public repositories (`tests/test_realworld.py` checks the
+first four and idurar, and asserts what must not be flagged):
 
 | Repository | Endpoints | Candidates | What the top of the list says |
 |---|---|---|---|
@@ -751,10 +815,16 @@ first four and asserts what must not be flagged):
 | spring-petclinic-microservices | 16 | 0 | |
 | node-express-realworld-example-app | 20 | 0 | |
 | digital-banking-platform | 27 | 0 | |
+| idurar-erp-crm | 33 | 0 | its React app does call these, but as `entity + '/create'`, which the client reader does not follow yet |
 
-The last three hold no evidence that tells their endpoints apart: no versions,
-no deprecations, no specification, and no front end that covers their services.
-The report says exactly that, and says what would. Before this, every one of
+The last four hold no evidence that tells their endpoints apart: no versions,
+no deprecations, no specification, and (for the first three) no front end that
+covers their services. The report says exactly that, and says what would.
+idurar first came out with **0 endpoints**: every route is written in Express's
+chained `router.route('/x').get(h)` form, its CRUD routes are template literals
+built in a loop, and its routers are mounted from `app.js` through `require()`.
+None of the three was read. All 33 are now found under `/api`, `/download` and
+`/public`. Before this, every one of
 the seven reported the same thing about every endpoint; the same testing also
 fixed clone failures on Windows long paths, handlers wired by an OpenAPI
 `operationId` (Connexion, API-first code generation) going unseen, OpenAPI tags
@@ -910,14 +980,14 @@ Security, in the browser as on the server:
   as safe as the page holding it.
 - **The token lives in `sessionStorage`**, gone when the tab closes, sent only in
   the `Authorization` header, never in a URL.
-- **The approve button stays disabled over unacknowledged anonymous traffic**,
-  mirroring the server's rule. The server remains the authority; the UI only
-  saves a round trip.
+- **The approve button is disabled over unidentified traffic**, with the advice
+  beside it, mirroring the server's rule. The server remains the authority; the UI
+  only saves a round trip.
 - **Viewers see every decision and no way to make one.**
 
 ```bash
 cd dashboard && npm ci && npm run dev      # hot-reload against a running `apix serve`
-npm test && npm run build                  # 40 Vitest tests; build into src/apix/api/dashboard
+npm test && npm run build                  # 48 Vitest tests; build into src/apix/api/dashboard
 ```
 
 ---
@@ -1163,10 +1233,10 @@ State these; do not hide them.
    that hides it.
 4. **Repository scans make lifecycle claims only from imported access logs.** From
    code alone they rank candidates and never label one a zombie. Enforced, not advisory.
-5. **Router mount prefixes resolve only when literal.** A project mounting with
-   `prefix=settings.API_V1_STR` needs cross-module constant resolution, which is not
-   implemented. Those paths are flagged `prefix_resolved=False` rather than presented
-   as absolute.
+5. **Router mount prefixes held in variables resolve only when the project spells
+   the value out.** `prefix=settings.API_V1_STR` is applied when `API_V1_STR = "/api/v1"`
+   appears in the code; general constant resolution is not implemented. Otherwise
+   the paths are flagged `prefix_resolved=False` rather than presented as absolute.
 6. **Graph isolation means no dependency was *observed*.** A caller silent during the
    capture window is invisible.
 7. **The estate is synthetic.** The architecture is not — `apix scan --github` reads
@@ -1209,9 +1279,15 @@ State these; do not hide them.
     correct by the definition and says what to fix, but is noisy until it is fixed.
 18. **Data categories are read from path words.** A heuristic, labelled as one: it
     orders the queue and never decides a removal.
-16. **The container image has neither git nor Semgrep.** Scans started inside it
+19. **The container image has neither git nor Semgrep.** Scans started inside it
     report both as unavailable, with the reason; install them, or run the app
     directly, to scan.
+20. **The client reader matches path strings, not call sites.** In a framework
+    whose routes are not extracted (Go, Django), the file that declares a route
+    also mentions its path, and is counted as a reference to it. That can only
+    lower a candidate's score, never raise one, so it errs toward keeping an
+    endpoint.
+
 ---
 
 ## Project layout
@@ -1289,7 +1365,7 @@ src/apix/
 dashboard/                 React + TypeScript source; builds into src/apix/api/dashboard
 Dockerfile                 The deployable image: API and dashboard, non-root, read-only
 action.yml                 The GitHub Action; action-constraints.txt pins what it installs
-tests/                     287 tests, three ground-truth leakage guards
+tests/                     299 tests, three ground-truth leakage guards
 demo/                      Review runbook, paced demo runner, expected output
 docs/                      Literature review, design document, interim report,
                            source papers, diagram renderer, Word and
@@ -1313,7 +1389,7 @@ pip install -e ".[dev,live,ml]" && pre-commit install
 pytest && ruff check . && mypy && python docs/verify_claims.py
 ```
 
-**287 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 40 Vitest
+**299 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 48 Vitest
 tests under TypeScript strict mode (`cd dashboard && npm test`).
 
 ### Optional extras
@@ -1378,7 +1454,9 @@ APIX_BUS=kafka APIX_GRAPH=neo4j apix scan
 | [`docs/literature-review.md`](docs/literature-review.md) | Twelve peer-reviewed sources, each verified against DBLP or Crossref, with a traceability matrix mapping every paper to the module it justifies |
 | [`docs/design-document.md`](docs/design-document.md) | Structural and behavioural design — 10 diagrams, measured results, known design limitations |
 | [`docs/interim-report.md`](docs/interim-report.md) | Interim report, Chapters 1–3 — introduction, literature survey, methodology and implementation, in the prescribed submission format |
+| [`docs/final-report.md`](docs/final-report.md) | Final report (black book), Chapters 1–6, references and appendices, in the prescribed format; `python docs/build_docx.py final` builds it |
 | [`docs/build_pptx.py`](docs/build_pptx.py) | Generates the review presentation from the same verified figures |
+| [`docs/build_logbook.py`](docs/build_logbook.py) | Generates the capstone log book, week by week |
 | [`docs/papers/README.md`](docs/papers/README.md) | The source PDFs and their full-text verification status |
 | [`demo/DEMO.md`](demo/DEMO.md) | Presentation runbook: the browser walkthrough, anticipated questions, fallbacks |
 | [`CLAUDE.md`](CLAUDE.md) | Working notes: the non-negotiable rules and environment gotchas |
@@ -1386,6 +1464,19 @@ APIX_BUS=kafka APIX_GRAPH=neo4j apix scan
 Nine of the twelve paper PDFs are present; five have been checked against their full
 text. **That checking mattered:** one paper turned out not to contain a result the
 review had attributed to it, and the claim was removed rather than softened.
+
+---
+
+## Team
+
+Group 4, B.Tech CSE (Cyber Security), MPSTME, NMIMS University, Mumbai.
+
+- **Nakul Hintya**
+- **Shivansh Rohit Jindal**
+- **Dhyey Kharayat**
+
+Mentor: **Dr. Pintu R Shah**, Head of Department, Computer Science & Engineering
+(Cyber Security), MPSTME.
 
 ---
 

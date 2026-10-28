@@ -1,0 +1,31 @@
+flowchart TD
+    IN["Input<br/>GitHub link or uploaded project folder"]
+    ACQ["1. Acquire<br/>clone with commit history, or copy the upload<br/>nothing from the project is ever run"]
+    IN --> ACQ
+
+    ACQ --> RT["2. Routes in code<br/>Semgrep AST rules: FastAPI, Flask, Express, Spring<br/>handlers named by OpenAPI operationId"]
+    RT --> PFX["3. Full paths<br/>router prefixes and mounts followed<br/>through require / import / same-file routers"]
+    ACQ --> SPEC["4. Specification<br/>OpenAPI / Swagger documents parsed as data"]
+    ACQ --> HIST["5. History<br/>one git log pass: when each handler last changed"]
+    ACQ --> OWN["6. Ownership<br/>CODEOWNERS and x-owner"]
+    ACQ --> CICD["7. CI/CD<br/>workflow files"]
+    ACQ --> CLI["8. Own clients<br/>front end, generated SDK, other services"]
+    ACQ --> DEP["9. Dependencies<br/>service calls, gateway routes, message topics"]
+
+    PFX --> COR["10. Correlate<br/>one record per endpoint<br/>which sources saw it, and which did not"]
+    SPEC --> COR
+    HIST --> COR
+    OWN --> COR
+    CICD --> COR
+
+    COR --> CAND["11. Zombie candidates<br/>scored from code evidence<br/>labelled suspected, with reasons"]
+    CLI --> CAND
+    DEP --> GR["12. Dependency graph<br/>blast radius per endpoint"]
+
+    CAND --> REP["13. Report<br/>what was checked and why<br/>candidates, endpoints, graph, audit entry"]
+    GR --> REP
+
+    REP --> Q{"Access logs<br/>imported?"}
+    Q -- no --> SUS["Candidates stay suspected<br/>no endpoint is labelled a zombie"]
+    Q -- yes --> USE["14. Usage labels<br/>active, deprecated, orphaned, zombie<br/>three guards against over-reading silence"]
+    USE --> PLAN["15. Retirement plan and Safe Kill<br/>announce, watch 90 days, 410, remove"]

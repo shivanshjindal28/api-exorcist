@@ -31,7 +31,7 @@ from typing import Any
 from apix.connectors.base import Connector, DiscoverySignal, Source
 from apix.extractors.base import ExtractedRoute, normalise_path
 from apix.extractors.semgrep_extractor import SemgrepExtractor
-from apix.live.repo import RepoScan, service_of
+from apix.live.repo import RepoScan, service_directories, service_of
 
 #: The sources a repository scan can actually speak for.
 REPO_SOURCES: frozenset[Source] = frozenset(
@@ -73,6 +73,11 @@ class RepoCodeConnector(Connector):
                 "source_line": r.line,
                 "handler_function": r.function,
                 "framework": r.framework,
+                # What the reader needs to check the route against the source:
+                # the path as written at the declaration, and whether the
+                # prefix in front of it is known or could not be determined.
+                "declared_path": r.declared_path,
+                "prefix_resolved": r.prefix_resolved,
                 # CODEOWNERS is a genuine ownership signal and the reason a
                 # repository scan can answer "who owns this?" at all.
                 "codeowner": owner,
@@ -90,6 +95,7 @@ class RepoOpenAPIConnector(Connector):
         self.scan = scan
         self.parsed_files: list[str] = []
         self.parse_errors: list[str] = []
+        self._services: set[str] | None = None
 
     def collect(self) -> Iterator[DiscoverySignal]:
         for spec_path in self.scan.spec_files:
@@ -114,6 +120,7 @@ class RepoOpenAPIConnector(Connector):
             if not isinstance(ops, dict):
                 continue
             path = normalise_path(prefix + str(raw_path))
+            service = self._service_for(path, spec_path)
             for verb, op in ops.items():
                 if verb.upper() not in (
                     "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"
@@ -123,7 +130,7 @@ class RepoOpenAPIConnector(Connector):
                 yield DiscoverySignal(
                     source=self.source,
                     endpoint_id=f"{verb.upper()} {path}",
-                    service=_service_of(self.scan.rel(spec_path)),
+                    service=service,
                     method=verb.upper(),
                     path=path,
                     version=_version_of(path),
@@ -139,6 +146,23 @@ class RepoOpenAPIConnector(Connector):
                         "spec_summary": str(op.get("summary") or "")[:200],
                     },
                 )
+
+
+    def _service_for(self, path: str, spec_path: Path) -> str:
+        """The service an operation belongs to.
+
+        Where the spec file sits is a poor guide when one spec documents several
+        services: crAPI's openapi-spec/ folder made a "service" of that name out
+        of every Django and Go endpoint, whose routes are known only from the
+        spec. A path whose first segment names a service folder in the
+        repository (/workshop/api/... beside services/workshop) belongs to it.
+        """
+        if self._services is None:
+            self._services = service_directories(self.scan.root)
+        first = path.strip("/").split("/", 1)[0]
+        if first in self._services:
+            return first
+        return _service_of(self.scan.rel(spec_path))
 
 
 class RepoCICDConnector(Connector):

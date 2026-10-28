@@ -48,6 +48,7 @@ DOCS = [
     ROOT / "CLAUDE.md",
     ROOT / "docs" / "design-document.md",
     ROOT / "docs" / "literature-review.md",
+    ROOT / "docs" / "final-report.md",
     ROOT / "demo" / "DEMO.md",
 ]
 

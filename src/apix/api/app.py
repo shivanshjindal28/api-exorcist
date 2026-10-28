@@ -66,13 +66,12 @@ from apix import __version__
 from apix.api.auth import Principal, Role, TokenStore
 from apix.api.observe import Metrics, log
 from apix.api.workspace import (
-    NeedsAcknowledgement,
     NotACandidate,
     UnknownEndpoint,
     Workspace,
 )
 from apix.engine.explain import audit_entry
-from apix.safekill.controller import NotAwaitingApproval
+from apix.safekill.controller import NotAwaitingApproval, UnidentifiedTraffic
 from apix.scanning import (
     DECISIONS,
     JobManager,
@@ -124,7 +123,9 @@ class DecisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     endpoint_id: str = Field(min_length=1, max_length=512)
     approve: bool
-    accept_unidentified: bool = False
+    # There is deliberately no field to approve over unidentified traffic: an
+    # endpoint whose callers cannot be identified is never removed (see
+    # SafeKillPolicy.allow_unidentified_override). Sending one is rejected.
     note: str = Field(default="", max_length=1000)
 
 
@@ -376,7 +377,6 @@ def create_app(workspace: Workspace, tokens: TokenStore, *, docs: bool = True,
                 body.endpoint_id,
                 approver=who.name,          # from the token, never the body
                 approve=body.approve,
-                accept_unidentified=body.accept_unidentified,
                 note=body.note,
             )
         except NotAwaitingApproval:
@@ -385,13 +385,9 @@ def create_app(workspace: Workspace, tokens: TokenStore, *, docs: bool = True,
                 409, f"{body.endpoint_id!r} is not awaiting approval; "
                 "start its shadow window first"
             ) from None
-        except NeedsAcknowledgement as warning:
-            metrics.action("decision", "needs_acknowledgement")
-            raise HTTPException(
-                409,
-                f"{warning}. Resend with accept_unidentified=true to accept that "
-                "risk, or approve=false to decline.",
-            ) from None
+        except UnidentifiedTraffic as refused:
+            metrics.action("decision", "unidentified_traffic")
+            raise HTTPException(409, str(refused)) from None
         result = outcome.to_dict()
         metrics.action("decision", "approved" if body.approve else "declined")
         log.info("safekill.decision", extra={"fields": {

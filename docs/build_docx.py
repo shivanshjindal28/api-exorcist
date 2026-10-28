@@ -156,16 +156,51 @@ SPECS = [
             ("Appendix A: Design Document", "design-document.md", "design"),
         ),
     ),
+    DocSpec(
+        key="final",
+        source="final-report.md",
+        # The submission instructions fix the name: groupNo_Capstone_final_report.
+        output="",          # filled from GROUP_NO in final_output()
+        title=(
+            "API Exorcist: Autonomous Discovery and Safe Elimination of "
+            "Zombie, Shadow and Orphaned APIs"
+        ),
+        subtitle="Capstone Project Final Report",
+        kind="report",
+        style=REPORT_STYLE,
+        # Its appendices are chapters of final-report.md itself (A to D, in the
+        # order the guidelines' table of contents gives), not separate files.
+    ),
 ]
 
-#: Left blank deliberately rather than guessed. Fill these in before printing.
-TEAM = [
+#: The interim report was built before the team details were confirmed, and
+#: is frozen; it keeps these blanks.
+INTERIM_TEAM = [
     ("Shivansh Jindal", "________", "________"),
     ("Jal Bafana", "________", "________"),
     ("Arjun Mehta", "________", "________"),
     ("Tejas Sahoo", "________", "________"),
 ]
-MENTOR = "________________________"
+INTERIM_MENTOR = "________________________"
+INTERIM_MENTOR_DESIGNATION = "(Designation, Department, MPSTME)"
+
+#: The final report: (name, roll no., SAP ID), as confirmed by the team.
+GROUP_NO = "Group_4"
+TEAM = [
+    ("Nakul Hintya", "K026", "70102300049"),
+    ("Shivansh Rohit Jindal", "K029", "70102300028"),
+    ("Dhyey Kharayat", "K031", "70102300012"),
+]
+MENTOR = "Dr. Pintu R Shah"
+MENTOR_DESIGNATION = (
+    "(Head of Department, Computer Science & Engineering (Cyber Security), MPSTME)"
+)
+SCHOOL = "Mukesh Patel School of Technology Management & Engineering (Mumbai Campus)"
+DEPARTMENT = "Computer Science & Engineering (Cyber Security) Department"
+
+
+def final_output() -> str:
+    return f"{GROUP_NO}_Capstone_final_report.docx"
 ACADEMIC_YEAR = "2026–2027"
 PROGRAM = "B.Tech. Computer Science and Engineering"
 STREAM = "Cyber Security"
@@ -207,11 +242,31 @@ PAGE_FURNITURE: dict[str, object] = {
     "footer_align": WD_ALIGN_PARAGRAPH.CENTER,
     "header_left": "",
     "header_right": "",
+    # Page geometry in inches. None keeps the original behaviour (US Letter,
+    # 1" sides on diagram sections) that the interim report was built with;
+    # the final report sets A4 and keeps the 1.5" binding margin on every page.
+    "page": None,
 }
+
+#: A4, with the margins the guidelines mandate: 1.5" on the binding edge,
+#: 1" elsewhere. On a landscape page the binding edge is the top.
+A4_REPORT = {"w": 8.27, "h": 11.69, "binding": 1.5, "other": 1.0}
 
 
 def _add_page_numbers(section) -> None:
+    # A new section's footer is linked to the previous one, so this paragraph
+    # is usually the same shared paragraph every earlier call wrote into.
+    # Clearing it first is what keeps one PAGE field: without it, every
+    # landscape diagram added another, and the printed report showed each page
+    # number eighteen times over ("2222222...").
+    if PAGE_FURNITURE["page"] is not None:
+        # Linked, every section shares the first section's header, whose
+        # right tab is sized for a portrait column: on a landscape page the
+        # year printed mid-page. Each section gets its own, sized to itself.
+        section.header.is_linked_to_previous = False
+        section.footer.is_linked_to_previous = False
     footer = section.footer.paragraphs[0]
+    footer.text = ""
     footer.alignment = PAGE_FURNITURE["footer_align"]
     _add_field(footer, "PAGE")
     for run in footer.runs:
@@ -232,6 +287,12 @@ def _add_page_numbers(section) -> None:
     usable = section.page_width - section.left_margin - section.right_margin
     fmt = header.paragraph_format
     fmt.tab_stops.clear_all()
+    if PAGE_FURNITURE["page"] is not None:
+        # The Header style carries its own stops (centre 3.25", right 6.5"),
+        # which clear_all() does not touch: the tab landed on the centre stop
+        # and the year printed mid-page. Clear them explicitly.
+        fmt.tab_stops.add_tab_stop(Inches(3.25), WD_TAB_ALIGNMENT.CLEAR)
+        fmt.tab_stops.add_tab_stop(Inches(6.5), WD_TAB_ALIGNMENT.CLEAR)
     fmt.tab_stops.add_tab_stop(usable, WD_TAB_ALIGNMENT.RIGHT)
     run = header.add_run(f"{left}\t{right}")
     run.font.name = BODY_FONT
@@ -318,7 +379,68 @@ def add_table(doc, rows: list[list[str]]) -> None:
             cells[i].text = ""
             add_inline(cells[i].paragraphs[0], text, size=10)
 
+    if PAGE_FURNITURE["page"] is not None:
+        _size_columns(doc, table, rows)
+        _keep_table_together(table)
     doc.add_paragraph()
+
+
+def _keep_table_together(table) -> None:
+    """A header row is never left alone at the foot of a page.
+
+    The header keeps with the first data row, repeats at the top of every page
+    a long table runs onto, and no row splits across a page. Without this a
+    table starting low on a page left its header stranded there.
+    """
+    for r, row in enumerate(table.rows):
+        tr_pr = row._tr.get_or_add_trPr()
+        tr_pr.append(OxmlElement("w:cantSplit"))
+        if r == 0:
+            tr_pr.append(OxmlElement("w:tblHeader"))
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    p.paragraph_format.keep_with_next = True
+
+
+def _size_columns(doc, table, rows: list[list[str]]) -> None:
+    """Give each column room in proportion to what it holds.
+
+    Equal columns broke short headers mid-word ("Repositor / y") while long
+    prose columns ran to a dozen lines. A column needs at least its longest
+    word, and beyond that space in proportion to how much text it carries.
+    """
+    ncols = len(rows[0])
+
+    def plain(s: str) -> str:
+        return re.sub(r"[*`]|\[([^\]]*)\]\([^)]*\)", r"\1", s)
+
+    # Each column first gets its longest word (capped, so one long name such
+    # as a repository slug cannot starve the rest), then the remaining width
+    # is shared in proportion to how much text the column carries.
+    char_in = 0.085                          # one bold 10pt character, roughly
+    minimum, share = [], []
+    for j in range(ncols):
+        col = [plain(r[j]) for r in rows if j < len(r)]
+        longest_word = max((len(w) for c in col for w in c.split()), default=4)
+        minimum.append(min(longest_word, 14) * char_in + 0.15)
+        share.append(sum(len(c) for c in col) / max(len(col), 1))
+    s = doc.sections[-1]
+    usable = (s.page_width - s.left_margin - s.right_margin) / 914400
+    if sum(minimum) > usable:
+        # Many columns: never wider than the text block. Take the excess from
+        # the wide columns only (long names and prose wrap well); a short
+        # header such as "Truth" broken mid-word is unreadable.
+        floor = 0.8
+        excess = sum(minimum) - usable
+        room = sum(max(m - floor, 0) for m in minimum) or 1
+        minimum = [m - excess * max(m - floor, 0) / room for m in minimum]
+    spare = max(usable - sum(minimum), 0)
+    total = sum(share) or 1
+    table.autofit = False
+    for j in range(ncols):
+        width = Inches(minimum[j] + spare * share[j] / total)
+        for row in table.rows:
+            row.cells[j].width = width
 
 
 def add_code_block(doc, lines: list[str], language: str = "") -> None:
@@ -372,6 +494,11 @@ def _set_orientation(doc, landscape: bool) -> None:
 
     section = doc.add_section(WD_SECTION.NEW_PAGE)
     _continue_page_numbering(section)
+    page = PAGE_FURNITURE["page"]
+    if isinstance(page, dict):
+        _apply_page(section, page, landscape=landscape)
+        _add_page_numbers(section)
+        return
     portrait_w, portrait_h = Inches(8.5), Inches(11)
     if landscape:
         section.orientation = WD_ORIENT.LANDSCAPE
@@ -382,6 +509,37 @@ def _set_orientation(doc, landscape: bool) -> None:
     section.top_margin = section.bottom_margin = Inches(0.8)
     section.left_margin = section.right_margin = Inches(1.0)
     _add_page_numbers(section)
+
+
+def _apply_page(section, page: dict, *, landscape: bool = False) -> None:
+    """Size and margins for one section of a report with fixed page geometry."""
+    from docx.enum.section import WD_ORIENT
+
+    w, h = Inches(page["w"]), Inches(page["h"])
+    bind, other = Inches(page["binding"]), Inches(page["other"])
+    if landscape:
+        section.orientation = WD_ORIENT.LANDSCAPE
+        section.page_width, section.page_height = h, w
+        # Turned to read, the bound edge of a landscape page is its top.
+        section.top_margin = bind
+        section.bottom_margin = section.left_margin = section.right_margin = other
+    else:
+        section.orientation = WD_ORIENT.PORTRAIT
+        section.page_width, section.page_height = w, h
+        section.left_margin = bind
+        section.top_margin = section.bottom_margin = section.right_margin = other
+
+
+def _box(doc, landscape: bool) -> tuple[float, float]:
+    """Room for a figure, in inches, inside the current section's margins."""
+    if PAGE_FURNITURE["page"] is None:
+        return (LANDSCAPE_W, LANDSCAPE_H) if landscape else (PORTRAIT_W, PORTRAIT_H)
+    s = doc.sections[-1]
+    emu = 914400
+    w = (s.page_width - s.left_margin - s.right_margin) / emu
+    h = (s.page_height - s.top_margin - s.bottom_margin) / emu
+    # Leave room for the caption under the figure.
+    return w, h - 0.8
 
 
 def _fit(img_w: int, img_h: int, box_w: float, box_h: float) -> Inches:
@@ -406,12 +564,14 @@ def add_diagram(
             # A wide diagram squeezed into a portrait column renders its labels
             # at roughly 4pt. Give it a landscape page of its own instead.
             _set_orientation(doc, landscape=True)
-            width = _fit(w, h, LANDSCAPE_W, LANDSCAPE_H)
+            width = _fit(w, h, *_box(doc, landscape=True))
         else:
-            width = _fit(w, h, PORTRAIT_W, PORTRAIT_H)
+            width = _fit(w, h, *_box(doc, landscape=False))
 
         para = doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # A figure and its caption are one unit: never split across a page.
+        para.paragraph_format.keep_with_next = True
         para.add_run().add_picture(str(png), width=width)
     else:
         wide = False
@@ -502,6 +662,7 @@ def render_markdown(
             cap = doc.add_paragraph()
             cap.paragraph_format.space_before = Pt(10)
             cap.paragraph_format.space_after = Pt(2)
+            cap.paragraph_format.keep_with_next = True   # never orphaned above its table
             caption_text = line[len("Table: "):].strip()
             run = cap.add_run(f"Table {table_index}: {caption_text}")
             run.font.name = BODY_FONT
@@ -612,14 +773,33 @@ def render_markdown(
         bullet = re.match(r"^(\s*)[-*]\s+(.*)", line)
         number = re.match(r"^(\s*)(\d+)\.\s+(.*)", line)
         if bullet or number:
-            # Not `style`: that name is the Style parameter of this function.
-            list_style = "List Bullet" if bullet else "List Number"
             text = bullet.group(2) if bullet else number.group(3)
-            para = doc.add_paragraph(style=list_style)
+            # An item continues on the indented lines that follow it. Read as
+            # separate paragraphs, they printed as a stray, oddly indented
+            # block under a one-line item.
+            i += 1
+            while i < len(lines):
+                nxt = lines[i].rstrip()
+                if (not nxt.strip() or not nxt.startswith(" ")
+                        or re.match(r"^\s*([-*]|\d+\.)\s+", nxt)):
+                    break
+                text += " " + strip_status_markers(nxt.strip())
+                i += 1
+            if bullet:
+                # Not `style`: that name is the Style parameter of this function.
+                para = doc.add_paragraph(style="List Bullet")
+            else:
+                # The number is written, not left to Word's "List Number"
+                # style, which counts across the whole document: the second
+                # list in the report began at 30.
+                para = doc.add_paragraph()
+                para.paragraph_format.left_indent = Inches(0.35)
+                para.paragraph_format.first_line_indent = Inches(-0.3)
+                para.add_run(f"{number.group(2)}.\t").font.size = Pt(style.body)
+                para.paragraph_format.tab_stops.add_tab_stop(Inches(0.35))
             para.paragraph_format.space_after = Pt(3)
             para.paragraph_format.line_spacing = style.line_spacing
             add_inline(para, text, size=style.body)
-            i += 1
             continue
 
         # --- blank ----------------------------------------------------------
@@ -688,6 +868,10 @@ def _listing(doc, heading: str, rows: list[tuple[int, str]], label: str) -> None
 
 
 def _front_matter(doc, spec: DocSpec, figures, tables) -> None:
+    final = spec.key == "final"
+    team = TEAM if final else INTERIM_TEAM
+    mentor = MENTOR if final else INTERIM_MENTOR
+    designation = MENTOR_DESIGNATION if final else INTERIM_MENTOR_DESIGNATION
     # ---- title page ----
     for _ in range(3):
         doc.add_paragraph()
@@ -698,15 +882,18 @@ def _front_matter(doc, spec: DocSpec, figures, tables) -> None:
     _centred(doc, "in", 12)
     _centred(doc, STREAM, 12, bold=True, space_after=18)
     _centred(doc, "by", 12, space_after=10)
-    for name, roll, _sap in TEAM:
+    for name, roll, _sap in team:
         _centred(doc, f"{name}  ({roll})", 12, space_after=2)
     doc.add_paragraph()
     _centred(doc, "Under the supervision of", 12)
-    _centred(doc, MENTOR, 12, bold=True)
-    _centred(doc, "(Designation, Department, MPSTME)", 10, colour=MUTED,
-             space_after=18)
-    _centred(doc, "Mukesh Patel School of Technology Management & Engineering",
-             12, bold=True)
+    _centred(doc, mentor, 12, bold=True)
+    _centred(doc, designation, 10, colour=MUTED, space_after=18)
+    if final:
+        _centred(doc, SCHOOL, 12, bold=True)
+        _centred(doc, DEPARTMENT.upper(), 11)
+    else:
+        _centred(doc, "Mukesh Patel School of Technology Management & Engineering",
+                 12, bold=True)
     _centred(doc, "SVKM's NMIMS University (Deemed-to-be University)", 11)
     _centred(doc, "Vile Parle (W), Mumbai - 400056", 11)
     _centred(doc, ACADEMIC_YEAR, 11, space_after=0)
@@ -717,6 +904,8 @@ def _front_matter(doc, spec: DocSpec, figures, tables) -> None:
     _centred(doc, "(Deemed-to-be University)", 11, colour=MUTED)
     _centred(doc, "MUKESH PATEL SCHOOL OF TECHNOLOGY MANAGEMENT & ENGINEERING",
              12, bold=True, space_after=2)
+    if final:
+        _centred(doc, DEPARTMENT.upper(), 11, space_after=2)
     _centred(doc, "Vile Parle (W), Mumbai-56", 11, colour=MUTED)
     _centred(doc, f"({ACADEMIC_YEAR})", 11, colour=MUTED, space_after=18)
     _centred(doc, "CERTIFICATE", 16, bold=True, space_after=18)
@@ -724,7 +913,9 @@ def _front_matter(doc, spec: DocSpec, figures, tables) -> None:
     body = doc.add_paragraph()
     body.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     body.paragraph_format.line_spacing = 1.5
-    names = ", ".join(n for n, _r, _s in TEAM)
+    names = ", ".join(n for n, _r, _s in team)
+    if final and len(team) > 1:
+        names = ", ".join(n for n, _r, _s in team[:-1]) + " and " + team[-1][0]
     add_inline(
         body,
         f'This is to certify that the project entitled "{spec.title}" has been '
@@ -740,9 +931,12 @@ def _front_matter(doc, spec: DocSpec, figures, tables) -> None:
         doc,
         [
             ["Project mentor (Internal Guide)", "Examiner"],
-            ["\n\nName and Signature", "\n\nName and Signature"],
+            [f"\n\n{mentor}\nSignature" if final else "\n\nName and Signature",
+             "\n\nName and Signature"],
             ["Date:", "Date:"],
-            ["Place: Mumbai", "Head of Department"],
+            ["Place: Mumbai",
+             f"Head of Department\n\n\n{mentor}\nSignature" if final
+             else "Head of Department"],
         ],
     )
     _page_break(doc)
@@ -752,26 +946,18 @@ def _front_matter(doc, spec: DocSpec, figures, tables) -> None:
     ack = doc.add_paragraph()
     ack.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     ack.paragraph_format.line_spacing = 1.5
-    add_inline(
-        ack,
-        "We thank our faculty mentor for the guidance and for the critical "
-        "questioning that shaped this work, and the review panel whose "
-        "observations at the first review directed the dataset, explainability "
-        "and comparative-evaluation strands of the project. We also thank the "
-        "Department of Computer Engineering, MPSTME, for the resources made "
-        "available to us.",
-        size=12,
-    )
+    add_inline(ack, ACKNOWLEDGEMENTS.get(spec.key, ACKNOWLEDGEMENTS["interim"]),
+               size=12)
     doc.add_paragraph()
     add_table(
         doc,
-        [["NAME", "ROLL NO.", "SAP ID"], *(list(m) for m in TEAM)],
+        [["NAME", "ROLL NO.", "SAP ID"], *(list(m) for m in team)],
     )
     _page_break(doc)
 
     # ---- abstract ----
     _centred(doc, "ABSTRACT", 16, bold=True, space_after=14)
-    for para_text in ABSTRACT:
+    for para_text in ABSTRACTS.get(spec.key, ABSTRACT):
         para = doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         para.paragraph_format.line_spacing = 1.5
@@ -788,7 +974,8 @@ def _front_matter(doc, spec: DocSpec, figures, tables) -> None:
     _listing(doc, "List of Tables", tables, "Table")
 
     _centred(doc, "Abbreviations", 16, bold=True, space_after=12)
-    add_table(doc, [["Abbreviation", "Expansion"], *ABBREVIATIONS])
+    add_table(doc, [["Abbreviation", "Expansion"],
+                    *ABBREVIATION_SETS.get(spec.key, ABBREVIATIONS)])
 
 
 #: Roughly one page, as the format asks: the problem, the approach, the result.
@@ -859,6 +1046,121 @@ ABBREVIATIONS = [
     ["XAI", "Explainable Artificial Intelligence"],
 ]
 
+#: The interim report is the frozen Review 2 submission, so its front matter
+#: keeps the constants above unchanged; the final report has its own.
+ACKNOWLEDGEMENTS = {
+    "interim": (
+        "We thank our faculty mentor for the guidance and for the critical "
+        "questioning that shaped this work, and the review panel whose "
+        "observations at the first review directed the dataset, explainability "
+        "and comparative-evaluation strands of the project. We also thank the "
+        "Department of Computer Engineering, MPSTME, for the resources made "
+        "available to us."
+    ),
+    "final": (
+        "We thank our faculty mentor for the guidance and for the critical "
+        "questioning that shaped this work from the first review to the last. "
+        "We thank the review panels, whose observations at the first review "
+        "directed the dataset, explainability and comparative-evaluation strands "
+        "of the project, and whose questions at the midterm review led to the "
+        "testing on real repositories reported in Chapter 4. We thank the authors "
+        "and maintainers of the open-source projects scanned in this work, in "
+        "particular OWASP crAPI, for publishing code that made an honest "
+        "evaluation possible. We also thank the Computer Science & Engineering "
+        "(Cyber Security) Department, MPSTME, for the resources made available "
+        "to us."
+    ),
+}
+
+ABSTRACTS = {
+    "final": [
+        "Banking API estates accumulate endpoints that remain deployed and "
+        "network-reachable long after they have ceased to serve any purpose. Such "
+        "endpoints retain their database credentials, network routes and access to "
+        "production data while disappearing from the organisation's inventory: the "
+        "condition OWASP catalogues as API9:2023 Improper Inventory Management, and "
+        "one the Reserve Bank of India's Cyber Security Framework in Banks makes a "
+        "compliance concern. No single source of evidence can identify them. A "
+        "gateway registry cannot see a service addressed directly, a specification "
+        "cannot describe a route nobody documented, traffic capture cannot observe "
+        "an endpoint nothing called during the window, and source code shows that "
+        "an endpoint exists but never that anything calls it. And the tools that do "
+        "detect such endpoints stop at detection, leaving removal as an unaided and "
+        "risky human judgement.",
+
+        "This report presents API Exorcist, a system that determines an endpoint's "
+        "lifecycle state by correlating six deliberately imperfect discovery "
+        "sources, and then removes it safely. Fifteen weighted evidence rules "
+        "classify each endpoint as ACTIVE, DEPRECATED, ORPHANED or ZOMBIE; a rule "
+        "whose source was never consulted abstains rather than firing, and every "
+        "verdict carries the signed evidence that produced it. A dependency graph "
+        "computes the blast radius of a removal, and an endpoint is cleared only "
+        "when the classifier and the graph agree. A gradient-boosted model with "
+        "SHAP attribution may veto a removal but never propose one. The Safe Kill "
+        "controller then carries a cleared endpoint through a shadow window derived "
+        "from the rule of three, a named approval, a staged canary with automatic "
+        "rollback, and a hash-chained audit log. The system scans real projects "
+        "from a browser, ranks suspected zombies from the evidence code holds, "
+        "proves them from imported gateway access logs, and enforces in CI that new "
+        "shadow and zombie endpoints are not merged.",
+
+        "On a synthetic retail-banking estate with a known answer key, the "
+        "classifier reaches 0.960 accuracy and 0.940 macro-F1 with perfect zombie "
+        "recall and no live endpoint marked for removal; a conventional "
+        "gateway-plus-specification inventory finds two of eight zombies where "
+        "correlation finds all eight. On held-out generated estates the model "
+        "produces no false zombies where the rules produce fourteen. Across 120 "
+        "generated estates, removal on the gate's word alone would cause 49 "
+        "outages; with Safe Kill there are none. Scanning eight public repositories, "
+        "the system ranks first the endpoints the projects themselves show to be "
+        "stale, including the two old authentication endpoints OWASP crAPI still "
+        "serves beside the newer versions its own web application calls. "
+        "Validated against route lists built independently of it, the endpoints "
+        "it finds in code agree on 126 of 127, and every reason it gives for a "
+        "suspected zombie is true in the project's source. "
+        "The architecture and the analysis are real code and the repository scans "
+        "are of real projects; the banking estate is synthetic, and the claim made "
+        "is that the engine recovers known decay patterns from partial, disagreeing "
+        "evidence, not that it has been validated on production bank traffic.",
+    ],
+}
+
+ABBREVIATION_SETS = {
+    "final": [
+        ["ALB", "Application Load Balancer (AWS)"],
+        ["API", "Application Programming Interface"],
+        ["AST", "Abstract Syntax Tree"],
+        ["BFS", "Breadth-First Search"],
+        ["CI/CD", "Continuous Integration / Continuous Deployment"],
+        ["CLI", "Command-Line Interface"],
+        ["CSP", "Content Security Policy"],
+        ["CSV", "Comma-Separated Values"],
+        ["CT", "Certificate Transparency"],
+        ["CTE", "Common Table Expression"],
+        ["DFD", "Data Flow Diagram"],
+        ["DNS", "Domain Name System"],
+        ["F1", "Harmonic mean of precision and recall"],
+        ["GRC", "Governance, Risk and Compliance"],
+        ["HTTP", "Hypertext Transfer Protocol"],
+        ["IDS", "Intrusion Detection System"],
+        ["JSON", "JavaScript Object Notation"],
+        ["KYC", "Know Your Customer"],
+        ["ML", "Machine Learning"],
+        ["OWASP", "Open Worldwide Application Security Project"],
+        ["RBI", "Reserve Bank of India"],
+        ["REST", "Representational State Transfer"],
+        ["RFC", "Request for Comments (IETF standards series)"],
+        ["SARIF", "Static Analysis Results Interchange Format"],
+        ["SHA", "Secure Hash Algorithm"],
+        ["SHAP", "SHapley Additive exPlanations"],
+        ["SIEM", "Security Information and Event Management"],
+        ["TLS", "Transport Layer Security"],
+        ["TTL", "Time To Live"],
+        ["UI", "User Interface"],
+        ["XAI", "Explainable Artificial Intelligence"],
+    ],
+}
+
 
 # ---------------------------------------------------------------------------
 def _build_report(spec: DocSpec) -> Path:
@@ -868,6 +1170,9 @@ def _build_report(spec: DocSpec) -> Path:
     PAGE_FURNITURE["footer_align"] = WD_ALIGN_PARAGRAPH.RIGHT
     PAGE_FURNITURE["header_left"] = "API Exorcist"
     PAGE_FURNITURE["header_right"] = ACADEMIC_YEAR
+    # The interim report keeps the geometry it was submitted with.
+    page = A4_REPORT if spec.key == "final" else None
+    PAGE_FURNITURE["page"] = page
 
     doc = Document()
     normal = doc.styles["Normal"]
@@ -877,6 +1182,8 @@ def _build_report(spec: DocSpec) -> Path:
     front = doc.sections[0]
     front.top_margin = front.bottom_margin = front.right_margin = Inches(1)
     front.left_margin = Inches(1.5)          # the format asks for 1.5" here
+    if page:
+        _apply_page(front, page)
     _add_page_numbers(front)
     _set_page_numbering(front, "lowerRoman", start=1)
 
@@ -892,12 +1199,14 @@ def _build_report(spec: DocSpec) -> Path:
     body = doc.add_section(WD_SECTION.NEW_PAGE)
     body.top_margin = body.bottom_margin = body.right_margin = Inches(1)
     body.left_margin = Inches(1.5)
+    if page:
+        _apply_page(body, page)
     _add_page_numbers(body)
     _set_page_numbering(body, "decimal", start=1)
 
     _render_all(doc, spec, md)
 
-    out = DOCS / spec.output
+    out = DOCS / (spec.output or final_output())
     doc.save(out)
     return out
 
@@ -938,6 +1247,7 @@ def build(spec: DocSpec) -> Path:
     PAGE_FURNITURE["footer_align"] = WD_ALIGN_PARAGRAPH.CENTER
     PAGE_FURNITURE["header_left"] = ""
     PAGE_FURNITURE["header_right"] = ""
+    PAGE_FURNITURE["page"] = None
 
     doc = Document()
     style = doc.styles["Normal"]

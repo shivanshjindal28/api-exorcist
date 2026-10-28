@@ -53,6 +53,9 @@ docs/*.docx
 # Same reasoning as the .docx files: the builder is the source of truth.
 docs/*.pptx
 
+# PDF exports of the generated reports.
+docs/*.pdf
+
 # Repositories cloned for the demo. Fetched by demo/prepare.ps1, never committed.
 demo/repos/
 
@@ -78,3 +81,7 @@ demo/enforce-demo/
 
 # Synthetic access logs written by demo/make_access_log.py; regenerated, never committed.
 demo/synthetic-*.log
+
+# The research paper stays private until it is accepted: a public copy would be
+# matched by the similarity check the guidelines require (under 10%).
+docs/paper/

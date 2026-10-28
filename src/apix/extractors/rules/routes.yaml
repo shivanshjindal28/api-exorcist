@@ -120,29 +120,88 @@ rules:
               async def $FUNC(...): ...
 
   # ---------------------------------------------------------------- Express
+  # Two spellings: `router.get('/x', h)` and the chained
+  # `router.route('/x').get(h).post(h2)`, where every method after the first
+  # hangs off the previous call. Projects written in the chained form (idurar
+  # declares all of its routes that way) were invisible before it was matched.
+  # In the chained form `$APP.get($PATH, ...)` also matches with the handler as
+  # $PATH; looks_like_route rejects those.
   - id: apix-js-express-get
     languages: [javascript, typescript]
     severity: INFO
     message: "APIX|path=$PATH|func=anonymous"
-    pattern: $APP.get($PATH, ...)
+    pattern-either:
+      - pattern: $APP.get($PATH, ...)
+      - pattern: $R.route($PATH).get(...)
+      - pattern: $R.route($PATH).$M1(...).get(...)
+      - pattern: $R.route($PATH).$M1(...).$M2(...).get(...)
+      - pattern: $R.route($PATH).$M1(...).$M2(...).$M3(...).get(...)
 
   - id: apix-js-express-post
     languages: [javascript, typescript]
     severity: INFO
     message: "APIX|path=$PATH|func=anonymous"
-    pattern: $APP.post($PATH, ...)
+    pattern-either:
+      - pattern: $APP.post($PATH, ...)
+      - pattern: $R.route($PATH).post(...)
+      - pattern: $R.route($PATH).$M1(...).post(...)
+      - pattern: $R.route($PATH).$M1(...).$M2(...).post(...)
+      - pattern: $R.route($PATH).$M1(...).$M2(...).$M3(...).post(...)
 
   - id: apix-js-express-put
     languages: [javascript, typescript]
     severity: INFO
     message: "APIX|path=$PATH|func=anonymous"
-    pattern: $APP.put($PATH, ...)
+    pattern-either:
+      - pattern: $APP.put($PATH, ...)
+      - pattern: $R.route($PATH).put(...)
+      - pattern: $R.route($PATH).$M1(...).put(...)
+      - pattern: $R.route($PATH).$M1(...).$M2(...).put(...)
+      - pattern: $R.route($PATH).$M1(...).$M2(...).$M3(...).put(...)
+
+  - id: apix-js-express-patch
+    languages: [javascript, typescript]
+    severity: INFO
+    message: "APIX|path=$PATH|func=anonymous"
+    pattern-either:
+      - pattern: $APP.patch($PATH, ...)
+      - pattern: $R.route($PATH).patch(...)
+      - pattern: $R.route($PATH).$M1(...).patch(...)
+      - pattern: $R.route($PATH).$M1(...).$M2(...).patch(...)
+      - pattern: $R.route($PATH).$M1(...).$M2(...).$M3(...).patch(...)
 
   - id: apix-js-express-delete
     languages: [javascript, typescript]
     severity: INFO
     message: "APIX|path=$PATH|func=anonymous"
-    pattern: $APP.delete($PATH, ...)
+    pattern-either:
+      - pattern: $APP.delete($PATH, ...)
+      - pattern: $R.route($PATH).delete(...)
+      - pattern: $R.route($PATH).$M1(...).delete(...)
+      - pattern: $R.route($PATH).$M1(...).$M2(...).delete(...)
+      - pattern: $R.route($PATH).$M1(...).$M2(...).$M3(...).delete(...)
+
+  # A router is mounted under a prefix in another file:
+  #   const api = require('./routes/api');  app.use('/api', auth, api);
+  # The router name is resolved to its file in semgrep_extractor.py by reading
+  # the require/import in the mounting file. Middleware between the two is
+  # skipped by the `...`.
+  #
+  # `on` is what `.use` was called on. A router built in the same file and
+  # mounted there (`const api = Router().use(tags); Router().use('/api', api)`,
+  # the shape of Express's own reference app) is followed through it.
+  - id: apix-js-express-mount
+    languages: [javascript, typescript]
+    severity: INFO
+    message: "APIXJSMOUNT|prefix=$PREFIX|router=$ROUTER|on=$APP"
+    pattern: $APP.use($PREFIX, ..., $ROUTER)
+
+  # A router mounted with no prefix: `app.use(routes)`, `api.use(tagsRouter)`.
+  - id: apix-js-express-mount-bare
+    languages: [javascript, typescript]
+    severity: INFO
+    message: "APIXJSMOUNT|prefix=|router=$ROUTER|on=$APP"
+    pattern: $APP.use($ROUTER)
 
   # ------------------------------------------------------------- Spring MVC
   # Each rule finds a mapped method in any form: bare (@PostMapping), with a

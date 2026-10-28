@@ -214,9 +214,9 @@ simulated, with known answers, to measure the engine."*
    zero live endpoints marked for removal.
 4. **Safe Kill**: **Start shadow** on the KYC endpoint and on
    `POST /v1/debug/payments/replay`. The KYC shadow is clean, so Approve is live;
-   the debug route saw anonymous requests, so **Approve stays disabled** until the
-   risk is accepted in writing. Approve the KYC endpoint: nominated to retired,
-   decided by you.
+   the debug route saw anonymous requests, so it **can never be approved**: Approve
+   is disabled and the page says why and what to do instead (add authentication,
+   shadow again). Approve the KYC endpoint: nominated to retired, decided by you.
 5. **Audit log**: Verify the whole chain. The approver's name comes from the
    sign-in, never from anything the browser sends.
 

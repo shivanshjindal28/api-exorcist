@@ -10,6 +10,7 @@ answered by combining this with other sources.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -50,7 +51,11 @@ class RouteExtractor(Protocol):
         """Whether this extractor can run in the current environment."""
         ...
 
-    def extract(self, repo_root: Path) -> list[ExtractedRoute]:
+    def extract(
+        self, repo_root: Path, exclude: Sequence[str] = ()
+    ) -> list[ExtractedRoute]:
+        """Routes under repo_root, skipping the repo-relative directories in
+        `exclude` as well as the extractor's own exclusions."""
         ...
 
 
@@ -70,7 +75,9 @@ _PARAM_PATTERNS = [
     (re.compile(r"\(\?P<([A-Za-z_][A-Za-z0-9_]*)>[^)]*\)"), r"{\1}"),   # Django
     (re.compile(r"<(?:[A-Za-z_][A-Za-z0-9_]*:)?([A-Za-z_][A-Za-z0-9_]*)>"),
      r"{\1}"),                                                          # Flask
-    (re.compile(r":([A-Za-z_][A-Za-z0-9_]*)"), r"{\1}"),                # Express
+    # Express; an optional parameter (`:key?`) is still that parameter, since a
+    # path template has no way to spell optional.
+    (re.compile(r":([A-Za-z_][A-Za-z0-9_]*)\??"), r"{\1}"),
 ]
 
 

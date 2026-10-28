@@ -392,8 +392,7 @@ def _cmd_safekill(args: argparse.Namespace) -> int:
     audit = AuditLog(path=audit_path)
     before = len(audit.entries)
     approver = (
-        NamedApprover(args.approve_as, accept_unidentified=args.accept_unidentified)
-        if args.approve_as else NoApprover()
+        NamedApprover(args.approve_as) if args.approve_as else NoApprover()
     )
     hidden = {ep: HIDDEN_CALLER for ep in (args.hidden_caller or [])}
     backend = SimulatedEnforcement(ESTATE, seed=args.seed, hidden_callers=hidden)
@@ -440,8 +439,7 @@ def _cmd_safekill(args: argparse.Namespace) -> int:
     if hidden:
         print()
     if args.approve_as:
-        extra = ", including unidentified traffic" if args.accept_unidentified else ""
-        print(f"  approver : {args.approve_as}{extra}")
+        print(f"  approver : {args.approve_as} (never over unidentified traffic)")
     else:
         print("  approver : none. Nothing will be removed; re-run with --approve-as NAME")
     print()
@@ -888,10 +886,6 @@ def build_parser() -> argparse.ArgumentParser:
     sk.add_argument(
         "--approve-as", metavar="NAME",
         help="approve clean candidates under this name; without it nothing is removed",
-    )
-    sk.add_argument(
-        "--accept-unidentified", action="store_true",
-        help="also approve candidates whose shadow saw traffic with no caller identity",
     )
     sk.add_argument(
         "--slowest-caller-days", type=float, default=30.0, metavar="DAYS",

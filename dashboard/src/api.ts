@@ -116,15 +116,14 @@ export class ApiClient {
   decide(
     endpointId: string,
     approve: boolean,
-    acceptUnidentified: boolean,
     note: string,
   ): Promise<KillOutcome> {
     // No approver field: the server takes the approver's name from the token,
-    // and rejects any request body that tries to supply one.
+    // and rejects any request body that tries to supply one. Nor is there a
+    // way to approve over unidentified traffic: the server refuses it.
     return this.request("POST", "/v1/safekill/decision", {
       endpoint_id: endpointId,
       approve,
-      accept_unidentified: acceptUnidentified,
       note,
     });
   }

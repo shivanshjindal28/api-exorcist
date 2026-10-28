@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "apix"
-version = "1.1.0"
+version = "1.2.0"
 description = "Autonomous discovery and safe elimination of zombie, shadow and orphaned APIs"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -166,6 +166,7 @@ ignore = [
 # lookalikes in source strings and that is worth keeping in a security project.
 "docs/build_docx.py" = ["RUF001"]
 "docs/build_pptx.py" = ["RUF001"]
+"docs/build_logbook.py" = ["RUF001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["apix"]

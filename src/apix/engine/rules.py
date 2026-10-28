@@ -324,6 +324,15 @@ class RuleClassifier:
             sources_consulted=frozenset(s.value for s in self.consulted),
             abstained=abstained,
             rules_fired=len(fired),
+            score_table=[
+                {
+                    "key": rule.key,
+                    "statement": rule.statement,
+                    "source": rule.evidence_source,
+                    "weights": {c.value: rule.weights.get(c, 0.0) for c in CLASS_ORDER},
+                }
+                for rule in fired
+            ],
         )
 
     def classify_all(self, records: list[InventoryRecord]) -> list[Verdict]:

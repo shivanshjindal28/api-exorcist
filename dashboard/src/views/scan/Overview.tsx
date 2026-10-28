@@ -1,5 +1,6 @@
 import { Card, LevelBadge, LifecycleBadge } from "../../common";
 import type { Lifecycle, ScanJob } from "../../types";
+import { ScanStages, TrustCard } from "../explain";
 import { CandidatesCard } from "./Candidates";
 import { CHECK_TEXT, DECISIONS, when } from "./shared";
 
@@ -40,6 +41,10 @@ export function ScanOverviewTab({ job }: { job: ScanJob }) {
       {job.traffic && <UsageSummary job={job} />}
 
       <CandidatesCard job={job} />
+
+      <Card title="Can these results be trusted?">
+        <TrustCard job={job} />
+      </Card>
 
       <div className="split split-even">
         <ExposureCard job={job} />
@@ -86,7 +91,9 @@ export function ScanOverviewTab({ job }: { job: ScanJob }) {
           </Card>
       </div>
 
-      <Card title="What was checked">
+      <Card title="How this scan was done">
+          <ScanStages />
+          <h3>What each stage found</h3>
           <ul className="checks">
             {report.checks.map((c) => (
               <li key={c.name} className={`check check-${c.status}`}>

@@ -13,9 +13,10 @@ must NOT be flagged. They need the network and take a few minutes, so they are
 skipped unless APIX_REALWORLD=1.
 
 The answers come from the projects themselves, not from the scanner:
-  - OWASP crAPI's "improper inventory management" challenge is the old
-    /v2/check-otp left beside /v3/check-otp, and its web app calls only v3
-    (and only v4.0 of login-with-token, never v2.7).
+  - OWASP crAPI keeps /v2/check-otp, which its own code comments call the
+    non-secure version (no attempt limit), beside /v3/check-otp (locks after
+    10 tries); its web app calls only v3, and only v4.0 of login-with-token,
+    never v2.7.
   - VAmPI documents a debug endpoint, /users/v1/_debug, and /createdb.
   - spring-petclinic-rest serves GET /owners beside its paged v2.
   - The FastAPI template's React app never calls readItem, testEmail or the
@@ -64,6 +65,16 @@ def test_crapi_old_otp_and_login_versions_are_likely_zombies() -> None:
                     "POST /identity/api/auth/v4.0/user/login-with-token"):
         assert current in ids("OWASP/crAPI")
         assert current not in c, f"{current} wrongly flagged: {c.get(current)}"
+
+
+def test_crapi_spec_only_endpoints_sit_in_their_own_services() -> None:
+    """Django (workshop) and Go (community) routes are known only from the spec;
+    they once formed a service named after the spec's folder."""
+    graph = report("OWASP/crAPI")["graph"]
+    drawn = {s["id"] for s in graph["services"]}
+    assert "openapi-spec" not in drawn, drawn
+    by_id = {e["id"]: e["service"] for e in graph["endpoints"]}
+    assert by_id["GET /workshop/api/shop/products"] == "workshop"
 
 
 def test_vampi_debug_endpoints_are_flagged_and_handlers_found() -> None:
@@ -118,6 +129,44 @@ def test_crapi_flags_few_and_never_what_the_web_app_calls() -> None:
                  "GET /identity/api/v2/user/videos/{video_id}",
                  "GET /identity/api/auth/jwks.json"):
         assert used not in c, f"{used} wrongly flagged: {c.get(used)}"
+
+
+def test_idurar_express_routes_are_all_found_under_their_mounts() -> None:
+    """idurar declares every route as router.route(...).get(...), builds its CRUD
+    routes from a template literal in a loop, and mounts routers from app.js.
+    A scan of it once found no API at all. Its 33 routes, counted by hand in
+    backend/src/routes, sit under /api, /download and /public.
+    """
+    found = ids("idurar/idurar-erp-crm")
+    for expected in ("POST /api/login",
+                     "PATCH /api/admin/password-update/{id}",
+                     "PATCH /api/{entity}/update/{id}",
+                     "POST /api/{entity}/mail",
+                     "PATCH /api/setting/upload/{settingKey}",
+                     "GET /download/{directory}/{file}",
+                     "GET /public/{subPath}/{directory}/{file}"):
+        assert expected in found, (expected, sorted(found))
+    assert len(found) == 33, sorted(found)
+    # Commented out in coreApi.js: present in the text, absent from the AST.
+    assert "DELETE /api/setting/delete/{id}" not in found
+
+
+def test_express_reference_app_routes_carry_their_mount_prefix() -> None:
+    """Accusing nothing must not be the result of seeing nothing, or of
+    seeing the wrong paths.
+
+    The reference app mounts every router under /api through a router built
+    in routes.ts, and a validation against its route files found every path
+    reported without /api, plus `GET /` taken from an end-to-end test. Its 20
+    routes, read by hand: 19 under /api and the status route `GET /` in
+    main.ts.
+    """
+    found = ids("gothinkster/node-express-realworld-example-app")
+    assert len(found) == 20, sorted(found)
+    for expected in ("GET /api/articles", "POST /api/users/login", "GET /api/tags",
+                     "DELETE /api/articles/{slug}/comments/{id}", "GET /"):
+        assert expected in found, (expected, sorted(found))
+    assert not any(e.startswith(("GET /articles", "POST /users")) for e in found)
 
 
 def test_repositories_without_distinguishing_evidence_accuse_nothing() -> None:

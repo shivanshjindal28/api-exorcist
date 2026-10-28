@@ -84,6 +84,12 @@ class Verdict:
     #: How many rules actually fired. Zero means no evidence was available at
     #: all, and `label` is then a tie-break artifact rather than a conclusion.
     rules_fired: int = 0
+    #: Every rule that fired, with its weight for *each* class: the complete
+    #: arithmetic behind `scores`. `reasons` lists only what bears on the
+    #: assigned label, so a rule with no weight for it (an owner recorded, on an
+    #: endpoint called ORPHANED) is absent there and present here; the columns
+    #: of this table sum exactly to `scores`.
+    score_table: list[dict[str, Any]] = field(default_factory=list)
 
     #: Set when the learned model disagreed with a rule-derived removal
     #: candidate. Both opinions are retained: an auditor must be able to see
@@ -211,6 +217,7 @@ class Verdict:
             "sources_consulted": sorted(self.sources_consulted),
             "abstained": self.abstained,
             "rules_fired": self.rules_fired,
+            "score_table": self.score_table,
             "determinate": self.is_determinate,
             "actionable": self.is_actionable,
             "blocked_reason": self.blocked_reason,

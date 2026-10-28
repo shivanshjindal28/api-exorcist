@@ -85,6 +85,14 @@ class SafeKillPolicy:
     #: which is the design as originally drawn; the evaluation uses this to
     #: measure what the shadow stage is worth.
     shadow_days_override: float | None = None
+    #: Whether anything may approve a candidate whose shadow saw traffic with no
+    #: caller identity. Off: such a candidate can only be declined, and the way
+    #: forward is to put authentication in front of it and shadow it again, so
+    #: that legitimate callers identify themselves. On a forgotten partner
+    #: integration and an attacker's scanner look the same, so no person can
+    #: know what they would be accepting. Only the evaluation harness turns this
+    #: on, to measure the canary itself, and records that it did.
+    allow_unidentified_override: bool = False
 
     def __post_init__(self) -> None:
         if not 0 < self.confidence < 1:

@@ -27,7 +27,7 @@ against it and any disagreement is reported rather than hidden.
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from apix.engine.rules import RuleClassifier
@@ -127,6 +127,9 @@ def evaluate(
     use_model: bool = False,
 ) -> SafeKillReport:
     policy = policy or SafeKillPolicy()
+    # The harness measures the canary itself, so it is the one approver allowed
+    # past unidentified traffic, and the report says so. A person never is.
+    policy = replace(policy, allow_unidentified_override=accept_unidentified)
     report = SafeKillReport(
         estates=n_estates, policy=policy, accept_unidentified=accept_unidentified
     )

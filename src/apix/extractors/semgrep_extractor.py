@@ -22,6 +22,7 @@ import json
 import re
 import shutil
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,10 @@ EXCLUDE_DIRS = (
     "dist", "build", ".tox", ".mypy_cache", ".pytest_cache", ".git",
     "vendor", "third_party", "test", "tests", "spec", "__tests__",
     "migrations", "alembic",
+    # End-to-end suites and test files beside the code they test. A scan of
+    # the Express reference app reported `GET /` from e2e/.../server.spec.ts:
+    # a request the tests make, not a route the application serves.
+    "e2e", "cypress", "*.spec.ts", "*.spec.js", "*.test.ts", "*.test.js",
 )
 
 #: rule id -> (HTTP method, framework)
@@ -53,6 +58,7 @@ _RULE_MAP = {
     "apix-js-express-get": ("GET", "express"),
     "apix-js-express-post": ("POST", "express"),
     "apix-js-express-put": ("PUT", "express"),
+    "apix-js-express-patch": ("PATCH", "express"),
     "apix-js-express-delete": ("DELETE", "express"),
     "apix-java-spring-get": ("GET", "spring"),
     "apix-java-spring-post": ("POST", "spring"),
@@ -65,7 +71,15 @@ _RULE_MAP = {
 _MSG = re.compile(r"APIX\|path=(?P<path>.*?)\|func=(?P<func>.*)$", re.S)
 _PREFIX_MSG = re.compile(r"APIXPREFIX\|var=(?P<var>.*?)\|prefix=(?P<prefix>.*)$", re.S)
 _MOUNT_MSG = re.compile(r"APIXMOUNT\|prefix=(?P<prefix>.*)$", re.S)
+_JSMOUNT_MSG = re.compile(
+    r"APIXJSMOUNT\|prefix=(?P<prefix>.*?)\|router=(?P<router>.*?)(?:\|on=(?P<on>.*))?$", re.S)
+_JSMOUNT_RULES = ("apix-js-express-mount", "apix-js-express-mount-bare")
+#: `const api = Router()` / `express.Router()`: a router built in this file.
+_LOCAL_ROUTER = re.compile(
+    r"(?:const|let|var)\s+(?P<name>[A-Za-z_$][\w$]*)\s*=\s*(?:express\s*\.\s*)?Router\s*\(")
 _FLASK_METHODS = re.compile(r"methods\s*=\s*\[([^\]]*)\]")
+_TEMPLATE_SLOT = re.compile(r"\$\{([^}]*)\}")
+_JS_EXTENSIONS = (".js", ".ts", ".mjs", ".cjs", ".jsx", ".tsx")
 
 
 def _matched_source(res: dict[str, Any]) -> str:
@@ -119,8 +133,64 @@ def resolve_constant(repo_root: Path, expr: str) -> str | None:
 
 
 def _clean(literal: str) -> str:
-    """Strip quotes from a matched string literal."""
-    return literal.strip().strip("\"'").strip()
+    """Strip quotes from a matched string literal.
+
+    A JavaScript template literal such as `/${entity}/create` becomes
+    /{entity}/create: the slot is a path segment whose value is chosen at run
+    time, which is what a path parameter means. Semgrep's message drops the
+    closing backtick, so only the opening one can be relied on. A template that
+    does not start with "/" (`${base}/x`) is left as it is, backtick and all,
+    so looks_like_route rejects it: its slot is a prefix, not a parameter, and
+    reporting /{base}/x would invent a path segment nobody serves.
+    """
+    s = literal.strip()
+    if s.startswith("`"):
+        body = s.strip("`").strip()
+        if not body.startswith("/"):
+            return s
+
+        def slot(m: re.Match[str]) -> str:
+            names = re.findall(r"[A-Za-z_]\w*", m.group(1))
+            return "{" + (names[-1] if names else "param") + "}"
+
+        return _TEMPLATE_SLOT.sub(slot, body)
+    return s.strip("\"'").strip()
+
+
+def _resolve_module(mounting_file: Path, spec: str, repo_root: Path) -> str | None:
+    """The repository file a relative require/import specifier points at."""
+    if not spec.startswith("."):
+        return None     # a package, or an alias the scan cannot see through
+    base = (mounting_file.parent / spec).resolve()
+    candidates = [base, *(base.with_name(base.name + e) for e in _JS_EXTENSIONS),
+                  *(base / ("index" + e) for e in _JS_EXTENSIONS)]
+    if base.suffix == ".js":
+        # TypeScript ESM imports './users.js' for a file that is users.ts.
+        candidates += [base.with_suffix(".ts"), base.with_suffix(".tsx")]
+    for c in candidates:
+        if c.is_file():
+            try:
+                return str(c.relative_to(repo_root.resolve())).replace("\\", "/")
+            except ValueError:
+                return None
+    return None
+
+
+def _line_of(text: str, pos: int) -> int:
+    return text.count("\n", 0, pos) + 1
+
+
+def _module_of(source: str, name: str) -> str | None:
+    """The specifier `name` is bound to by require() or a default import."""
+    n = re.escape(name)
+    for pattern in (
+        rf"(?:const|let|var)\s+{n}\s*=\s*require\(\s*['\"]([^'\"]+)['\"]\s*\)",
+        rf"import\s+{n}\s+from\s+['\"]([^'\"]+)['\"]",
+    ):
+        m = re.search(pattern, source)
+        if m:
+            return m.group(1)
+    return None
 
 
 class SemgrepExtractor:
@@ -143,7 +213,9 @@ class SemgrepExtractor:
         return shutil.which("semgrep") is not None
 
     # ------------------------------------------------------------------
-    def extract(self, repo_root: Path) -> list[ExtractedRoute]:
+    def extract(
+        self, repo_root: Path, exclude: Sequence[str] = ()
+    ) -> list[ExtractedRoute]:
         if not self.available():
             self.last_error = "semgrep not installed"
             return []
@@ -159,7 +231,7 @@ class SemgrepExtractor:
         # is not only a speed measure: a route matched inside node_modules or a
         # test fixture is a false endpoint, and false endpoints in this system
         # become fabricated shadow APIs.
-        for pattern in EXCLUDE_DIRS:
+        for pattern in (*EXCLUDE_DIRS, *exclude):
             cmd += ["--exclude", pattern]
         cmd.append(str(repo_root))
         try:
@@ -216,6 +288,12 @@ class SemgrepExtractor:
         self.mount_prefixes = sorted(mount_prefixes)
         global_mount = self.mount_prefixes[0] if len(mount_prefixes) == 1 else ""
 
+        # Express attributes each mount to a file through require/import, so
+        # several prefixes are not ambiguous the way FastAPI's are.
+        js_prefix, js_roots = self._express_mounts(results, repo_root)
+        self.mount_prefixes = sorted(
+            {*self.mount_prefixes, *(p for p in js_prefix.values() if p)})
+
         for res in results:
             rule_id = str(res.get("check_id", "")).split(".")[-1]
             if rule_id not in _RULE_MAP:
@@ -246,13 +324,24 @@ class SemgrepExtractor:
 
             router_prefix = file_prefix.get(rel_for_prefix, "")
             composed = f"{global_mount}{router_prefix}/{declared.lstrip('/')}"
-            path = normalise_path(composed)
             # Unresolved when several literal mounts compete, or when the only
             # mounts are expressions whose value the scan cannot know. Before
             # the second case was tracked, a project mounting everything under
             # prefix=settings.API_V1_STR looked fully resolved: the web report
             # showed /users where the deployed path is /api/v1/users.
             resolved = bool(global_mount) or not (mount_prefixes or variable_mounts)
+            if framework == "express" and (js_prefix or js_roots):
+                if rel_for_prefix in js_prefix:
+                    known = js_prefix[rel_for_prefix]
+                    resolved = known is not None
+                    composed = f"{known or ''}/{declared.lstrip('/')}"
+                else:
+                    # Not mounted anywhere the scan could follow. The file that
+                    # does the mounting is the app itself; any other router is
+                    # mounted somewhere unseen, so its prefix is unknown.
+                    resolved = rel_for_prefix in js_roots
+                    composed = f"/{declared.lstrip('/')}"
+            path = normalise_path(composed)
 
             # Flask carries its methods as an argument rather than in the
             # decorator name, so recover them from the matched source lines.
@@ -371,3 +460,125 @@ class SemgrepExtractor:
                     variables.add(raw)
 
         return per_file, mounts, variables
+
+    def _express_mounts(
+        self, results: list[dict[str, Any]], repo_root: Path
+    ) -> tuple[dict[str, str | None], set[str]]:
+        """The full prefix of every Express router file, and the mounting roots.
+
+        `app.use('/api', auth, api)` mounts the router bound to `api`, which is
+        found by reading that file's require/import. Mounts compose:
+        routes/index.js mounted at /api that itself does
+        `router.use('/users', users)` puts users' routes under /api/users.
+
+        A router can also be built and mounted inside one file, which is how
+        Express's own reference application wires itself:
+
+            const api = Router().use(tagsController).use(articlesController);
+            export default Router().use('/api', api);
+
+        `api` is not imported, so it names no file; what it carries is a
+        prefix. Every router mounted into it, by a call on `api` or inside the
+        statement that builds it, sits under that prefix. Before this was
+        followed, every route of that application was reported without /api,
+        and as though its prefix were known.
+
+        A file's prefix is None when it cannot be known: a prefix held in a
+        variable, a cycle, or one router mounted under different prefixes. Its
+        routes are then reported with prefix_resolved=False instead of guessed.
+        """
+        edges: dict[str, set[tuple[str, str | None]]] = {}   # target -> {(src, prefix)}
+        roots: set[str] = set()
+        sources: dict[str, str] = {}
+
+        # (src, src_path, prefix, router, on, line); prefix None = a variable
+        mounts: list[tuple[str, Path, str | None, str, str, int]] = []
+        for res in results:
+            if str(res.get("check_id", "")).split(".")[-1] not in _JSMOUNT_RULES:
+                continue
+            m = _JSMOUNT_MSG.search(res.get("extra", {}).get("message", ""))
+            if not m:
+                continue
+            router = m.group("router").strip()
+            if router.endswith("()"):
+                router = router[:-2]        # app.use('/api', routes())
+            if not re.fullmatch(r"[A-Za-z_$][\w$]*", router):
+                continue                    # express.static(...), an inline router
+            src_path = Path(str(res.get("path", "")))
+            try:
+                src = str(src_path.resolve().relative_to(repo_root.resolve())).replace("\\", "/")
+            except ValueError:
+                continue
+            if src not in sources:
+                try:
+                    sources[src] = src_path.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+            raw = m.group("prefix").strip()
+            prefix: str | None = _clean(raw)
+            if raw == "":
+                prefix = ""                 # mounted with no prefix
+            elif not (prefix or "").startswith("/"):
+                if len(raw) <= 120:
+                    self.variable_mounts = sorted({*self.variable_mounts, raw})
+                prefix = None
+            else:
+                prefix = (prefix or "").rstrip("/")
+            line = int((res.get("start") or {}).get("line", 0) or 0)
+            mounts.append((src, src_path, prefix, router, (m.group("on") or "").strip(), line))
+
+        # Routers built in each file: name -> the lines its statement spans.
+        local: dict[str, dict[str, tuple[int, int]]] = {}
+        for src, text in sources.items():
+            defs: dict[str, tuple[int, int]] = {}
+            for d in _LOCAL_ROUTER.finditer(text):
+                ends = [i for i in (text.find(";", d.end()), text.find("\n\n", d.end()))
+                        if i >= 0]
+                end = min(ends) if ends else len(text)
+                defs[d.group("name")] = (_line_of(text, d.start()), _line_of(text, end))
+            local[src] = defs
+
+        # The prefix each local router is mounted under, within its own file.
+        local_prefix: dict[tuple[str, str], str | None] = {}
+        for src, _p, prefix, router, _on, _line in mounts:
+            if router in local.get(src, {}):
+                key = (src, router)
+                local_prefix[key] = (prefix if key not in local_prefix
+                                     or local_prefix[key] == prefix else None)
+
+        for src, src_path, prefix, router, on, line in mounts:
+            if router in local.get(src, {}):
+                continue                    # recorded above; it names no file
+            extra: str | None = ""
+            for name, (first, last) in local.get(src, {}).items():
+                if on == name or first <= line <= last:
+                    extra = local_prefix.get((src, name), "")
+                    break
+            spec = _module_of(sources[src], router)
+            target = _resolve_module(src_path, spec, repo_root) if spec else None
+            if target is None:
+                continue
+            combined = None if extra is None or prefix is None else extra + prefix
+            edges.setdefault(target, set()).add((src, combined))
+            roots.add(src)
+
+        resolved: dict[str, str | None] = {}
+
+        def prefix_of(f: str, stack: frozenset[str]) -> str | None:
+            if f in resolved:
+                return resolved[f]
+            if f not in edges:
+                return ""                   # a root: routes on the app itself
+            if f in stack:
+                return None
+            options = set()
+            for src, p in edges[f]:
+                parent = prefix_of(src, stack | {f})
+                options.add(None if p is None or parent is None else parent + p)
+            value = options.pop() if len(options) == 1 else None
+            resolved[f] = value
+            return value
+
+        for target in edges:
+            prefix_of(target, frozenset())
+        return resolved, roots

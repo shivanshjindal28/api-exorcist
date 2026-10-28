@@ -11,6 +11,7 @@ import {
   useSession,
 } from "../common";
 import type { KillOutcome, Observation, PendingApproval } from "../types";
+import { SafeKillSteps } from "./explain";
 
 export function SafeKill() {
   const { api, principal } = useSession();
@@ -41,13 +42,12 @@ export function SafeKill() {
     <div className="stack">
       <Card title="How a removal is made safe">
         <p>
-          Every candidate is <strong>shadowed for {policy.shadow_days} days</strong> first:
-          nothing is refused, and every request that would have been is recorded with its
-          caller. That window is derived, not chosen: it catches a caller who calls once a
-          month with {pct(policy.confidence)} confidence. Only then can a named approver
-          start the canary: 410 Gone to 5%, 25%, then 100% of requests for{" "}
-          {policy.canary_days.join(" / ")} days, rolled back automatically on any breach.
+          A removal passes five steps, and can be stopped at any of the first four. Each
+          candidate below shows which step it has reached. The {policy.shadow_days}-day
+          shadow is derived, not chosen: it is how long it takes to see a caller who calls
+          once a month with {pct(policy.confidence)} confidence.
         </p>
+        <SafeKillSteps state={data} />
         {!approver && (
           <p className="muted">
             You are signed in as a viewer: you can see every decision but not make one.
@@ -66,8 +66,8 @@ export function SafeKill() {
               pending={p}
               approver={approver}
               busy={busy === p.endpoint_id}
-              onDecide={(approve, accept, note) =>
-                act(p.endpoint_id, () => api.decide(p.endpoint_id, approve, accept, note))
+              onDecide={(approve, note) =>
+                act(p.endpoint_id, () => api.decide(p.endpoint_id, approve, note))
               }
             />
           ))
@@ -134,9 +134,8 @@ function PendingCard({
   pending: PendingApproval;
   approver: boolean;
   busy: boolean;
-  onDecide: (approve: boolean, acceptUnidentified: boolean, note: string) => void;
+  onDecide: (approve: boolean, note: string) => void;
 }) {
-  const [accept, setAccept] = useState(false);
   const [note, setNote] = useState("");
   const warned = p.warnings.length > 0;
   const shadow = p.outcome?.shadow ?? null;
@@ -158,16 +157,15 @@ function PendingCard({
           {p.warnings.map((w) => (
             <p key={w}>{w}</p>
           ))}
+          <p>
+            <strong>This removal cannot be approved.</strong> Put authentication in front of the
+            endpoint and run its shadow again: legitimate callers will then identify themselves.
+            Until then, the only decision is to decline.
+          </p>
         </div>
       )}
       {approver && (
         <div className="decide">
-          {warned && (
-            <label className="check">
-              <input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} />
-              I accept that this traffic cannot be identified, and approve anyway
-            </label>
-          )}
           <label htmlFor={`note-${p.endpoint_id}`}>Note for the audit log</label>
           <textarea
             id={`note-${p.endpoint_id}`}
@@ -177,9 +175,9 @@ function PendingCard({
           />
           <div className="buttons">
             <button
-              disabled={busy || (warned && !accept)}
+              disabled={busy || warned}
               aria-label={`Approve removal of ${p.endpoint_id}: start the canary`}
-              onClick={() => onDecide(true, accept, note)}
+              onClick={() => onDecide(true, note)}
             >
               Approve: start the canary
             </button>
@@ -187,7 +185,7 @@ function PendingCard({
               className="secondary"
               disabled={busy}
               aria-label={`Decline removal of ${p.endpoint_id}`}
-              onClick={() => onDecide(false, false, note)}
+              onClick={() => onDecide(false, note)}
             >
               Decline
             </button>

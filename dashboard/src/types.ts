@@ -29,6 +29,14 @@ export interface Evidence {
   contribution: number;
 }
 
+/** One rule that fired, with its weight for every class. */
+export interface ScoreRow {
+  key: string;
+  statement: string;
+  source: string;
+  weights: Record<string, number>;
+}
+
 export interface Verdict {
   endpoint_id: string;
   label: Label;
@@ -39,6 +47,12 @@ export interface Verdict {
   evidence: Evidence[];
   recommended_action: string;
   actionable: boolean;
+  /** Every rule that fired; its columns sum to all_class_scores. Absent from
+   *  servers older than the explanation table, empty for model verdicts. */
+  score_table?: ScoreRow[];
+  /** Rules not evaluated because a source they need was never consulted. */
+  abstained?: string[];
+  sources_consulted?: string[];
 }
 
 export interface VerdictDetail extends Verdict {
@@ -189,6 +203,10 @@ export interface ScanEndpoint {
   file: string | null;
   line: number | null;
   framework: string | null;
+  /** The path as written at the declaration, before any prefix. Absent from older reports. */
+  declared_path?: string | null;
+  /** False when the prefix in front of the declared path could not be determined. */
+  prefix_resolved?: boolean | null;
   owner: string | null;
   last_change_days: number | null;
   documented: boolean;

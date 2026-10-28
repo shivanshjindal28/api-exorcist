@@ -498,3 +498,31 @@ button.link.cand-row, .cand-row { display: grid; grid-template-columns: 14rem mi
   .tiles, .card { break-inside: avoid; }
   tr { break-inside: avoid; }
 }
+
+/* ---- Explanations: how a conclusion was reached (views/explain.tsx) ---- */
+details.explain { margin-top: 0.75rem; border: 1px solid var(--border-muted); border-radius: var(--radius); padding: 0.5rem 0.75rem; background: var(--subtle); }
+details.explain > summary { cursor: pointer; font-weight: 600; font-size: 0.875rem; }
+details.explain[open] > summary { margin-bottom: 0.5rem; }
+.score-table table { font-size: 0.8125rem; }
+.score-table th.num, .score-table td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.score-table .winner { background: var(--accent-subtle); }
+.score-table td.pos { color: var(--success); }
+.score-table td.neg { color: var(--danger); }
+.score-table tfoot th { border-top: 2px solid var(--border); }
+
+.steps { list-style: none; padding: 0; margin: 0.75rem 0 0; display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.step { border: 1px solid var(--border-muted); border-radius: var(--radius); padding: 0.6rem 0.7rem; background: var(--subtle); }
+.step p { margin: 0.35rem 0 0; }
+.step-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.step-no { display: inline-grid; place-items: center; width: 1.4rem; height: 1.4rem; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 0.75rem; font-weight: 600; }
+.step-count { margin-left: auto; font-size: 0.75rem; color: var(--done); font-weight: 600; }
+
+.evidence-list { list-style: none; padding: 0; margin: 0.25rem 0 0; display: grid; gap: 0.35rem; font-size: 0.8125rem; }
+/* A text block with the mark in its left margin, not a grid: a grid turns every
+   inline piece of a row (a bold count, a link) into a cell of its own. */
+.evidence-list li { position: relative; padding-left: 1.3rem; }
+.evidence-list li > span:first-child { position: absolute; left: 0; top: 0; font-weight: 700; }
+.evidence-list li.ok > span:first-child { color: var(--success); }
+.evidence-list li.caution > span:first-child { color: var(--attention); }
+.trust h3:first-child { margin-top: 0; }
+.stages { margin: 0 0 0.5rem; padding-left: 1.25rem; display: grid; gap: 0.2rem; }

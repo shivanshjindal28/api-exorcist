@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Card, ErrorBox, LabelBadge, Loading, pct, useLoad, useSession } from "../common";
 import type { Evidence, InventoryRecord, Verdict } from "../types";
+import { ScoreTable } from "./explain";
 
 const LABELS = ["ALL", "ZOMBIE", "ORPHANED", "DEPRECATED", "ACTIVE", "INDETERMINATE"];
 
@@ -137,6 +138,11 @@ function Detail({ endpointId, record }: { endpointId: string; record: InventoryR
 
       <h3>Evidence</h3>
       <EvidenceBars evidence={v.evidence} />
+
+      <details className="explain">
+        <summary>How the score was worked out</summary>
+        <ScoreTable verdict={v} />
+      </details>
 
       {record && (
         <>

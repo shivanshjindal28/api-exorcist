@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -78,12 +78,16 @@ class FakeExtractor:
     def available(self) -> bool:
         return True
 
-    def extract(self, repo_root: Path) -> list[ExtractedRoute]:
+    def extract(
+        self, repo_root: Path, exclude: Sequence[str] = ()
+    ) -> list[ExtractedRoute]:
         out: list[ExtractedRoute] = []
         for f in sorted(repo_root.rglob("*.py")):
             if ".git" in f.parts:
                 continue
             rel = str(f.relative_to(repo_root)).replace("\\", "/")
+            if any(rel.startswith(d + "/") for d in exclude):
+                continue
             for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
                 m = _ROUTE.search(line)
                 if not m:
@@ -234,6 +238,23 @@ def test_existing_debt_is_never_held_against_a_change() -> None:
         r = run_enforcement(root, "main", FakeExtractor())
     check("test_existing_debt_is_never_held_against_a_change",
           r.comparison.passed and not r.comparison.findings,
+          str([f.to_dict() for f in r.comparison.findings]))
+
+
+def test_ignored_files_are_not_part_of_the_change() -> None:
+    """A folder git ignores (cloned repositories, build output) never reaches a
+    commit, so its routes and specs must not be judged as this change's."""
+    base = {**BASE, ".gitignore": "clones/\n"}
+    with repo(base, {"README.md": "docs only\n"}) as root:
+        (root / "clones" / "other").mkdir(parents=True)
+        (root / "clones" / "other" / "app.py").write_text(
+            _route("/v9/not/ours", "POST", "x"), encoding="utf-8")
+        (root / "clones" / "other" / "openapi.yaml").write_text(
+            _spec(("GET", "/v9/documented/elsewhere")), encoding="utf-8")
+        r = run_enforcement(root, "main", FakeExtractor())
+    check("test_ignored_files_are_not_part_of_the_change",
+          r.comparison.passed and not r.comparison.findings
+          and not r.comparison.added,
           str([f.to_dict() for f in r.comparison.findings]))
 
 

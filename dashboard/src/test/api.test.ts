@@ -31,15 +31,15 @@ describe("ApiClient", () => {
 
   it("never sends an approver name: identity comes from the token", async () => {
     const f = fakeFetch(200, {});
-    await new ApiClient(TOKEN, f).decide("GET /x", true, false, "looks dead");
+    await new ApiClient(TOKEN, f).decide("GET /x", true, "looks dead");
     const body = JSON.parse(String(f.mock.calls[0]![1]?.body)) as Record<string, unknown>;
     expect(body).toEqual({
       endpoint_id: "GET /x",
       approve: true,
-      accept_unidentified: false,
       note: "looks dead",
     });
     expect(body).not.toHaveProperty("approver");
+    expect(body).not.toHaveProperty("accept_unidentified");
   });
 
   it("raises an ApiError that knows a 401 means sign in again", async () => {
@@ -52,7 +52,7 @@ describe("ApiClient", () => {
 
   it("surfaces the server's explanation for a refused decision", async () => {
     const f = fakeFetch(409, { detail: "266 unidentified request(s)..." });
-    const err = await new ApiClient(TOKEN, f).decide("POST /d", true, false, "").catch((e: unknown) => e);
+    const err = await new ApiClient(TOKEN, f).decide("POST /d", true, "").catch((e: unknown) => e);
     expect((err as ApiError).status).toBe(409);
     expect((err as ApiError).unauthorised).toBe(false);
     expect((err as ApiError).message).toContain("unidentified");

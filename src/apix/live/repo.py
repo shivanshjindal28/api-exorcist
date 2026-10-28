@@ -70,6 +70,21 @@ def service_of(rel_path: str) -> str:
     return parts[0] if len(parts) > 1 else "root"
 
 
+def service_directories(root: Path) -> set[str]:
+    """Every name service_of can return for a file in this tree: top-level
+    folders, and the folders inside a container such as services/."""
+    names: set[str] = set()
+    for top in root.iterdir() if root.is_dir() else ():
+        if not top.is_dir() or top.name.startswith(".") or top.name in _SKIP_DIRS:
+            continue
+        if top.name.lower() in _SERVICE_CONTAINERS:
+            names.update(d.name for d in top.iterdir()
+                         if d.is_dir() and not d.name.startswith("."))
+        else:
+            names.add(top.name)
+    return names
+
+
 class RepoError(RuntimeError):
     """Raised when a repository cannot be acquired or read."""
 

@@ -256,6 +256,8 @@ def repository_report(
             "file": code.get("source_file"),
             "line": code.get("source_line"),
             "framework": code.get("framework"),
+            "declared_path": code.get("declared_path"),
+            "prefix_resolved": code.get("prefix_resolved"),
             "owner": rec.owner_team if rec else None,
             "last_change_days": rec.days_since_last_commit if rec else None,
             "documented": Source.OPENAPI.value in seen,

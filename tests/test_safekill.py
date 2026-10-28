@@ -33,6 +33,7 @@ from apix.safekill import (  # noqa: E402
     KillState,
     NamedApprover,
     NoApprover,
+    PolicyApprover,
     SafeKillController,
     SafeKillPolicy,
     WindowObservation,
@@ -399,15 +400,50 @@ def test_demo_estate_retires_dead_endpoints_and_harms_nobody() -> None:
 
 
 def test_accepted_anonymous_traffic_does_not_false_alarm() -> None:
-    """With a shadow baseline, 3 probes a day must not look like a dependency."""
+    """With a shadow baseline, 3 probes a day must not look like a dependency.
+
+    Only the evaluation harness may approve past unidentified traffic, and only
+    with the override switched on; this measures the canary's breach rule.
+    """
     target = next(a for a in _demo_assessments()
                   if a.verdict.endpoint_id == "POST /v1/debug/payments/replay")
     out = SafeKillController(
         backend=SimulatedEnforcement(ESTATE, seed=7),
-        approver=NamedApprover("op", accept_unidentified=True),
+        approver=PolicyApprover(accept_unidentified=True),
+        policy=SafeKillPolicy(allow_unidentified_override=True),
     ).run(target)
     check("test_accepted_anonymous_traffic_does_not_false_alarm",
           out.state is KillState.RETIRED, f"{out.state.value}: {out.reason}")
+
+
+def test_no_person_can_approve_over_unidentified_traffic() -> None:
+    """An endpoint whose callers cannot be identified is never removed.
+
+    A person once ticked "accept" on POST /v1/debug/payments/replay, 266
+    anonymous requests in its shadow, and it was retired. Now the approval is
+    refused, the candidate stays pending, and declining still works.
+    """
+    from apix.safekill.controller import Decision, UnidentifiedTraffic
+
+    ep = "POST /v1/debug/payments/replay"
+    target = next(a for a in _demo_assessments() if a.verdict.endpoint_id == ep)
+    controller = SafeKillController(backend=SimulatedEnforcement(ESTATE, seed=7))
+    waiting = controller.begin(target).pending_approval   # read now: the outcome updates
+    try:
+        controller.resolve(ep, Decision(approved=True, approver="op", human=True))
+        refused = False
+    except UnidentifiedTraffic as e:
+        refused = "authentication" in str(e)
+    still_pending = ep in [r.endpoint_id for r in controller.pending()]
+    declined = controller.resolve(ep, Decision(approved=False, approver="op", human=True))
+    named = SafeKillController(
+        backend=SimulatedEnforcement(ESTATE, seed=7), approver=NamedApprover("op"),
+    ).run(target)
+    check("test_no_person_can_approve_over_unidentified_traffic",
+          waiting and refused and still_pending
+          and declined.state is KillState.DENIED and named.state is KillState.DENIED,
+          f"refused={refused} pending={still_pending} declined={declined.state.value} "
+          f"named={named.state.value}")
 
 
 def test_safekill_prevents_the_gates_outages() -> None:
