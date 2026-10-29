@@ -1,7 +1,19 @@
 import { useMemo, useState } from "react";
-import { Card, ErrorBox, LabelBadge, Loading, pct, useLoad, useSession } from "../common";
+import {
+  Card,
+  ErrorBox,
+  LabelBadge,
+  Loading,
+  MethodPath,
+  SortTh,
+  pct,
+  useLoad,
+  useSession,
+  useSort,
+} from "../common";
 import type { Evidence, InventoryRecord, Verdict } from "../types";
 import { ScoreTable } from "./explain";
+import { ALL_SOURCES, SourceChips } from "./scan/shared";
 
 const LABELS = ["ALL", "ZOMBIE", "ORPHANED", "DEPRECATED", "ACTIVE", "INDETERMINATE"];
 
@@ -20,9 +32,17 @@ export function Endpoints() {
   const [label, setLabel] = useState("ALL");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [sort, onSort] = useSort<"endpoint" | "label" | "confidence" | "risk" | "seen">({ key: "risk", dir: "desc" });
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const value = ({ verdict: v, record: r }: Row): string | number =>
+      sort.key === "endpoint" ? v.endpoint_id
+        : sort.key === "label" ? v.label
+          : sort.key === "confidence" ? v.confidence
+            : sort.key === "seen" ? r?.seen_by.length ?? 0
+              : v.risk_score;
+    const dir = sort.dir === "asc" ? 1 : -1;
     return (data ?? [])
       .filter((r) => label === "ALL" || r.verdict.label === label)
       .filter(
@@ -31,8 +51,13 @@ export function Endpoints() {
           r.verdict.endpoint_id.toLowerCase().includes(q) ||
           (r.record?.service ?? "").toLowerCase().includes(q),
       )
-      .sort((a, b) => b.verdict.risk_score - a.verdict.risk_score);
-  }, [data, label, query]);
+      .sort((a, b) => {
+        const va = value(a);
+        const vb = value(b);
+        const c = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb));
+        return c * dir || a.verdict.endpoint_id.localeCompare(b.verdict.endpoint_id);
+      });
+  }, [data, label, query, sort]);
 
   if (error) return <ErrorBox message={error} />;
   if (loading && !data) return <Loading what="endpoints" />;
@@ -40,15 +65,19 @@ export function Endpoints() {
   return (
     <div className="split">
       <Card title={`Endpoints (${rows.length})`}>
+        <div className="filter-chips" role="group" aria-label="Label">
+          {LABELS.map((l) => {
+            const n = (data ?? []).filter((r) => l === "ALL" || r.verdict.label === l).length;
+            if (l !== "ALL" && n === 0) return null;
+            return (
+              <button key={l} className={`fchip ${label === l ? "is-on" : ""}`} aria-pressed={label === l} onClick={() => setLabel(l)}>
+                {l === "ALL" ? "All" : l.charAt(0) + l.slice(1).toLowerCase()}
+                <span className="fchip-count">{n}</span>
+              </button>
+            );
+          })}
+        </div>
         <div className="filters">
-          <label>
-            Label{" "}
-            <select value={label} onChange={(e) => setLabel(e.target.value)}>
-              {LABELS.map((l) => (
-                <option key={l}>{l}</option>
-              ))}
-            </select>
-          </label>
           <input
             type="search"
             placeholder="Filter by path or service"
@@ -61,12 +90,12 @@ export function Endpoints() {
           <table>
             <thead>
               <tr>
-                <th>Endpoint</th>
-                <th>Label</th>
-                <th>Confidence</th>
-                <th>Risk</th>
+                <SortTh label="Endpoint" k="endpoint" sort={sort} onSort={onSort} />
+                <SortTh label="Label" k="label" sort={sort} onSort={onSort} />
+                {!selected && <SortTh label="Confidence" k="confidence" sort={sort} onSort={onSort} />}
+                <SortTh label="Risk" k="risk" sort={sort} onSort={onSort} />
                 <th>Auth</th>
-                <th>Seen by</th>
+                {!selected && <SortTh label="Seen by" k="seen" sort={sort} onSort={onSort} />}
               </tr>
             </thead>
             <tbody>
@@ -78,14 +107,14 @@ export function Endpoints() {
                 >
                   <td>
                     <button className="link" onClick={() => setSelected(v.endpoint_id)}>
-                      <code>{v.endpoint_id}</code>
+                      <MethodPath method={v.endpoint_id.split(" ")[0] ?? ""} path={v.endpoint_id.split(" ").slice(1).join(" ")} />
                     </button>
                     <div className="muted small">{r?.service}</div>
                   </td>
                   <td>
                     <LabelBadge label={v.label} />
                   </td>
-                  <td>{pct(v.confidence)}</td>
+                  {!selected && <td>{pct(v.confidence)}</td>}
                   <td>
                     <span className={`risk risk-${v.risk_score}`}>{v.risk_score}</span>
                   </td>
@@ -96,7 +125,7 @@ export function Endpoints() {
                       (r?.auth_scheme ?? "?").toLowerCase()
                     )}
                   </td>
-                  <td>{r ? `${r.seen_by.length} / 6` : "?"}</td>
+                  {!selected && <td>{r ? `${r.seen_by.length} / 6` : "?"}</td>}
                 </tr>
               ))}
             </tbody>
@@ -129,7 +158,7 @@ function Detail({ endpointId, record }: { endpointId: string; record: InventoryR
   const { verdict: v, radius } = data;
 
   return (
-    <Card title="Why">
+    <Card title="Why" className="sticky-panel">
       <p>
         <code>{v.endpoint_id}</code> <LabelBadge label={v.label} /> at {pct(v.confidence)}{" "}
         confidence, decided by {v.decided_by}.
@@ -147,13 +176,7 @@ function Detail({ endpointId, record }: { endpointId: string; record: InventoryR
       {record && (
         <>
           <h3>Sources</h3>
-          <ul className="chips">
-            {["GATEWAY", "OPENAPI", "TRAFFIC", "CODE", "DNS", "CICD"].map((s) => (
-              <li key={s} className={record.seen_by.includes(s) ? "chip on" : "chip off"}>
-                {s}
-              </li>
-            ))}
-          </ul>
+          <SourceChips e={record} consulted={ALL_SOURCES} />
           <p className="muted small">
             Absence is evidence: the sources that did <em>not</em> see an endpoint are what
             identify a zombie.

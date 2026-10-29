@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { ApiClient, session } from "./api";
-import { Menu, SessionContext } from "./common";
+import { SessionContext, ToastProvider } from "./common";
+import {
+  IconBank,
+  IconCollapse,
+  IconExpand,
+  IconLogOut,
+  IconMoon,
+  IconOverview,
+  IconPlus,
+  IconProjects,
+  IconSun,
+} from "./icons";
 import type { Principal } from "./types";
 import { Dashboard } from "./views/Dashboard";
 import { Login } from "./views/Login";
@@ -9,6 +20,7 @@ import { NewScan } from "./views/NewScan";
 import { ExecutiveReport } from "./views/Report";
 import { ScanResults } from "./views/ScanResults";
 import { ScanView } from "./views/scan/ScanView";
+import { Splash, shouldShowSplash } from "./views/Splash";
 
 interface View {
   title: string;
@@ -89,15 +101,55 @@ function useTheme(): [Theme, () => void] {
   return [theme, toggle];
 }
 
-const NAV: { href: string; label: string; match: (v: string, p: string | null) => boolean }[] = [
-  { href: "#dashboard", label: "Overview", match: (v) => v === "dashboard" },
+const NAV: {
+  href: string;
+  label: string;
+  icon: ReactNode;
+  match: (v: string, p: string | null) => boolean;
+}[] = [
+  { href: "#dashboard", label: "Overview", icon: <IconOverview />, match: (v) => v === "dashboard" },
   {
     href: "#results",
     label: "Projects",
+    icon: <IconProjects />,
     match: (v, p) => (v === "results" && !(p ?? "").startsWith("demo")) || v === "report" || v === "scan",
   },
-  { href: "#results/demo/overview", label: "Demo bank", match: (v, p) => v === "results" && (p ?? "").startsWith("demo") },
+  {
+    href: "#results/demo/overview",
+    label: "Demo bank",
+    icon: <IconBank />,
+    match: (v, p) => v === "results" && (p ?? "").startsWith("demo"),
+  },
 ];
+
+// Whether the sidebar is folded to icons: a per-viewer convenience, like the theme.
+const COLLAPSE_KEY = "apix.sidebar";
+
+function useCollapsed(): [boolean, () => void] {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSE_KEY) === "collapsed";
+    } catch {
+      return false;
+    }
+  });
+  const toggle = useCallback(() => {
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem(COLLAPSE_KEY, c ? "open" : "collapsed");
+      } catch {
+        // Not remembered; it still applies for this visit.
+      }
+      return !c;
+    });
+  }, []);
+  return [collapsed, toggle];
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/[\s._-]+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")).toUpperCase();
+}
 
 export function App() {
   const [token, setToken] = useState<string | null>(() => {
@@ -109,6 +161,9 @@ export function App() {
   const [checked, setChecked] = useState(false);
   const [where, setWhere] = useState(() => route(window.location.hash));
   const [theme, toggleTheme] = useTheme();
+  const [collapsed, toggleCollapsed] = useCollapsed();
+  const [splash, setSplash] = useState(shouldShowSplash);
+  const splashView = splash ? <Splash onClose={() => setSplash(false)} /> : null;
 
   const api = useMemo(() => (token ? new ApiClient(token) : null), [token]);
 
@@ -148,6 +203,8 @@ export function App() {
   if (!checked) return null;
   if (!api || !principal) {
     return (
+      <>
+      {splashView}
       <Login
         onSignIn={(t, who) => {
           session.save(t);
@@ -155,50 +212,67 @@ export function App() {
           setPrincipal(who);
         }}
       />
+      </>
     );
   }
 
   return (
     <SessionContext.Provider value={{ api, principal, signOut }}>
-      <div className="shell">
-        <header className="topnav">
-          <div className="topnav-inner">
-          <a className="wordmark" href="#dashboard">
-            <img src="/logo.png" alt="" width={44} height={44} />
-            API Exorcist
-          </a>
-          <nav aria-label="Sections">
-            {NAV.map((n) => (
-              <a key={n.href} href={n.href} aria-current={n.match(where.view, where.param) ? "page" : undefined}>
-                {n.label}
-              </a>
-            ))}
-          </nav>
-          <div className="topnav-right">
+      {splashView}
+      <ToastProvider>
+        <div className={collapsed ? "shell is-collapsed" : "shell"}>
+          <aside className="sidebar">
+            <a className="wordmark" href="#dashboard" title="API Exorcist">
+              <img src="/logo.png" alt="" width={40} height={40} />
+              <span className="wordmark-text hide-collapsed">
+                <span className="wordmark-name">API Exorcist</span>
+                <span className="wordmark-tag">API inventory and safe retirement</span>
+              </span>
+            </a>
             {where.view !== "scan" && (
-              <a className="btn small" href="#scan">
-                New scan
+              <a className="btn new-scan" href="#scan" title="New scan">
+                <IconPlus size={17} />
+                <span className="hide-collapsed">New scan</span>
               </a>
             )}
-            <Menu
-              label={principal.name}
-              buttonClass="user-btn"
-              header={
-                <div className="menu-who">
+            <div className="nav-label hide-collapsed">Workspace</div>
+            <nav className="nav" aria-label="Sections">
+              {NAV.map((n) => (
+                <a
+                  key={n.href}
+                  href={n.href}
+                  title={n.label}
+                  aria-current={n.match(where.view, where.param) ? "page" : undefined}
+                >
+                  {n.icon}
+                  <span className="hide-collapsed">{n.label}</span>
+                </a>
+              ))}
+            </nav>
+            <div className="sidebar-foot">
+              <button className="side-btn" onClick={toggleTheme} title="Switch theme">
+                {theme === "dark" ? <IconSun /> : <IconMoon />}
+                <span className="side-label hide-collapsed">{theme === "dark" ? "Light theme" : "Dark theme"}</span>
+              </button>
+              <button className="side-btn collapse-btn" onClick={toggleCollapsed} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
+                {collapsed ? <IconExpand /> : <IconCollapse />}
+                <span className="side-label hide-collapsed">Collapse</span>
+              </button>
+              <div className="user-card">
+                <span className="avatar" aria-hidden="true">{initials(principal.name)}</span>
+                <span className="user-meta hide-collapsed">
                   <strong>{principal.name}</strong>
-                  {principal.role === "approver" ? "Approver: can scan and decide" : "Viewer: read only"}
-                </div>
-              }
-              items={[
-                { label: theme === "dark" ? "Light theme" : "Dark theme", onSelect: toggleTheme },
-                { label: "Sign out", onSelect: signOut },
-              ]}
-            />
-          </div>
-          </div>
-        </header>
-        <main className="main">{view.render(where.param)}</main>
-      </div>
+                  <span>{principal.role === "approver" ? "Approver: can scan and decide" : "Viewer: read only"}</span>
+                </span>
+                <button className="icon-btn" onClick={signOut} aria-label="Sign out" title="Sign out">
+                  <IconLogOut size={17} />
+                </button>
+              </div>
+            </div>
+          </aside>
+          <main className="main">{view.render(where.param)}</main>
+        </div>
+      </ToastProvider>
     </SessionContext.Provider>
   );
 }

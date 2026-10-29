@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ChainStrip } from "../../chain";
 import { Card, ErrorBox, Loading, useLoad, useSession } from "../../common";
 
 const STATE_LABEL: Record<string, string> = {
@@ -15,6 +17,7 @@ const label = (s: string | null) => (s == null ? "" : STATE_LABEL[s] ?? s);
 export function ScanAuditTab({ id }: { id: string }) {
   const { api } = useSession();
   const { data, error, loading, reload } = useLoad(() => api.scanAudit(id), [id]);
+  const [runs, setRuns] = useState(0);
 
   if (error) return <ErrorBox message={error} />;
   if (loading && !data) return <Loading what="audit log" />;
@@ -30,9 +33,22 @@ export function ScanAuditTab({ id }: { id: string }) {
           and of the entry before it, so editing, deleting or reordering any of them breaks
           every hash after it.
         </p>
+        <ChainStrip
+          key={runs}
+          entries={data.entries}
+          verified={runs && !loading ? chain.ok : null}
+          brokenAt={chain.broken_at}
+          label={label}
+        />
         <p className="mono small">head {data.head}</p>
         <div className="buttons">
-          <button onClick={reload} disabled={loading}>
+          <button
+            onClick={() => {
+              setRuns((r) => r + 1);
+              reload();
+            }}
+            disabled={loading}
+          >
             {loading ? "Recomputing..." : "Verify the whole chain"}
           </button>
           <span className={chain.ok ? "good-text" : "bad-text"} role="status">

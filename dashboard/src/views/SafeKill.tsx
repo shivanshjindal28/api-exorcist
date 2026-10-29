@@ -9,8 +9,10 @@ import {
   pct,
   useLoad,
   useSession,
+  useToast,
 } from "../common";
 import type { KillOutcome, Observation, PendingApproval } from "../types";
+import { CanaryMeter, Pipeline } from "../pipeline";
 import { SafeKillSteps } from "./explain";
 
 export function SafeKill() {
@@ -19,16 +21,18 @@ export function SafeKill() {
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const approver = canApprove(principal);
+  const notify = useToast();
 
   if (error) return <ErrorBox message={error} />;
   if (loading && !data) return <Loading what="Safe Kill state" />;
   if (!data) return null;
 
-  async function act(endpointId: string, run: () => Promise<unknown>) {
+  async function act(endpointId: string, run: () => Promise<unknown>, done: string) {
     setBusy(endpointId);
     setActionError(null);
     try {
       await run();
+      notify(done, { detail: endpointId });
       reload();
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : String(e));
@@ -67,7 +71,11 @@ export function SafeKill() {
               approver={approver}
               busy={busy === p.endpoint_id}
               onDecide={(approve, note) =>
-                act(p.endpoint_id, () => api.decide(p.endpoint_id, approve, note))
+                act(
+                  p.endpoint_id,
+                  () => api.decide(p.endpoint_id, approve, note),
+                  approve ? "Approved: the canary has started" : "Removal declined",
+                )
               }
             />
           ))
@@ -101,7 +109,7 @@ export function SafeKill() {
                         className="small"
                         disabled={busy === c.endpoint_id}
                         aria-label={`Start shadow for ${c.endpoint_id}`}
-                        onClick={() => act(c.endpoint_id, () => api.startShadow(c.endpoint_id))}
+                        onClick={() => act(c.endpoint_id, () => api.startShadow(c.endpoint_id), "Shadow window started")}
                       >
                         Start shadow
                       </button>
@@ -145,6 +153,10 @@ function PendingCard({
       <h3>
         <code>{p.endpoint_id}</code>
       </h3>
+      <Pipeline
+        state="AWAITING_APPROVAL"
+        notes={{ 0: "cleared", 1: shadow ? `${shadow.days} days, ${shadow.requests} req.` : "", 2: warned ? "cannot be approved" : "your decision" }}
+      />
       <p className="muted small">classified ZOMBIE at {pct(p.confidence)} confidence</p>
       <ul className="reasons">
         {p.reasons.map((r) => (
@@ -222,11 +234,23 @@ export function OutcomeView({ outcome: o }: { outcome: KillOutcome }) {
       <h3>
         <code>{o.endpoint_id}</code> <StateBadge state={o.state} />
       </h3>
-      <ol className="path" aria-label="States passed through">
-        {o.path.map((s, i) => (
-          <li key={`${s}-${i}`}>{s.replace(/_/g, " ").toLowerCase()}</li>
-        ))}
-      </ol>
+      <Pipeline
+        state={o.state}
+        notes={{
+          ...(o.shadow ? { 1: `${o.shadow.days} days` } : {}),
+          ...(o.approver ? { 2: `by ${o.approver}` } : {}),
+          ...(o.canary.length ? { 3: `${o.canary.length} of 3 steps` } : {}),
+        }}
+      />
+      {o.canary.length > 0 && <CanaryMeter canary={o.canary} rolledBack={o.state === "ROLLED_BACK"} />}
+      <details className="path-details">
+        <summary className="small muted">Every state it passed through</summary>
+        <ol className="path" aria-label="States passed through">
+          {o.path.map((s, i) => (
+            <li key={`${s}-${i}`}>{s.replace(/_/g, " ").toLowerCase()}</li>
+          ))}
+        </ol>
+      </details>
       <p>{o.reason}</p>
       <p className="muted small">
         {o.days} simulated days

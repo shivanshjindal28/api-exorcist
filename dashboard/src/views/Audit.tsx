@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Card, ErrorBox, Loading, useLoad, useSession } from "../common";
+import { ChainStrip } from "../chain";
+import { Card, ErrorBox, Loading, useLoad, useSession, useToast } from "../common";
 import type { ChainCheck } from "../types";
 
 export function Audit() {
@@ -9,11 +10,19 @@ export function Audit() {
   const { data, error, loading } = useLoad(() => api.audit(applied || undefined), [applied]);
   const [check, setCheck] = useState<ChainCheck | null>(null);
   const [checking, setChecking] = useState(false);
+  const notify = useToast();
+  const [runs, setRuns] = useState(0);
 
   async function verify() {
     setChecking(true);
+    setRuns((r) => r + 1);
     try {
-      setCheck(await api.verifyAudit());
+      const result = await api.verifyAudit();
+      setCheck(result);
+      notify(result.ok ? "Audit chain verified" : "Audit chain is broken", {
+        tone: result.ok ? "ok" : "error",
+        detail: result.ok ? "Every hash recomputed and matched." : undefined,
+      });
     } finally {
       setChecking(false);
     }
@@ -30,6 +39,12 @@ export function Audit() {
           {data.total} entries. Each carries the SHA-256 of its own content and of the entry
           before it, so editing, deleting or reordering any entry breaks every hash after it.
         </p>
+        <ChainStrip
+          key={runs}
+          entries={data.entries}
+          verified={check && !checking ? check.ok : null}
+          brokenAt={check?.broken_at}
+        />
         <p className="mono small">head {data.head}</p>
         <div className="buttons">
           <button onClick={verify} disabled={checking}>

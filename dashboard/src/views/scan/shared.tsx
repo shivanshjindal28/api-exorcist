@@ -1,7 +1,28 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { ApiError } from "../../api";
-import { ErrorBox, canApprove, useSession } from "../../common";
+import { ErrorBox, canApprove, useSession, useToast } from "../../common";
+import {
+  IconActivity,
+  IconAudit,
+  IconCheck,
+  IconEndpoint,
+  IconGateway,
+  IconGlobe,
+  IconMinus,
+  IconWorkflow,
+  IconX,
+} from "../../icons";
 import type { Decision, Review, ScanCheck, ScanEndpoint, ScanJob } from "../../types";
+
+const SOURCE_ICON: Record<string, ReactNode> = {
+  GATEWAY: <IconGateway size={16} />,
+  OPENAPI: <IconAudit size={16} />,
+  TRAFFIC: <IconActivity size={16} />,
+  CODE: <IconEndpoint size={16} />,
+  DNS: <IconGlobe size={16} />,
+  CICD: <IconWorkflow size={16} />,
+};
 
 export const CHECK_TEXT: Record<ScanCheck["status"], string> = {
   ok: "worked",
@@ -57,9 +78,9 @@ export function when(iso: string | null): string {
 }
 
 /** Which of the six sources saw an endpoint, which did not, which were never asked. */
-export function SourceChips({ e, consulted }: { e: ScanEndpoint; consulted: string[] }) {
+export function SourceChips({ e, consulted }: { e: Pick<ScanEndpoint, "seen_by">; consulted: string[] }) {
   return (
-    <ul className="chips" aria-label="Sources">
+    <ul className="sources" aria-label="Sources">
       {ALL_SOURCES.map((s) => {
         const asked = consulted.includes(s);
         const saw = e.seen_by.includes(s);
@@ -67,10 +88,15 @@ export function SourceChips({ e, consulted }: { e: ScanEndpoint; consulted: stri
         return (
           <li
             key={s}
-            className={`chip ${!asked ? "unasked" : saw ? "on" : "off"}`}
+            className={`source ${!asked ? "unasked" : saw ? "on" : "off"}`}
             title={`${sourceName(s)}: ${state}`}
           >
-            {sourceName(s)}
+            <span className="source-icon">{SOURCE_ICON[s]}</span>
+            <span className="source-name">{sourceName(s)}</span>
+            <span className="source-state" aria-hidden="true">
+              {!asked ? <IconMinus size={13} /> : saw ? <IconCheck size={13} /> : <IconX size={13} />}
+              {!asked ? "not asked" : saw ? "saw it" : "absent"}
+            </span>
             <span className="visually-hidden">: {state}</span>
           </li>
         );
@@ -100,6 +126,7 @@ export function ReviewControls({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const notify = useToast();
 
   if (!canApprove(principal)) {
     return (
@@ -116,6 +143,7 @@ export function ReviewControls({
       const r = await api.review(jobId, e.id, decision, note.trim());
       onReviewed(r.reviews);
       setNote("");
+      notify("Decision recorded", { detail: `${e.id}, in the scan's audit log under your name.` });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     } finally {

@@ -1,11 +1,14 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
+// The version shown on the launch screen comes from package.json, so it cannot drift.
+import pkg from "./package.json";
 
 // The build is written into the Python package, so `pip install` plus
 // `apix serve` gives a working dashboard on a machine with no Node at all.
 // CI rebuilds it and fails if the committed output differs from the source.
 export default defineConfig({
   plugins: [react()],
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   base: "/",
   build: {
     outDir: "../src/apix/api/dashboard",

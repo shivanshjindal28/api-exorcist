@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import type { ReactNode } from "react";
 import { ApiError } from "./api";
 import type { ApiClient } from "./api";
+import { IconAlert, IconCheckCircle, IconInfo, IconSort, IconX } from "./icons";
 import type { Principal } from "./types";
 
 interface Session {
@@ -72,16 +73,78 @@ export function useLoad<T>(fetcher: () => Promise<T>, deps: unknown[] = []): Loa
 export function ErrorBox({ message }: { message: string }) {
   return (
     <div className="error" role="alert">
-      {message}
+      <IconAlert size={17} />
+      <span>{message}</span>
     </div>
   );
 }
 
+/** The shape of the page while it loads; the words are there for screen readers. */
 export function Loading({ what }: { what: string }) {
   return (
-    <p className="muted" aria-live="polite">
-      Loading {what}...
-    </p>
+    <div className="skeleton-block" aria-live="polite" aria-busy="true">
+      <span className="visually-hidden">Loading {what}...</span>
+      <div className="skeleton-row" aria-hidden="true">
+        <span className="skeleton tile-shape" />
+        <span className="skeleton tile-shape" />
+        <span className="skeleton tile-shape" />
+        <span className="skeleton tile-shape" />
+      </div>
+      <span className="skeleton panel" aria-hidden="true" />
+      <span className="skeleton line" aria-hidden="true" />
+      <span className="skeleton line short" aria-hidden="true" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Toasts: a short confirmation that an action happened, or why it did not.
+
+type ToastTone = "ok" | "error" | "info";
+interface Toast {
+  id: number;
+  tone: ToastTone;
+  title: string;
+  detail?: string;
+}
+type Notify = (title: string, opts?: { detail?: string; tone?: ToastTone }) => void;
+
+export const ToastContext = createContext<Notify>(() => {});
+
+/** Show a toast. Outside a provider (in tests of a single view) it does nothing. */
+export function useToast(): Notify {
+  return useContext(ToastContext);
+}
+
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const dismiss = useCallback((id: number) => setToasts((ts) => ts.filter((t) => t.id !== id)), []);
+  const notify = useCallback<Notify>(
+    (title, opts = {}) => {
+      const id = Date.now() + Math.random();
+      setToasts((ts) => [...ts.slice(-3), { id, title, detail: opts.detail, tone: opts.tone ?? "ok" }]);
+      window.setTimeout(() => dismiss(id), opts.tone === "error" ? 8000 : 4500);
+    },
+    [dismiss],
+  );
+  return (
+    <ToastContext.Provider value={notify}>
+      {children}
+      <div className="toasts" role="status" aria-live="polite">
+        {toasts.map((t) => (
+          <div key={t.id} className={`toast toast-${t.tone}`}>
+            {t.tone === "error" ? <IconAlert /> : t.tone === "info" ? <IconInfo /> : <IconCheckCircle />}
+            <div className="toast-text">
+              <strong>{t.title}</strong>
+              {t.detail && <span>{t.detail}</span>}
+            </div>
+            <button className="icon-btn" aria-label="Dismiss" onClick={() => dismiss(t.id)}>
+              <IconX size={15} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </ToastContext.Provider>
   );
 }
 
@@ -114,15 +177,17 @@ export function Card({
   children,
   actions,
   flush = false,
+  className,
 }: {
   title: string;
   children: ReactNode;
   actions?: ReactNode;
   /** Tables run edge to edge. */
   flush?: boolean;
+  className?: string;
 }) {
   return (
-    <section className={flush ? "card card-flush" : "card"}>
+    <section className={["card", flush ? "card-flush" : "", className ?? ""].filter(Boolean).join(" ")}>
       {actions ? (
         <div className="card-head">
           <h2>{title}</h2>
@@ -242,12 +307,18 @@ export function LevelBadge({ level, category }: { level: string; category: strin
   );
 }
 
+/** Priority as a severity: the word says how urgent, the number is the score. */
+export function priorityLevel(v: number): "critical" | "high" | "medium" | "low" | "none" {
+  return v >= 8 ? "critical" : v >= 5 ? "high" : v >= 3 ? "medium" : v >= 1 ? "low" : "none";
+}
+
 export function Priority({ value }: { value: number | undefined }) {
   const v = value ?? 0;
-  const tone = v >= 8 ? "prio-hot" : v >= 5 ? "prio-warm" : "";
+  const level = priorityLevel(v);
+  const word = level === "none" ? "None" : level.charAt(0).toUpperCase() + level.slice(1);
   return (
-    <span className={`prio ${tone}`} title="Priority: evidence against the endpoint, weighted by what it handles">
-      {v}
+    <span className={`prio prio-${level}`} title="Priority: evidence against the endpoint, weighted by what it handles">
+      {word} <span className="prio-score">{v}</span>
     </span>
   );
 }
@@ -263,7 +334,7 @@ export function Sparkline({ points, width = 120, height = 28 }: { points: number
   return (
     <svg className="spark" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
       <path className="spark-area" d={area} />
-      <path d={line} />
+      <path className="spark-line" d={line} pathLength={1} />
     </svg>
   );
 }
@@ -332,5 +403,53 @@ export function Menu({
         </ul>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sortable tables.
+
+export interface SortState<K extends string> {
+  key: K;
+  dir: "asc" | "desc";
+}
+
+/** Sort state, and a function that clicks a column: first click sorts it, second reverses it. */
+export function useSort<K extends string>(initial: SortState<K>): [SortState<K>, (key: K) => void] {
+  const [sort, setSort] = useState(initial);
+  const toggle = useCallback(
+    (key: K) =>
+      setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === initial.key ? initial.dir : "asc" })),
+    [initial.key, initial.dir],
+  );
+  return [sort, toggle];
+}
+
+/** A column header that sorts its table. */
+export function SortTh<K extends string>({
+  label,
+  k,
+  sort,
+  onSort,
+  className,
+  title,
+}: {
+  label: string;
+  k: K;
+  sort: SortState<K>;
+  onSort: (key: K) => void;
+  className?: string;
+  title?: string;
+}) {
+  const active = sort.key === k;
+  return (
+    <th className={className} title={title} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button className={`sort ${active ? "is-active" : ""}`} onClick={() => onSort(k)}>
+        {label}
+        <span className="sort-mark" aria-hidden="true">
+          {active ? (sort.dir === "asc" ? "▲" : "▼") : <IconSort size={12} />}
+        </span>
+      </button>
+    </th>
   );
 }

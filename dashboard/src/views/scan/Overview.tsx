@@ -1,3 +1,4 @@
+import { CountUp } from "../../charts";
 import { Card, LevelBadge, LifecycleBadge } from "../../common";
 import type { Lifecycle, ScanJob } from "../../types";
 import { ScanStages, TrustCard } from "../explain";
@@ -33,7 +34,7 @@ export function ScanOverviewTab({ job }: { job: ScanJob }) {
         {report.summary.map((s) => (
           <div className={`tile ${TONE[s.label] ?? ""}`} key={s.label}>
             <div className="tile-label">{s.label}</div>
-            <div className="tile-value">{s.value}</div>
+            <div className="tile-value"><CountUp value={s.value} /></div>
           </div>
         ))}
       </div>

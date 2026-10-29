@@ -10,6 +10,7 @@ import {
   Sparkline,
   canApprove,
   useSession,
+  useToast,
 } from "../../common";
 import type { Lifecycle, ScanJob, Traffic } from "../../types";
 import { when } from "./shared";
@@ -59,6 +60,7 @@ function ImportCard({
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [over, setOver] = useState(false);
+  const notify = useToast();
 
   function pick(e: ChangeEvent<HTMLInputElement>) {
     setError(null);
@@ -77,6 +79,7 @@ function ImportCard({
     setProgress(0);
     try {
       onImported(await api.importTraffic(job.id, files, setProgress));
+      notify("Access logs imported", { detail: "Every endpoint is now classified from real usage." });
       setFiles([]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));

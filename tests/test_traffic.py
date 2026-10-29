@@ -305,4 +305,12 @@ def test_plan_exports_and_portfolio_over_http() -> None:
     assert out["csv"].text.startswith("endpoint,method,path")
     assert out["openapi"].status_code == 200 and out["pdf"].status_code == 404
     assert folio["totals"]["projects"] == 1 and folio["projects"][0]["id"] == job_id
+    # Each endpoint is counted once in the breakdown, and once by data category.
+    total = folio["totals"]["endpoints"]
+    assert sum(folio["composition"].values()) == total
+    assert sum(c["endpoints"] for c in folio["by_category"]) == total
+    assert folio["composition"]["candidate"] + folio["composition"]["likely"]         + folio["composition"]["zombie"] == folio["totals"]["candidates"]
+    # One scan of the project: a history of one, nothing to compare against.
+    assert folio["previous"] is None and folio["compared"] == 0
+    assert [h["endpoints"] for h in folio["projects"][0]["history"]] == [total]
     assert again.status_code == 422 and "upload it again" in again.json()["detail"]
