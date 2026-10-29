@@ -3,7 +3,7 @@
  * neither. Colour comes from classes (tone-*), so both themes apply without
  * code. Motion (motion.ts) is off for reduced-motion viewers and in tests. */
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { motionOK, useCountUp, useEntered, useTilt } from "./motion";
 
@@ -37,7 +37,17 @@ const DEPTH = 7;
 export function Donut({ slices, centre, caption }: { slices: Slice[]; centre: ReactNode; caption: string }) {
   const total = slices.reduce((n, s) => n + s.value, 0);
   const entered = useEntered();
-  const [active, setActive] = useState<string | null>(null);
+  const [active, setActiveNow] = useState<string | null>(null);
+  // Moving from one slice to the next crosses a hairline gap; clearing the
+  // highlight there made it flicker. A slice takes it at once, and it is let
+  // go only if the pointer has not reached another slice a moment later.
+  const clearing = useRef<number | undefined>(undefined);
+  const setActive = useCallback((key: string | null) => {
+    window.clearTimeout(clearing.current);
+    if (key === null) clearing.current = window.setTimeout(() => setActiveNow(null), 140);
+    else setActiveNow(key);
+  }, []);
+  useEffect(() => () => window.clearTimeout(clearing.current), []);
   const tilt = useTilt<HTMLDivElement>(10);
   const live = slices.filter((s) => s.value > 0);
   const on = live.find((s) => s.key === active) ?? null;

@@ -46,6 +46,17 @@ export function Splash({ onClose }: { onClose: () => void }) {
     window.setTimeout(onClose, 380);
   }, [off, onClose]);
 
+  // The console behind is a long page; while the launch screen is up it must
+  // not scroll, or a scrollbar shows beside the screen that is meant to fill it.
+  useEffect(() => {
+    const root = document.documentElement;
+    const before = root.style.overflow;
+    root.style.overflow = "hidden";
+    return () => {
+      root.style.overflow = before;
+    };
+  }, []);
+
   useEffect(() => {
     enter.current?.focus();
     const key = (e: KeyboardEvent) => {

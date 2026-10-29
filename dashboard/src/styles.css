@@ -1100,3 +1100,39 @@ pre.snippet { max-width: 100%; }
 .donut-centre { top: 51%; }
 .donut-centre strong { font-size: 1.65rem; }
 .donut-centre span { font-size: 0.66rem; max-width: 92px; }
+
+/* ---- the launch screen fits any window; the 3D pieces start in 3D ------------------------- */
+/* The glow is drawn larger than the screen on purpose; it must not make the screen scroll. */
+.splash { overflow: hidden; padding: min(2rem, 3vh) 1.25rem; }
+/* Everything is sized from the window's height, so the whole screen fits without scrolling. */
+.splash-body { gap: min(0.9rem, 1.6vh); max-height: 100%; }
+.splash-mark { width: min(260px, 27vh); height: min(260px, 27vh); margin-bottom: min(0.5rem, 0.8vh); }
+.splash-mark img { width: min(220px, 23vh); height: min(220px, 23vh); padding: min(14px, 1.5vh); border-radius: min(48px, 5vh); }
+.splash-title { font-size: clamp(2rem, min(7vw, 8.5vh), 5rem); }
+.splash-pitch { font-size: clamp(0.85rem, 2.1vh, 1.08rem); margin: 0 0 min(0.6rem, 1vh); }
+.splash-points { margin: min(0.4rem, 0.6vh) 0 min(0.8rem, 1.2vh); }
+.splash-points li { padding: min(1rem, 1.6vh) 0.9rem; gap: min(0.5rem, 0.8vh); }
+.splash-points .icon { width: min(38px, 4.6vh); height: min(38px, 4.6vh); padding: min(9px, 1.1vh); }
+.splash-enter { min-height: min(50px, 6.5vh); padding: min(0.7rem, 1.2vh) 1.8rem; }
+.splash-actions { gap: min(0.75rem, 1.2vh); }
+.splash-foot { margin: min(0.6rem, 1vh) 0 0; }
+/* A short window: the three cards keep their titles and drop the line under them. */
+@media (max-height: 640px) {
+  .splash-points span { font-size: 0; gap: 0; }
+  .splash-points strong { font-size: 0.82rem; }
+  .splash-kicker { font-size: 0.68rem; }
+}
+@media (max-height: 520px) {
+  .splash-points, .splash-foot { display: none; }
+}
+/* A narrow window stacks the cards; on a phone they would not fit, so they go. */
+@media (max-width: 640px) {
+  .splash-points { display: none; }
+}
+
+/* A transform that appears on first hover makes the browser rebuild a 3D scene
+   mid-gesture: the donut stuttered as the pointer arrived. Both start in 3D at
+   rest, and stay on their own layer, so the first move is as smooth as the rest. */
+.donut-stage, .tile.tilt { transform: perspective(900px) rotateX(0deg) rotateY(0deg); will-change: transform; }
+.donut-3d, .donut-layer { will-change: transform; backface-visibility: hidden; }
+.donut-stage { transition: transform 0.25s var(--ease); }
