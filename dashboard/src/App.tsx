@@ -164,7 +164,7 @@ export function App() {
         <header className="topnav">
           <div className="topnav-inner">
           <a className="wordmark" href="#dashboard">
-            <img src="/logo.png" alt="" width={26} height={26} />
+            <img src="/logo.png" alt="" width={44} height={44} />
             API Exorcist
           </a>
           <nav aria-label="Sections">

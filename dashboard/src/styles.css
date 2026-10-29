@@ -103,14 +103,14 @@ code, .mono { font-family: var(--mono); font-size: 0.86em; }
 /* ---- header and page -------------------------------------------------------- */
 .shell { min-height: 100vh; display: flex; flex-direction: column; }
 .topnav { position: sticky; top: 0; z-index: 30; background: var(--bg); border-bottom: 1px solid var(--border); }
-.topnav-inner { display: flex; align-items: center; gap: 1.75rem; height: 52px; width: calc(100% - 3rem); max-width: 1320px; margin: 0 auto; }
-.wordmark { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 650; font-size: 0.95rem; color: var(--text); letter-spacing: -0.01em; white-space: nowrap; }
-.wordmark img { display: block; }
+.topnav-inner { display: flex; align-items: center; gap: 2rem; height: 68px; width: calc(100% - 3rem); max-width: 1320px; margin: 0 auto; }
+.wordmark { display: inline-flex; align-items: center; gap: 0.6rem; font-weight: 700; font-size: 1.2rem; color: var(--text); letter-spacing: -0.01em; white-space: nowrap; }
+.wordmark img { display: block; width: 44px; height: 44px; }
 .login-logo { display: block; margin: 0 auto 0.75rem; }
 .wordmark:hover { text-decoration: none; }
 .topnav nav { display: flex; align-self: stretch; gap: 0.25rem; }
 .topnav nav a {
-  display: flex; align-items: center; padding: 0 0.65rem; color: var(--text-2); font-weight: 500;
+  display: flex; align-items: center; padding: 0 0.75rem; color: var(--text-2); font-weight: 500; font-size: 1rem;
   border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
 .topnav nav a:hover { color: var(--text); text-decoration: none; }
@@ -138,6 +138,9 @@ code, .mono { font-family: var(--mono); font-size: 0.86em; }
   .topnav-inner, .pagehead-inner, .content { width: calc(100% - 2rem); }
   .topnav-inner { gap: 0.75rem; overflow-x: auto; }
   .topnav nav a { padding: 0 0.4rem; }
+  .topnav-inner { height: 56px; }
+  .wordmark { font-size: 1rem; }
+  .wordmark img { width: 32px; height: 32px; }
   .pagehead { padding: 0.9rem 0; }
 }
 
