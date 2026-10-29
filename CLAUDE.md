@@ -18,8 +18,8 @@ apix serve                        # THE APP: opens the browser signed in (F5 in 
 apix token NAME --role approver   # mint an API token; stores only its hash
 apix enforce --base origin/main   # judge a change's API surface (Phase 6)
 docker build -t api-exorcist .    # the deployable image (Phases 7-8)
-cd dashboard && npm ci && npm test && npm run build   # dashboard, 48 Vitest tests
-pytest                            # 300 tests
+cd dashboard && npm ci && npm test && npm run build   # dashboard, 51 Vitest tests
+pytest                            # 307 tests
 ruff check . && mypy              # lint + strict types
 APIX_REALWORLD=1 pytest tests/test_realworld.py   # real repos, known answers (network, ~6 min)
 python demo/prescan.py OWASP/crAPI   # scan via the app's engine into data/scans (demo fallback)

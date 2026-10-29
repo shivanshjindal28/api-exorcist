@@ -170,6 +170,9 @@ WEEKS: list[list[str]] = [
         "log as a chain, a launch screen; every page measured to fit any window; "
         "released v1.3.0.",
         "Prepared the 30-minute final presentation with a timed live demonstration.",
+        "Added counterfactual explanations: for every verdict and zombie candidate, "
+        "the smallest change to the evidence that would change it, computed by "
+        "re-classifying, with tests that each one produces the label it claims.",
     ],
 ]
 

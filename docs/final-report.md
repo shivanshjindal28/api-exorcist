@@ -839,6 +839,22 @@ The gateway-only row is the important one. With no evaluable rules the system re
 every endpoint as *indeterminate* rather than defaulting them to healthy: it has not
 classified anything, it has failed to, and it says so.
 
+**What would change a verdict: counterfactual explanations.** The signed reasons say
+why an endpoint received its label; an operator also needs the other half, what would
+have to be different for the label to change. For each verdict the system computes
+this rather than writing it. A copy of the endpoint's record is altered in one
+observable way (it carries ten or more calls a day, it falls silent, an owning team is
+recorded or lost, it is documented and registered, the specification marks it
+deprecated, another service is seen calling it, a pipeline deploys it, its handler is
+changed recently) and classified again by the same classifier with the same sources
+consulted. The changes that move the label are reported, with the label and
+confidence they would give; pairs of changes are tried only when no single change is
+enough. Because the rules that need an unconsulted source still abstain, a
+counterfactual can never rest on evidence the scan could not see, and a test asserts
+that every reported counterfactual, re-applied, produces exactly the label it claims.
+For the zombie `GET /v1/kyc/documents/{id}/raw` the answer is a single change: it
+would be ORPHANED, not ZOMBIE, if it carried ten or more calls a day.
+
 #### 3.4.3 The removal gate
 
 ```
@@ -965,7 +981,10 @@ Health probes, metrics, token-key and documentation endpoints are never candidat
 and neither are administrative endpoints merely because a front end does not call
 them. Client coverage below 30% never counts as evidence of non-use, because a
 gateway that rewrites paths can hide a front end's calls. Every candidate is
-labelled *suspected*, with the sentences behind its score.
+labelled *suspected*, with the sentences behind its score, and with what would change
+its standing, found by rescoring without each kind of evidence: crAPI's
+`v2.7/user/login-with-token` would fall from a likely zombie to a superseded version
+if the project's own client called it.
 
 #### 3.4.6 Usage from gateway access logs
 
@@ -1124,8 +1143,8 @@ endpoint, giving ACTIVE at 0.803, the same confidence as a correct ACTIVE. Secti
 **In the application.** On the demo bank's **Endpoints** tab, selecting an endpoint
 opens its **Why** panel: the label, the confidence and whether the rules or the model
 decided; each fired rule as a signed bar with the source that witnessed it; the six
-sources, with those that did not see the endpoint crossed out; its discrepancy flags;
-and its blast radius. Opening **How the score was worked out** shows the same
+sources as tiles, those consulted that did not see the endpoint marked *absent*; what
+would change the verdict; its discrepancy flags; and its blast radius. Opening **How the score was worked out** shows the same
 arithmetic as the tables above: every rule that fired with its weight for all four
 classes, the totals with the winning class highlighted, the confidence computed from
 them, and any rule that could not be evaluated because its source was never
@@ -1409,7 +1428,10 @@ hesitant, it is confidently wrong, because the evidence genuinely does not
 distinguish the cases. Adjusting a weight to fix it would be fitting the answer key;
 only a new signal would fix it honestly. At scale the same ceiling appears:
 DEPRECATED recall across generated estates tracks the rate at which teams set the
-flag. **The limit is observability, not the algorithm.**
+flag. **The limit is observability, not the algorithm.** The system's own
+counterfactual for this endpoint says so: it would be DEPRECATED, at 0.62 confidence,
+if the specification marked it deprecated. The explanation names the very signal whose
+absence caused the error.
 
 The explanation the system produces for one of the zombies shows why correlation is
 needed:
@@ -1896,7 +1918,7 @@ Table: Engineering quality measures
 
 | Measure | Value |
 |---|---|
-| Automated tests (Python) | 300 tests |
+| Automated tests (Python) | 307 tests |
 | Dashboard tests (TypeScript, Vitest) | 48 |
 | Ground-truth leakage guards | 3 |
 | Continuous integration | Lint, strict type checking and tests on Python 3.10 and 3.12; dashboard build check; container build and smoke test; documented-figures check |

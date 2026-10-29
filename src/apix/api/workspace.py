@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from apix.engine.counterfactual import counterfactuals
 from apix.engine.explain import audit_entry, explain
 from apix.engine.rules import RuleClassifier
 from apix.engine.verdict import Verdict
@@ -99,6 +100,8 @@ class Workspace:
             finally:
                 graph.close()
             self.records, self.verdicts = records, verdicts
+            # Kept so a counterfactual is judged by the classifier that decided.
+            self.classifier = classifier
             self.scanned_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     def summary(self) -> dict[str, Any]:
@@ -122,10 +125,13 @@ class Workspace:
     # -- reads ------------------------------------------------------------------
     def verdict(self, endpoint_id: str) -> dict[str, Any]:
         with self._lock:
-            for v in self.verdicts:
-                if v.endpoint_id == endpoint_id:
-                    return {**audit_entry(v), "explanation": explain(v)}
-        raise UnknownEndpoint(endpoint_id)
+            v = next((x for x in self.verdicts if x.endpoint_id == endpoint_id), None)
+            if v is None:
+                raise UnknownEndpoint(endpoint_id)
+            rec = next(r for r in self.records if r.endpoint_id == endpoint_id)
+            classifier = self.classifier
+            flips = counterfactuals(rec, v, lambda r: classifier.classify_all([r])[0])
+            return {**audit_entry(v), "explanation": explain(v), "counterfactuals": flips}
 
     def radius(self, endpoint_id: str) -> dict[str, Any]:
         with self._lock:

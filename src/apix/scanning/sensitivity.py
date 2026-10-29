@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from apix.live.evidence import Signal, counterfactuals
+
 #: (category, level, words). Checked in order; the first match wins, so the
 #: most sensitive categories come first.
 CATEGORIES: list[tuple[str, str, tuple[str, ...]]] = [
@@ -92,3 +94,10 @@ def enrich(report: dict[str, Any], traffic: dict[str, Any] | None = None) -> Non
     for e in report.get("endpoints", []):
         e["sensitivity"] = classify(e.get("path", ""), e.get("function"))
         e["priority"] = priority(e, rows.get(e["id"]))
+    # What would change each candidate, for reports saved before it was computed.
+    candidates = list(report.get("candidates") or [])
+    candidates += [e["candidate"] for e in report.get("endpoints", []) if e.get("candidate")]
+    for c in candidates:
+        if "counterfactuals" not in c:
+            signals = [Signal(s["key"], s["weight"], s["text"]) for s in c.get("signals", [])]
+            c["counterfactuals"] = counterfactuals(signals, c["label"])

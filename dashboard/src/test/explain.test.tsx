@@ -6,6 +6,7 @@ import {
   SafeKillSteps,
   ScoreTable,
   TrustCard,
+  WhatWouldChange,
   softmaxConfidence,
 } from "../views/explain";
 
@@ -151,5 +152,29 @@ describe("TrustCard", () => {
     expect(text).toContain("1 of those are confirmed by a second");
     expect(text).toContain("1 documented endpoint(s) have no handler");
     expect(text).toMatch(/cannot be seen in code/);
+  });
+});
+
+describe("WhatWouldChange", () => {
+  it("states each change and the answer it would give", () => {
+    render(
+      <WhatWouldChange
+        current="zombie"
+        items={[{ if: "it carried 10 or more calls a day, recently", to: "ORPHANED", note: "(78% confidence)" }]}
+      />,
+    );
+    const list = screen.getByRole("list", { name: "What would change this" });
+    expect(list.textContent).toContain("If it carried 10 or more calls a day, recently,");
+    expect(list.textContent).toContain("it would be ORPHANED");
+  });
+
+  it("shows nothing when they were not computed, rather than claim firmness", () => {
+    const { container } = render(<WhatWouldChange current="zombie" items={undefined} title="What would change it" />);
+    expect(container.textContent).toBe("");
+  });
+
+  it("says a conclusion is firm when no single change moves it", () => {
+    render(<WhatWouldChange current="active" items={[]} />);
+    expect(screen.getByText(/No single change to the evidence would move this from active/)).toBeTruthy();
   });
 });

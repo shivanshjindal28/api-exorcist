@@ -57,6 +57,9 @@ export interface Verdict {
 
 export interface VerdictDetail extends Verdict {
   explanation: string;
+  /** The smallest changes to the evidence that would change the label,
+   *  computed by the classifier that decided. Absent from older servers. */
+  counterfactuals?: { changes: string[]; if: string; label: Label; confidence: number }[];
 }
 
 export interface InventoryRecord {
@@ -375,6 +378,8 @@ export interface Candidate {
   score: number;
   label: string;
   signals: CandidateSignal[];
+  /** What would change its label or end its candidacy, by rescoring. */
+  counterfactuals?: { if: string; label: string; score: number }[];
 }
 
 export interface ScanReport {

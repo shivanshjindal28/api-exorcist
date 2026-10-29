@@ -12,7 +12,7 @@ import {
 } from "../../common";
 import { IconX } from "../../icons";
 import type { Review, ScanEndpoint, ScanJob } from "../../types";
-import { RealApiEvidence } from "../explain";
+import { RealApiEvidence, WhatWouldChange } from "../explain";
 import { CandidateBadge } from "./Candidates";
 import { ReviewBadge, ReviewControls, SourceChips, ago, consultedSources, when } from "./shared";
 
@@ -265,6 +265,15 @@ function Inspector({
                 Why it is a candidate <CandidateBadge label={e.candidate.label} />
               </h3>
               <Contributions items={e.candidate.signals} total={e.candidate.score} />
+              <WhatWouldChange
+                title="What would change it"
+                current={e.candidate.label.toLowerCase()}
+                items={e.candidate.counterfactuals?.map((c) => ({
+                  if: c.if,
+                  to: c.label === "not a candidate" ? <strong>not a candidate</strong> : <CandidateBadge label={c.label} />,
+                  note: `(score ${c.score})`,
+                }))}
+              />
             </div>
           )}
           {e.referenced_by && e.referenced_by.length > 0 && (

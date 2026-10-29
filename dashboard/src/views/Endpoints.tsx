@@ -12,7 +12,7 @@ import {
   useSort,
 } from "../common";
 import type { Evidence, InventoryRecord, Verdict } from "../types";
-import { ScoreTable } from "./explain";
+import { ScoreTable, WhatWouldChange } from "./explain";
 import { ALL_SOURCES, SourceChips } from "./scan/shared";
 
 const LABELS = ["ALL", "ZOMBIE", "ORPHANED", "DEPRECATED", "ACTIVE", "INDETERMINATE"];
@@ -172,6 +172,16 @@ function Detail({ endpointId, record }: { endpointId: string; record: InventoryR
         <summary>How the score was worked out</summary>
         <ScoreTable verdict={v} />
       </details>
+
+      <WhatWouldChange
+        title="What would change this verdict"
+        current={v.label.toLowerCase()}
+        items={v.counterfactuals?.map((c) => ({
+          if: c.if,
+          to: <LabelBadge label={c.label} />,
+          note: `(${pct(c.confidence)} confidence)`,
+        }))}
+      />
 
       {record && (
         <>

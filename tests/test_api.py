@@ -238,6 +238,16 @@ def test_endpoint_ids_round_trip_through_urls() -> None:
           f"{v.status_code}, missing {missing.status_code}, zombies {len(zombies)}")
 
 
+def test_a_verdict_says_what_would_change_it() -> None:
+    _skip_without_api("test_a_verdict_says_what_would_change_it")
+    with _client() as (client, _, viewer):
+        v = client.get("/v1/verdicts/" + quote(PIN, safe=""), headers=viewer).json()
+    flips = v.get("counterfactuals", [])
+    check("test_a_verdict_says_what_would_change_it",
+          bool(flips) and all(f["label"] != v["label"] and f["if"] for f in flips),
+          str(flips))
+
+
 # ---------------------------------------------------------------------------
 # Safe Kill through the API
 # ---------------------------------------------------------------------------

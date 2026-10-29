@@ -4,6 +4,7 @@
  * Safe Kill removal, the stages of a repository scan, and what makes an
  * endpoint found in code a real one.
  */
+import type { ReactNode } from "react";
 import type { SafeKillState, ScanEndpoint, ScanJob, ScoreRow, Verdict } from "../types";
 
 const CLASSES = ["ACTIVE", "DEPRECATED", "ORPHANED", "ZOMBIE"] as const;
@@ -324,5 +325,46 @@ export function ScanStages() {
         <li key={s}>{s}</li>
       ))}
     </ol>
+  );
+}
+
+/**
+ * What would change a conclusion: the smallest differences in the evidence
+ * that would give another answer, computed by rescoring, not written by hand.
+ */
+export function WhatWouldChange({
+  items,
+  current,
+  title,
+}: {
+  items: { if: string; to: ReactNode; note?: string }[] | undefined;
+  current: string;
+  title?: string;
+}) {
+  // Absent means "not computed" (an older server), which says nothing about how
+  // firm the conclusion is; so nothing is shown rather than a false claim.
+  if (!items) return null;
+  return (
+    <>
+      {title && <h3>{title}</h3>}
+      {items.length === 0 ? (
+        <p className="muted small">
+          No single change to the evidence would move this from {current}: it is a firm
+          conclusion.
+        </p>
+      ) : (
+        <ul className="whatif" aria-label="What would change this">
+          {items.map((i) => (
+            <li key={i.if}>
+              <span className="whatif-if">If {i.if},</span>
+              <span className="whatif-then">
+                it would be {i.to}
+                {i.note && <span className="muted small"> {i.note}</span>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   );
 }

@@ -219,7 +219,10 @@ simulated, with known answers, to measure the engine."*
    spec and gateway, still in DNS, unauthenticated. The six source tiles show it:
    four red and **absent**, only Code and DNS **saw it**. *"Absence is the
    evidence."* Open **How the score was worked out** for every rule's signed
-   contribution.
+   contribution, and read **What would change this verdict**: *"it would be
+   ORPHANED if it carried ten calls a day."* Then click `POST /v1/kyc/aadhaar/ekyc`,
+   the one misclassification: *"it would be DEPRECATED if the specification marked it
+   deprecated. The system names the exact evidence it was missing."*
 3. **Benchmark**: a conventional inventory (gateway plus specification) finds
    **2 of 8** zombies; correlating six sources finds **8 of 8**. Accuracy 0.960,
    zero live endpoints marked for removal.

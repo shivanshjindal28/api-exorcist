@@ -57,6 +57,11 @@ _CODE_DEPRECATED = re.compile(
 
 STRONG = {"superseded", "deprecated", "unused"}
 
+#: The sentence of the signal that a client calls the newer version and not this
+#: one. Named, because the counterfactual "a client called it" must recognise it:
+#: if a client did call the endpoint, this sentence would no longer be true.
+CLIENT_PREFERS_NEWER = "this project's own client calls the newer version and never this one"
+
 
 @dataclass
 class Signal:
@@ -77,7 +82,62 @@ class Candidate:
             "endpoint_id": self.endpoint_id, "score": self.score, "label": self.label,
             "signals": [{"key": s.key, "weight": s.weight, "text": s.text}
                         for s in self.signals],
+            "counterfactuals": counterfactuals(self.signals, self.label),
         }
+
+
+def label_for(score: int, keys: set[str]) -> str | None:
+    """The candidate label a score and its positive signals earn; None below 2."""
+    if score < 2:
+        return None
+    # "Likely zombie" is reserved for the strongest evidence: a newer version
+    # or a deprecation, or no client use for an endpoint frozen for a year.
+    if score >= 4 and ({"superseded", "deprecated"} & keys or {"unused", "frozen"} <= keys):
+        return "Likely zombie"
+    for key, label in (("superseded", "Superseded version"),
+                       ("deprecated", "Deprecated but served"),
+                       ("debug", "Debug or test endpoint"),
+                       ("unused", "Not used by this project's clients"),
+                       ("shadow", "Undocumented (shadow)")):
+        if key in keys:
+            return label
+    return "Worth a look"
+
+
+#: What would remove a kind of evidence, read after "if". Use by a client
+#: both removes "unused" and adds the -2 for being referenced.
+_REMOVED_BY = {
+    "superseded": "no newer version of this operation existed",
+    "deprecated": "it were not marked deprecated",
+    "debug": "it did not look like a debug or test endpoint",
+    "shadow": "it were documented in the specification",
+    "internal": "no public gateway route matched it",
+    "frozen": "its handler had been changed in the last year",
+}
+
+
+def counterfactuals(signals: list[Signal], label: str) -> list[dict[str, Any]]:
+    """What would change a candidate's standing: the evidence that, if it were
+    different, would change its label or end its candidacy. Computed by
+    rescoring with the same weights and label_for, not written by hand."""
+    out: list[dict[str, Any]] = []
+
+    def attempt(text: str, kept: list[Signal]) -> None:
+        score = sum(s.weight for s in kept)
+        after = label_for(score, {s.key for s in kept if s.weight > 0})
+        if after != label:
+            out.append({"if": text, "label": after or "not a candidate", "score": score})
+
+    used = any(s.key == "used" for s in signals)
+    if not used:
+        # A client calling it falsifies every "no client calls it" signal.
+        kept = [s for s in signals if s.key != "unused" and s.text != CLIENT_PREFERS_NEWER]
+        attempt("this project's own client code called it",
+                [*kept, Signal("used", -2, "referenced by this project's client code")])
+    for key, text in _REMOVED_BY.items():
+        if any(s.key == key for s in signals):
+            attempt(text, [s for s in signals if s.key != key])
+    return out
 
 
 def code_markers(source: str, line: int) -> list[str]:
@@ -184,9 +244,7 @@ def rank(
         if eid in newer:
             sig.append(Signal("superseded", 3, f"a newer version of this operation exists: {newer[eid]}"))
             if newer[eid] in referenced and eid not in referenced:
-                sig.append(Signal("superseded", 2,
-                                  "this project's own client calls the newer version and "
-                                  "never this one"))
+                sig.append(Signal("superseded", 2, CLIENT_PREFERS_NEWER))
 
         if e.get("deprecated_in_spec"):
             sig.append(Signal("deprecated", 3, "marked deprecated in the API specification, "
@@ -236,25 +294,8 @@ def rank(
                               + ", ".join(called_by_services[eid][:3])))
 
         score = sum(s.weight for s in sig)
-        if score < 2:
+        label = label_for(score, {s.key for s in sig if s.weight > 0})
+        if label is None:
             continue
-        keys = {s.key for s in sig if s.weight > 0}
-        # "Likely zombie" is reserved for the strongest evidence: a newer version
-        # or a deprecation, or no client use for an endpoint frozen for a year.
-        if score >= 4 and ({"superseded", "deprecated"} & keys
-                           or {"unused", "frozen"} <= keys):
-            label = "Likely zombie"
-        elif "superseded" in keys:
-            label = "Superseded version"
-        elif "deprecated" in keys:
-            label = "Deprecated but served"
-        elif "debug" in keys:
-            label = "Debug or test endpoint"
-        elif "unused" in keys:
-            label = "Not used by this project's clients"
-        elif "shadow" in keys:
-            label = "Undocumented (shadow)"
-        else:
-            label = "Worth a look"
         out.append(Candidate(eid, score, label, sorted(sig, key=lambda s: -s.weight)))
     return sorted(out, key=lambda c: (-c.score, c.endpoint_id))

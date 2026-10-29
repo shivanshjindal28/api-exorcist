@@ -165,6 +165,7 @@ ready to open even without a network.
 | Multi-source correlation into a unified inventory (14 flags) | ✅ |
 | Four-class rule classifier, deterministic and auditable (15 evidence rules) | ✅ |
 | Per-verdict explanations with signed evidence contributions | ✅ |
+| Counterfactual explanations: what would change each verdict and candidate, computed by re-classifying | ✅ |
 | Source-availability handling — rules abstain, verdicts can be indeterminate | ✅ |
 | Evaluation harness — per-class P/R/F1, confusion matrix | ✅ |
 | Comparative before/after benchmark | ✅ |
@@ -175,7 +176,7 @@ ready to open even without a network.
 | Trained model with SHAP attribution, used as a veto over removals | ✅ |
 | Safe Kill: rule-of-three shadow window, named approval, 5/25/100 canary | ✅ |
 | Automatic rollback on breach, hash-chained append-only audit log | ✅ |
-| 300 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
+| 307 tests, three ground-truth leakage guards, CI on 3.10 and 3.12 | ✅ |
 | REST API: hashed bearer tokens, viewer and approver roles, approval over HTTP | ✅ |
 | Dashboard: React + TypeScript, same origin, strict CSP | ✅ |
 | CI/CD enforcement: undocumented, unowned and zombie-in-the-making endpoints | ✅ |
@@ -322,6 +323,18 @@ Additive scoring rather than a tree, for three reasons that all matter downstrea
 There is no separate explanation step that could disagree with the verdict — the
 arithmetic shown *is* the arithmetic that decided. Every verdict also serialises into
 an audit-log shape carrying all four class scores, not only the winner.
+
+**What would change it.** Each verdict also carries its *counterfactuals*: the
+smallest changes to the evidence that would give another label, found by changing a
+copy of the record in one observable way and classifying it again with the same
+classifier and the same sources consulted (`apix/engine/counterfactual.py`). The
+zombie above would be ORPHANED if it carried ten or more calls a day. The one
+misclassification, `POST /v1/kyc/aadhaar/ekyc`, would be DEPRECATED if its
+specification marked it deprecated, which is exactly the evidence its team never
+recorded. A rule whose source was not consulted still abstains, so no counterfactual
+rests on evidence the scan could not see, and a test re-applies every one to prove it
+produces the label it claims. Zombie candidates on real code get the same, by
+rescoring without each kind of evidence.
 
 ### 5. Source availability: "nobody asked" is not "the answer was no"
 
@@ -1006,7 +1019,7 @@ Security, in the browser as on the server:
 
 ```bash
 cd dashboard && npm ci && npm run dev      # hot-reload against a running `apix serve`
-npm test && npm run build                  # 48 Vitest tests; build into src/apix/api/dashboard
+npm test && npm run build                  # 51 Vitest tests; build into src/apix/api/dashboard
 ```
 
 ---
@@ -1384,7 +1397,7 @@ src/apix/
 dashboard/                 React + TypeScript source; builds into src/apix/api/dashboard
 Dockerfile                 The deployable image: API and dashboard, non-root, read-only
 action.yml                 The GitHub Action; action-constraints.txt pins what it installs
-tests/                     300 tests, three ground-truth leakage guards
+tests/                     307 tests, three ground-truth leakage guards
 demo/                      Review runbook, paced demo runner, expected output
 docs/                      Literature review, design document, interim report,
                            source papers, diagram renderer, Word and
@@ -1408,7 +1421,7 @@ pip install -e ".[dev,live,ml]" && pre-commit install
 pytest && ruff check . && mypy && python docs/verify_claims.py
 ```
 
-**300 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 48 Vitest
+**307 tests**, ruff clean, mypy `--strict` clean. The dashboard adds 51 Vitest
 tests under TypeScript strict mode (`cd dashboard && npm test`).
 
 ### Optional extras

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Contributions } from "../../charts";
 import { Card } from "../../common";
+import { WhatWouldChange } from "../explain";
 import type { Candidate, ScanJob } from "../../types";
 
 const LABEL_CLASS: Record<string, string> = {
@@ -106,6 +107,14 @@ export function CandidatesCard({ job }: { job: ScanJob }) {
               {isOpen && (
                 <div className="cand-open">
                   <Contributions items={c.signals} total={c.score} />
+                  <WhatWouldChange
+                    current={c.label.toLowerCase()}
+                    items={c.counterfactuals?.map((f) => ({
+                      if: f.if,
+                      to: f.label === "not a candidate" ? <strong>not a candidate</strong> : <CandidateBadge label={f.label} />,
+                      note: `(score ${f.score})`,
+                    }))}
+                  />
                 </div>
               )}
             </li>

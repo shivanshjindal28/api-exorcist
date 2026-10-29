@@ -404,7 +404,7 @@ def slide_tools(prs):
         ["Usage evidence", "nginx, ALB, Kong, Envoy, Traefik logs",
          "Logs every bank already keeps; no agent"],
         ["Quality and delivery", "pytest, Vitest, mypy strict, ruff, "
-         "GitHub Actions, Docker", "300 + 48 tests; hardened container"],
+         "GitHub Actions, Docker", "307 + 51 tests; hardened container"],
     ], [0.21, 0.36, 0.43], size=11)
     notes(slide, "[4:30, 30 s] Highlight two: Semgrep reads structure not "
                  "text; rules decide and the model may only veto.")
@@ -600,7 +600,7 @@ def slide_contribution_map(prs):
             "zombie-in-the-making endpoints",
             "Hardened container: non-root, read-only, digest-pinned",
             "Prometheus metrics, JSON logs",
-            "CI: 300 Python + 48 dashboard tests, strict types, and a check "
+            "CI: 307 Python + 51 dashboard tests, strict types, and a check "
             "that every figure in the documents matches the code",
         ],
         size=12.5)
@@ -661,7 +661,8 @@ def slide_results_benchmark(prs):
          "authentication at all.", 13.5, True, GOOD),
         ("The one error: an endpoint whose team never set the deprecation "
          "flag, exactly what Cassieri [2] observed. Reported, not tuned "
-         "away.", 13, False, MUTED),
+         "away - and its counterfactual names the gap: \"it would be "
+         "DEPRECATED if the spec marked it deprecated\".", 13, False, MUTED),
     ], gap=8)
     notes(slide, "[19:30, 50 s] Already seen in the demo - be quick. Weights "
                  "were fixed before accuracy was measured.")
@@ -946,7 +947,7 @@ def backup_quality(prs):
         ("Container: non-root, read-only filesystem, no capabilities, "
          "digest-pinned base, no pip; refuses to start without tokens.",
          14, False, INK),
-        ("300 Python and 48 dashboard tests, mypy strict, three ground-truth "
+        ("307 Python and 51 dashboard tests, mypy strict, three ground-truth "
          "leakage guards; CI on every push.", 14, False, INK),
         ("Not yet: run on a real bank's traffic, multiple replicas, gateway "
          "plugins. Nothing here claims otherwise.", 14, True, RED),

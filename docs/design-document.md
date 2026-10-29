@@ -451,6 +451,10 @@ already set:
   fonts are bundled with the build, because the Content-Security-Policy admits
   nothing from another origin. Motion lives in one module and is off for viewers
   who ask the system for reduced motion, and under the test runner.
+- **Explanations that answer "what would change it".** Every verdict and every
+  zombie candidate carries counterfactuals, computed by re-classifying a copy of the
+  evidence changed in one observable way (`engine/counterfactual.py`), shown beneath
+  the signed reasons.
 - **Measured, not eyeballed.** Every page was measured at five window widths for
   content wider than the window or cut off inside its box; that found a retirement
   plan pushing its page past the window, which was fixed.
