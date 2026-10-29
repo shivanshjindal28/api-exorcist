@@ -162,6 +162,14 @@ WEEKS: list[list[str]] = [
         "Added the same explanations to the application: the score table behind "
         "each classification, the five steps of a Safe Kill removal, and, for each "
         "scan, whether its results can be trusted and why each endpoint is real.",
+        "End-to-end audit before the final review: fixed enforcement judging "
+        "git-ignored folders and endpoints known only from a specification being "
+        "credited to the wrong service; released v1.2.0.",
+        "Redesigned the console to a production standard: sidebar, one severity "
+        "scale, charts, an endpoint inspector, Safe Kill as a pipeline, the audit "
+        "log as a chain, a launch screen; every page measured to fit any window; "
+        "released v1.3.0.",
+        "Prepared the 30-minute final presentation with a timed live demonstration.",
     ],
 ]
 

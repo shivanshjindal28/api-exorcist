@@ -591,6 +591,8 @@ def slide_contribution_map(prs):
             "Access-log import: real lifecycle labels from real usage",
             "Dependency graph, Safe Kill, hash-chained audit log",
             "Exports: SARIF, CSV, OpenAPI stubs, executive report",
+            "A production-grade console: severity scale, charts, Safe Kill as a "
+            "pipeline, the audit log as a chain, light and dark",
         ],
         "Around it", [
             "REST API with hashed tokens, viewer and approver roles",

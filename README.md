@@ -112,9 +112,10 @@ Then, in VS Code, press **F5** ("API Exorcist: open the app"), or run:
 apix serve
 ```
 
-Your browser opens on API Exorcist, already signed in. Everything from there is in
-the browser: scan a project, read its report, and explore the demo bank. Stop it
-with Shift+F5 in VS Code, or Ctrl+C in the terminal.
+Your browser opens on API Exorcist, already signed in: a launch screen says what
+it is, then the console. Everything from there is in the browser: scan a project,
+read its report, and explore the demo bank, all from the sidebar. Stop it with
+Shift+F5 in VS Code, or Ctrl+C in the terminal.
 
 The command line is still there for scripting and CI (see the
 [command reference](#command-reference)); nothing needs it.
@@ -153,6 +154,7 @@ ready to open even without a network.
 | 10 | Zombie candidates from code evidence, tested on seven real repositories | ✅ done |
 | 11 | Usage evidence from access logs, retirement plans, exports, drift, estate dashboard | ✅ done |
 | 12 | Mentor review: classification and Safe Kill explained in the app, scans validated against independent truth, comparative analysis | ✅ done |
+| 13 | Console redesign: sidebar, severity scale, charts, endpoint inspector, Safe Kill pipeline, audit chain, launch screen | ✅ done |
 | — | Live website scanning | ⬜ not in this version |
 
 ### What is built
@@ -186,6 +188,7 @@ ready to open even without a network.
 | Retirement plans: Deprecation and Sunset headers, a 90-day watch, 410 brownout, code removal | ✅ |
 | Exports: SARIF 2.1.0, inventory CSV, OpenAPI stubs for undocumented endpoints, executive report | ✅ |
 | Estate dashboard, data-sensitivity priority, drift between scans of the same repository | ✅ |
+| A production-grade console: severity pills, filter chips and sortable tables, an endpoint inspector, charts, a Safe Kill pipeline and an audit chain, light and dark | ✅ |
 
 **All eight phases are built, and the browser is now the way in.** Live
 website scanning is shown in the app but is not available in this version. What
@@ -749,9 +752,11 @@ change could edit the workflow itself; review of those paths is what closes that
 
 ## Scanning a project in the browser
 
-The app opens on the **Dashboard**: every project's latest scan, the estate's
-totals, and the endpoints to look at first across all of them. **New scan** has
-three ways in:
+The app opens on the **Overview**: every project's latest scan, the estate's
+totals and how each moved since the previous scan, the estate broken down by the
+worst thing known about each endpoint, exposure by what endpoints handle, and the
+endpoints to look at first across all of them. **New scan**, at the top of the
+sidebar, has three ways in:
 
 | Input | What happens | Needs |
 |---|---|---|
@@ -914,11 +919,11 @@ code alone:
 | View | On a project scan |
 |---|---|
 | Overview | Headline counts, usage summary, zombie candidates, exposure by data category, changes since the previous scan, what was checked and why |
-| Endpoints | List and detail, ordered by priority: where each endpoint is defined, what it handles, which sources saw it, its usage, its findings, its decision |
+| Endpoints | Filter chips with counts (zombie candidates, undocumented, sensitive...), sortable columns, and an inspector beside the list: where the endpoint is defined, why it is believed to be a real API, its evidence as signed bars, the six sources as tiles (saw it, absent, not asked), its usage, its findings, its decision |
 | Usage | Import access logs; lifecycle from real usage, per-endpoint requests, clients and trend, traffic the code does not explain, probing |
 | Dependency graph | Services as boxes listing their endpoints, drawn in columns by dependency depth; calls, gateway routes and message topics as arrows. Click an endpoint for its blast radius, with the file and line behind every caller |
 | Safe Kill | Which of removal's four prerequisites the scan has and lacks, **retirement plans**, then a **review queue**: keep, needs documentation, needs an owner, or investigate for removal, recorded under the reviewer's name |
-| Audit log | The scan's own hash-chained log: who started it, a SHA-256 fingerprint of its report, every decision since; verifiable in one click |
+| Audit log | The scan's own hash-chained log, drawn as a chain of linked blocks: who started it, a SHA-256 fingerprint of its report, every decision since; verifying lights the chain link by link, or shows where it breaks |
 | Benchmark | What a documentation-only inventory would have listed against what the scan found. Coverage, not accuracy: a real project has no answer key, and the page says so |
 
 **The dependency graph of a project is read from its code** (`apix/live/deps.py`):
@@ -957,20 +962,32 @@ With `--no-browser`, or with configured tokens, sign in by pasting a token. If
 port 8600 is taken (an earlier `apix serve` still running, say), it uses the next
 free one and says so.
 
-The demo bank opens from **Run the demo** on New scan, as a scan with the same
-five views:
+The demo bank opens from **Demo bank** in the sidebar, or **Run the demo** on New
+scan, with six views:
 
 | View | What it shows |
 |---|---|
 | Overview | Counts by label, what the removal gate cleared, what awaits a decision |
-| Endpoints | Every endpoint, filterable; per verdict, the signed evidence that produced it, which of the six sources saw it, its flags, its blast radius |
-| Safe Kill | Start a shadow, see its evidence, approve or decline; the full path of every decision |
-| Audit log | Every transition, its actor and hash; recompute the whole chain in one click |
+| Endpoints | Every endpoint, with label chips and sortable columns; per verdict, the signed evidence that produced it and the full score table, the six sources as tiles, its flags, its blast radius |
+| Dependency graph | The services and the calls observed between them; click an endpoint for its blast radius |
+| Safe Kill | Each removal as a five-stage pipeline (gate, shadow, named approval, canary, retired): passed stages green, the current one pulsing, the one that stopped it red, the canary filling 5, 25, 100 percent. Start a shadow, approve or decline |
+| Audit log | Every transition as a chain of linked blocks and a table; verifying recomputes every hash and lights the chain |
 | Benchmark | The before/after comparison |
 
+**How it is designed.** A sidebar for where you can go (collapsible to icons) and
+the page for what you are doing. One severity scale (critical, high, medium, low,
+ok, info) in light and dark, used for every pill, priority and chart. The Overview
+draws the estate as a 3D ring and exposure as bars; numbers count up, charts draw
+themselves in, and the line into a Safe Kill stage in progress flows toward it.
+All motion is off for anyone whose system asks for reduced motion. A launch screen
+says what the product is, once per browser tab. Every page was measured at five
+window widths to fit without scrolling sideways.
+
 React and TypeScript, as the design document specifies, with React as the only
-runtime dependency: no UI kit, so there is little to audit and little the team
-cannot explain. The production build is **committed into the Python package**, so
+runtime dependency: no UI kit or chart library, so there is little to audit and
+little the team cannot explain. Charts are plain SVG, icons are drawn in the
+source, and the Inter and JetBrains Mono fonts are bundled into the build, since
+the Content-Security-Policy allows nothing from another origin. The production build is **committed into the Python package**, so
 `pip install` and `apix serve` give a working dashboard on a machine with no Node
 at all; CI rebuilds it and fails if the committed output differs from the source.
 

@@ -1231,6 +1231,24 @@ committed into the Python package, so installing the package gives a working
 dashboard on a machine with no Node.js, and CI fails if the committed build differs
 from the source.
 
+**The interface.** The console is built to the standard of commercial security
+tools, and every element carries information rather than decoration. A sidebar
+holds where one can go and the page holds what one is doing. One severity scale
+(critical, high, medium, low, ok, info), in light and dark themes, colours every
+status, priority and chart, so the same colour means the same thing on every page.
+The Overview shows how each figure moved since the previous scan, the estate as a
+ring split by the worst thing known about each endpoint, and exposure by what
+endpoints handle. Lists filter by chips with counts and sort by any column; an
+endpoint's details open in an inspector beside the list, with its evidence drawn as
+signed bars and the six sources as tiles marked *saw it*, *absent* or *not asked*,
+so that absence reads as the evidence it is (Section 3.6). A
+Safe Kill removal is drawn as a five-stage pipeline and the audit log as a chain of
+linked blocks that lights up when verified. Charts are plain SVG and the fonts are
+bundled with the build, because the Content-Security-Policy admits nothing from
+another origin; motion is switched off for anyone whose system asks for reduced
+motion. Every page was measured at five window widths to fit without horizontal
+scrolling.
+
 **Outputs for other tools.** A scan exports SARIF 2.1.0 [21] for code-scanning
 dashboards, an inventory CSV for a spreadsheet or GRC tool, an OpenAPI 3.1 [20]
 skeleton of every undocumented endpoint, and a printable executive report.
@@ -2396,6 +2414,7 @@ Table: Software components
 | FastAPI, Uvicorn | 0.110, 0.29 or later | the REST API and its server | for the application |
 | python-multipart | 0.0.18 or later | folder uploads | for the application |
 | React, React DOM | 19 | the dashboard | built into the package |
+| Inter, JetBrains Mono (Fontsource) | 5 | the dashboard's typefaces, bundled so the CSP needs no external origin | built into the package |
 | TypeScript, Vite, Vitest | 7, 8, 4 | dashboard language, build and tests | development only |
 | scikit-learn, pandas | 1.4, 2.0 or later | the learned model | for the model layer |
 | SHAP | 0.45 or later | model explanations | for the model layer |

@@ -42,8 +42,11 @@ In VS Code: open the `api-exorcist` folder and press **F5**. Or, in a terminal:
 powershell -ExecutionPolicy Bypass -File demo\run.ps1
 ```
 
-The browser opens **already signed in** as you. If port 8600 is taken, the app
-picks the next free port and prints it; nothing to fix.
+The browser opens **already signed in** as you, on the launch screen: the logo,
+the name, what it does. Leave it up while you introduce the project, then press
+**Enter the console**. If port 8600 is taken, the app picks the next free port and
+prints it; nothing to fix. The launch screen shows once per browser tab; open a new
+tab to show it again.
 
 Before the panel is watching: browser full screen (`F11`), zoom to 125% if the
 room is large, and use the **Light** switch at the bottom of the sidebar if
@@ -61,11 +64,13 @@ lists this as API9, improper inventory management. Banks have hundreds of these,
 and the hard part is not finding endpoints, it is knowing which ones are dead
 and removing them without causing an outage."*
 
-The app opens on the **Dashboard**: every project's latest scan, the estate's
-totals, and a **Needs attention first** table ranking endpoints across all
-projects by evidence weighted by what they handle (authentication, payments,
-cards, KYC, administration). Point at it: *"This is the screen a CISO opens on
-Monday."*
+Press **Enter the console**. The **Overview** shows every project's latest scan:
+the estate's totals and how each moved since the previous scan, the estate as a
+ring (hover a slice to see its count), exposure by what endpoints handle, and a
+**Needs attention** table ranking endpoints across all projects by evidence
+weighted by what they handle (authentication, payments, cards, KYC,
+administration), each with a severity: Critical, High, Medium, Low. Point at it:
+*"This is the screen a CISO opens on Monday."*
 
 ### Step 2: Scan a real repository, live (3 minutes)
 
@@ -124,9 +129,11 @@ anyone will hand us."*
 
 ### Step 3b: Endpoints (1 minute)
 
-**Endpoints** tab: every route, ordered by priority, with what it handles, its
-usage label, where it is defined (file and line) and whether the specification
-documents it. Filter to undocumented: 18 of them, shadow APIs by definition.
+**Endpoints** tab: every route, ordered by priority, with what it handles and its
+usage label. Press the **Undocumented 18** chip: shadow APIs by definition. Click
+an endpoint and the inspector beside the list shows where it is defined (file and
+line), why it is believed to be a real API, its evidence as signed bars, and the
+six sources as tiles: *"absent from the gateway and the spec is the evidence."*
 
 ### Step 4: Dependency graph (2 minutes)
 
@@ -158,7 +165,8 @@ removal**, and add a note.
 ### Step 6: Audit log (1 minute)
 
 **Audit log** tab: who started the scan, what it found (with the report's
-SHA-256), and your decision, with your name. Press **Verify the whole chain**.
+SHA-256), and your decision, with your name. Press **Verify the whole chain**: the
+chain of blocks lights green, link by link.
 
 **Say:** *"Every entry is hash-chained to the one before. Editing any line,
 including the stored report, breaks the chain and this button says where."*
@@ -198,8 +206,9 @@ repositories, including what must not be flagged."*
 
 ### Step 9: Run the demo, the full pipeline (5 minutes)
 
-On **New scan**, press **Not sure what to expect? Run the demo**. This opens
-the simulated bank, with a banner on every page saying so.
+Click **Demo bank** in the sidebar (or, on **New scan**, **Not sure what to
+expect? Run the demo**). This opens the simulated bank, with a banner on every
+page saying so.
 
 **Say first:** *"Code alone cannot prove an endpoint is dead. With traffic,
 gateway and DNS, it can. No bank publishes its real inventory, so this estate is
@@ -207,18 +216,22 @@ simulated, with known answers, to measure the engine."*
 
 1. **Overview**: 25 endpoints, 8 zombies.
 2. **Endpoints**, click `GET /v1/kyc/documents/{id}/raw`: no traffic, absent from
-   spec and gateway, still in DNS, unauthenticated. The source chips show which
-   of the six sources saw it. *"Absence is the evidence."*
+   spec and gateway, still in DNS, unauthenticated. The six source tiles show it:
+   four red and **absent**, only Code and DNS **saw it**. *"Absence is the
+   evidence."* Open **How the score was worked out** for every rule's signed
+   contribution.
 3. **Benchmark**: a conventional inventory (gateway plus specification) finds
    **2 of 8** zombies; correlating six sources finds **8 of 8**. Accuracy 0.960,
    zero live endpoints marked for removal.
 4. **Safe Kill**: **Start shadow** on the KYC endpoint and on
    `POST /v1/debug/payments/replay`. The KYC shadow is clean, so Approve is live;
-   the debug route saw anonymous requests, so it **can never be approved**: Approve
-   is disabled and the page says why and what to do instead (add authentication,
-   shadow again). Approve the KYC endpoint: nominated to retired, decided by you.
-5. **Audit log**: Verify the whole chain. The approver's name comes from the
-   sign-in, never from anything the browser sends.
+   the debug route saw anonymous requests, so it **can never be approved**: its
+   pipeline stops at **Named approval**, marked *cannot be approved*, Approve is
+   disabled, and the page says why and what to do instead (add authentication,
+   shadow again). Approve the KYC endpoint: its pipeline runs to **Retired**, all
+   five stages green, the canary filled 5, 25, 100 percent, decided by you.
+5. **Audit log**: Verify the whole chain; it lights green, link by link. The
+   approver's name comes from the sign-in, never from anything the browser sends.
 
 **If asked "why the 90-day shadow?":** *"To be 95% sure of seeing a caller that
 calls once a month you must watch ln(20) times 30 days, the rule of three.

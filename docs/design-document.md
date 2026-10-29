@@ -423,6 +423,40 @@ going unseen, OpenAPI tags read as owners, and a route split in two because code
 and specification named its parameter differently. Real repositories with known
 answers are now part of the test suite.
 
+#### As built: the console redesign (Phase 13)
+
+The first console was deliberately plain: grey boxes, a dot and a word for every
+status, a top bar. It was correct and read like an administration page. It was
+redesigned to the standard of commercial security tools without changing what any
+page says or what the server returns, and within the constraints the design
+already set:
+
+- **One visual language.** The brand is the logo's red and charcoal; red marks
+  the primary action and where one is. A single severity scale (critical, high,
+  medium, low, ok, info), defined for light and dark themes, colours every status
+  pill, priority and chart, so a colour means the same thing on every page.
+- **Navigation.** A sidebar, collapsible to icons, replaced the top bar. Pages
+  keep breadcrumbs, tabs and a header of their own.
+- **Data as pictures, where a picture is clearer.** The Overview shows the change
+  since each project's previous scan, the estate as a ring split by the worst thing
+  known about each endpoint, and exposure by what endpoints handle (the portfolio
+  API gained those breakdowns, with tests that they add up to the totals). An
+  endpoint's evidence is drawn as signed bars that sum to its score, and the six
+  sources as tiles marked *saw it*, *absent* or *not asked*.
+- **The decisions drawn as they happen.** A Safe Kill removal is a five-stage
+  pipeline, its current stage pulsing and its stopping point in red; the audit log
+  is a chain of linked blocks, each link labelled with the hash it carries.
+- **Constraints kept.** React remains the only runtime dependency: no UI kit and
+  no chart library. Charts are plain SVG, icons are drawn in the source, and the
+  fonts are bundled with the build, because the Content-Security-Policy admits
+  nothing from another origin. Motion lives in one module and is off for viewers
+  who ask the system for reduced motion, and under the test runner.
+- **Measured, not eyeballed.** Every page was measured at five window widths for
+  content wider than the window or cut off inside its box; that found a retirement
+  plan pushing its page past the window, which was fixed.
+
+The version before the redesign is tagged `v1.2.1-pre-redesign`.
+
 ---
 
 ## 3. Behavioural view
