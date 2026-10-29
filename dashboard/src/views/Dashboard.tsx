@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BarList, Delta, Donut } from "../charts";
+import { BarList, CountUp, Delta, Donut } from "../charts";
 import {
   Card,
   Empty,
@@ -14,6 +14,7 @@ import {
   useSession,
 } from "../common";
 import { IconActivity, IconAlert, IconEndpoint, IconGhost, IconLock, IconProjects, IconScan } from "../icons";
+import { useTilt } from "../motion";
 import type { Portfolio } from "../types";
 import { GetStarted } from "./GetStarted";
 import { when } from "./scan/shared";
@@ -90,15 +91,15 @@ export function Dashboard() {
       <div className="stack">
         <div className="tiles">
           {tiles.map((x) => (
-            <div className={`tile ${x.tone ?? ""}`} key={x.label}>
+            <TiltTile className={`tile ${x.tone ?? ""}`} key={x.label}>
               <div className="tile-top">
                 <span className="tile-icon">{x.icon}</span>
               </div>
               <div className="tile-label">{x.label}</div>
-              <div className="tile-value">{x.value.toLocaleString()}</div>
+              <div className="tile-value"><CountUp value={x.value} /></div>
               {x.note && <div className="tile-note">{x.note}</div>}
               {x.delta && <div className="tile-delta">{x.delta}</div>}
-            </div>
+            </TiltTile>
           ))}
         </div>
 
@@ -238,5 +239,15 @@ export function Dashboard() {
         </Card>
       </div>
     </Page>
+  );
+}
+
+/** A metric card that tilts toward the pointer, with a soft glare where it points. */
+function TiltTile({ className, children }: { className: string; children: ReactNode }) {
+  const tilt = useTilt<HTMLDivElement>(6);
+  return (
+    <div className={`${className} tilt`} ref={tilt.ref} onMouseMove={tilt.onMouseMove} onMouseLeave={tilt.onMouseLeave}>
+      {children}
+    </div>
   );
 }

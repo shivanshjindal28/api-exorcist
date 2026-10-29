@@ -334,7 +334,7 @@ export function Sparkline({ points, width = 120, height = 28 }: { points: number
   return (
     <svg className="spark" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
       <path className="spark-area" d={area} />
-      <path d={line} />
+      <path className="spark-line" d={line} pathLength={1} />
     </svg>
   );
 }

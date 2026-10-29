@@ -20,6 +20,7 @@ import { NewScan } from "./views/NewScan";
 import { ExecutiveReport } from "./views/Report";
 import { ScanResults } from "./views/ScanResults";
 import { ScanView } from "./views/scan/ScanView";
+import { Splash, shouldShowSplash } from "./views/Splash";
 
 interface View {
   title: string;
@@ -161,6 +162,8 @@ export function App() {
   const [where, setWhere] = useState(() => route(window.location.hash));
   const [theme, toggleTheme] = useTheme();
   const [collapsed, toggleCollapsed] = useCollapsed();
+  const [splash, setSplash] = useState(shouldShowSplash);
+  const splashView = splash ? <Splash onClose={() => setSplash(false)} /> : null;
 
   const api = useMemo(() => (token ? new ApiClient(token) : null), [token]);
 
@@ -200,6 +203,8 @@ export function App() {
   if (!checked) return null;
   if (!api || !principal) {
     return (
+      <>
+      {splashView}
       <Login
         onSignIn={(t, who) => {
           session.save(t);
@@ -207,11 +212,13 @@ export function App() {
           setPrincipal(who);
         }}
       />
+      </>
     );
   }
 
   return (
     <SessionContext.Provider value={{ api, principal, signOut }}>
+      {splashView}
       <ToastProvider>
         <div className={collapsed ? "shell is-collapsed" : "shell"}>
           <aside className="sidebar">

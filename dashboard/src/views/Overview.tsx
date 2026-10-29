@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CountUp } from "../charts";
 import { Card, ErrorBox, LabelBadge, Loading, canApprove, useLoad, useSession } from "../common";
 
 const ORDER = ["ACTIVE", "DEPRECATED", "ORPHANED", "ZOMBIE", "INDETERMINATE"];
@@ -80,7 +81,7 @@ export function Overview() {
 function Tile({ value, label, tone }: { value: number; label: string; tone?: string }) {
   return (
     <div className={`tile${tone ? ` tile-${tone}` : ""}`}>
-      <span className="tile-value">{value}</span>
+      <span className="tile-value"><CountUp value={value} /></span>
       <span className="tile-label">{label}</span>
     </div>
   );
