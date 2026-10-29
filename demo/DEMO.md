@@ -344,3 +344,30 @@ decisions, and being able to defend each of them.
 
 About 22 minutes without step 10. If time is short, skip step 8. Everything else is you explaining, which is
 what is being assessed.
+
+### The 30-minute version (final jury)
+
+The final slot is 30 minutes for slides, demonstration and questions together.
+`docs/build_final_pptx.py` builds the deck for it, with the time and the words
+for each slide in its speaker notes.
+
+| Block | Time |
+|---|---|
+| Slides 1-16: problem, literature, design, algorithms | 0:00 - 10:30 |
+| Live demonstration (below) | 10:30 - 19:30 |
+| Slides 18-23: results, comparison, limitations, future | 19:30 - 23:30 |
+| Questions; backup slides follow "Thank you" | 23:30 - 30:00 |
+
+The demonstration, nine minutes:
+
+| Step | Time |
+|---|---|
+| 2 Scan crAPI live; talk while it runs, then read the `v2/check-otp` reasons | 2:00 |
+| 3 Import the synthetic log: the two candidates become proven zombies | 1:30 |
+| 4 Dependency graph | 1:00 |
+| 9 Demo bank: one endpoint's evidence, Benchmark, Safe Kill with the replay endpoint that can never be approved | 3:00 |
+| 6 Audit log: verify the whole chain | 1:30 |
+
+Steps 1, 3b, 5, 7, 7b, 8 and 10 are left out; the slides cover what they say.
+Open the app and sign in before the session starts, and keep the pre-scanned
+crAPI report one click away in case the network is slow.

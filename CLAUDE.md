@@ -19,7 +19,7 @@ apix token NAME --role approver   # mint an API token; stores only its hash
 apix enforce --base origin/main   # judge a change's API surface (Phase 6)
 docker build -t api-exorcist .    # the deployable image (Phases 7-8)
 cd dashboard && npm ci && npm test && npm run build   # dashboard, 48 Vitest tests
-pytest                            # 299 tests
+pytest                            # 300 tests
 ruff check . && mypy              # lint + strict types
 APIX_REALWORLD=1 pytest tests/test_realworld.py   # real repos, known answers (network, ~6 min)
 python demo/prescan.py OWASP/crAPI   # scan via the app's engine into data/scans (demo fallback)
@@ -28,6 +28,7 @@ python demo/make_access_log.py data/scans/<id>.json demo/synthetic-access.log   
 python docs/render_diagrams.py    # mermaid -> png (run before the two below)
 python docs/build_docx.py         # literature review, design doc, interim report, final report
 python docs/build_pptx.py         # the review presentation
+python docs/build_final_pptx.py   # the final jury deck (30 min, timings in speaker notes)
 python docs/finalise_docx.py      # update TOC + figure/table page nos (all of docs/*.docx)
 python docs/verify_claims.py      # documented figures vs the running code
 ```

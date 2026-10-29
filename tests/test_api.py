@@ -556,3 +556,17 @@ def test_the_api_imports_without_the_scanning_extras() -> None:
                                               "PYTHONPATH": str(ROOT / "src")})
     check("test_the_api_imports_without_the_scanning_extras",
           proc.returncode == 0 and "ok" in proc.stdout, proc.stderr[-500:])
+
+
+def test_the_logo_and_icons_are_served_without_signing_in() -> None:
+    """The sign-in page shows the logo before anyone has a token, so the images
+    must be public, and same-origin so the CSP's img-src 'self' allows them."""
+    _skip_without_api("test_the_logo_and_icons_are_served_without_signing_in")
+    with _client() as (client, _, _):
+        got = {p: client.get(p) for p in ("/logo.png", "/favicon.ico", "/favicon.png")}
+        page = client.get("/").text
+    check("test_the_logo_and_icons_are_served_without_signing_in",
+          all(r.status_code == 200 and r.headers["content-type"].startswith("image/")
+              for r in got.values())
+          and 'href="/favicon.ico"' in page,
+          str({p: (r.status_code, r.headers.get("content-type")) for p, r in got.items()}))

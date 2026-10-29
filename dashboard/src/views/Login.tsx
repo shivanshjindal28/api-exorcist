@@ -36,6 +36,7 @@ export function Login({ onSignIn, makeClient = (t) => new ApiClient(t) }: Props)
   return (
     <main className="login">
       <form className="card login-card" onSubmit={submit}>
+        <img className="login-logo" src="/logo.png" alt="API Exorcist logo" width={72} height={72} />
         <h1>Sign in to API Exorcist</h1>
         <p className="muted">
           Started from VS Code (F5) or with <code>apix serve</code>, API Exorcist opens this

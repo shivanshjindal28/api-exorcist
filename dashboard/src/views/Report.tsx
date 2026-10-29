@@ -68,7 +68,10 @@ export function ExecutiveReport({ id }: { id: string }) {
         </button>
       </div>
       <article className="report">
-        <div className="muted small">API Exorcist · API inventory and retirement report</div>
+        <div className="report-brand muted small">
+          <img src="/logo.png" alt="" width={28} height={28} />
+          API Exorcist · API inventory and retirement report
+        </div>
         <h1>{job.target}</h1>
         <p className="report-meta">
           Scanned {when(job.finished_at ?? job.created_at)} by {job.requested_by}

@@ -1878,7 +1878,7 @@ Table: Engineering quality measures
 
 | Measure | Value |
 |---|---|
-| Automated tests (Python) | 299 tests |
+| Automated tests (Python) | 300 tests |
 | Dashboard tests (TypeScript, Vitest) | 48 |
 | Ground-truth leakage guards | 3 |
 | Continuous integration | Lint, strict type checking and tests on Python 3.10 and 3.12; dashboard build check; container build and smoke test; documented-figures check |

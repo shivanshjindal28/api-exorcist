@@ -104,7 +104,9 @@ code, .mono { font-family: var(--mono); font-size: 0.86em; }
 .shell { min-height: 100vh; display: flex; flex-direction: column; }
 .topnav { position: sticky; top: 0; z-index: 30; background: var(--bg); border-bottom: 1px solid var(--border); }
 .topnav-inner { display: flex; align-items: center; gap: 1.75rem; height: 52px; width: calc(100% - 3rem); max-width: 1320px; margin: 0 auto; }
-.wordmark { font-weight: 650; font-size: 0.95rem; color: var(--text); letter-spacing: -0.01em; white-space: nowrap; }
+.wordmark { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 650; font-size: 0.95rem; color: var(--text); letter-spacing: -0.01em; white-space: nowrap; }
+.wordmark img { display: block; }
+.login-logo { display: block; margin: 0 auto 0.75rem; }
 .wordmark:hover { text-decoration: none; }
 .topnav nav { display: flex; align-self: stretch; gap: 0.25rem; }
 .topnav nav a {
@@ -486,6 +488,7 @@ button.link.cand-row, .cand-row { display: grid; grid-template-columns: 14rem mi
 .report { max-width: 920px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 2.5rem 3rem; }
 .report h1 { font-size: 1.5rem; }
 .report h2 { font-size: 1rem; margin-top: 1.75rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--border); }
+.report-brand { display: flex; align-items: center; gap: 0.5rem; }
 .report-meta { color: var(--muted); font-size: 0.8125rem; margin: 0.35rem 0 1.25rem; }
 .report-tools { display: flex; gap: 0.5rem; justify-content: flex-end; max-width: 920px; margin: 0 auto 1rem; }
 .report .tiles { grid-template-columns: repeat(4, 1fr); }
