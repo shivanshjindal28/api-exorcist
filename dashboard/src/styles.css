@@ -857,3 +857,107 @@ pre.snippet { max-width: 100%; }
 /* A short list beside a long plan: the plan gets the width. */
 .split.split-plan { grid-template-columns: minmax(260px, 2fr) minmax(0, 3fr); }
 @media (max-width: 1100px) { .split.split-plan { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- batch 3: Safe Kill as a pipeline -------------------------------------------------- */
+.pipeline { list-style: none; margin: 0.75rem 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.stage { position: relative; display: grid; justify-items: center; text-align: center; gap: 0.3rem; padding: 0 0.25rem; }
+/* The connector to the next stage, drawn from this dot's centre. */
+.stage:not(:last-child)::after {
+  content: ""; position: absolute; top: 14px; left: calc(50% + 16px); right: calc(-50% + 16px); height: 2px;
+  background: var(--border); border-radius: 1px;
+}
+.stage-done:not(:last-child)::after { background: var(--ok); }
+.stage-dot {
+  position: relative; z-index: 1; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 0.78rem; font-weight: 700; background: var(--surface); border: 2px solid var(--border); color: var(--muted);
+}
+.stage-done .stage-dot { background: var(--ok); border-color: var(--ok); color: #fff; }
+.stage-current .stage-dot { border-color: var(--pend); color: var(--pend); background: var(--pend-bg); animation: pulse 1.6s var(--ease) infinite; }
+.stage-stopped .stage-dot { background: var(--crit); border-color: var(--crit); color: #fff; }
+.stage-name { font-size: 0.76rem; font-weight: 600; color: var(--text-2); line-height: 1.25; }
+.stage-todo .stage-name { color: var(--muted); font-weight: 500; }
+.stage-current .stage-name { color: var(--pend); }
+.stage-stopped .stage-name { color: var(--crit); }
+.stage-note { font-size: 0.7rem; color: var(--muted); line-height: 1.25; }
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(105, 65, 198, 0.45); }
+  70% { box-shadow: 0 0 0 9px rgba(105, 65, 198, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(105, 65, 198, 0); }
+}
+.canary-meter { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.35rem; margin: 0.25rem 0 0.75rem; max-width: 420px; }
+.canary-step { display: grid; gap: 0.2rem; }
+.canary-fill { height: 8px; border-radius: 4px; background: var(--hover); position: relative; overflow: hidden; }
+.canary-step.is-done .canary-fill { background: var(--ok); }
+.canary-step.is-failed .canary-fill { background: var(--crit); }
+.canary-label { font-size: 0.7rem; color: var(--muted); font-weight: 600; }
+.path-details { margin-top: 0.4rem; }
+.path-details summary { cursor: pointer; }
+.pending, .outcome { border-radius: var(--radius-lg); padding: 1rem 1.15rem; background: var(--surface); box-shadow: var(--shadow-sm); }
+@media (max-width: 600px) { .stage-note { display: none; } .stage-name { font-size: 0.66rem; } }
+
+/* ---- batch 3: the audit chain, drawn as a chain ----------------------------------------- */
+.chain { display: flex; align-items: stretch; overflow-x: auto; padding: 0.5rem 0.1rem 0.75rem; margin: 0.25rem 0 0.75rem; }
+.chain-item { display: flex; align-items: center; flex: none; }
+.chain-block {
+  display: grid; gap: 0.1rem; width: 150px; padding: 0.6rem 0.7rem; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+  transition: border-color 0.3s var(--ease), background 0.3s var(--ease);
+}
+.chain-seq { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.7rem; font-weight: 700; color: var(--muted); }
+.chain-state { font-size: 0.8rem; text-transform: capitalize; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chain-actor { font-size: 0.7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chain-hash { font-size: 0.7rem; color: var(--text-2); }
+.chain-link { display: grid; justify-items: center; width: 56px; gap: 0.15rem; }
+.chain-link-line { width: 100%; height: 2px; background: var(--border); border-radius: 1px; transition: background 0.3s var(--ease); }
+.chain-link-hash { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); }
+.chain-link.is-bad .chain-link-line { background: var(--crit); }
+.chain-block.is-bad { border-color: var(--crit); background: var(--crit-bg); }
+/* Verified: each block and link lights in turn, left to right. */
+.chain.is-verified .chain-block { animation: link-ok 0.45s var(--ease) both; }
+.chain.is-verified .chain-link-line { animation: line-ok 0.45s var(--ease) both; }
+.chain.is-verified .chain-item:nth-child(1) * { animation-delay: 0s; }
+.chain.is-verified .chain-item:nth-child(2) * { animation-delay: 0.15s; }
+.chain.is-verified .chain-item:nth-child(3) * { animation-delay: 0.3s; }
+.chain.is-verified .chain-item:nth-child(4) * { animation-delay: 0.45s; }
+.chain.is-verified .chain-item:nth-child(5) * { animation-delay: 0.6s; }
+.chain.is-verified .chain-item:nth-child(6) * { animation-delay: 0.75s; }
+@keyframes link-ok { to { border-color: var(--ok); background: var(--ok-bg); } }
+@keyframes line-ok { to { background: var(--ok); } }
+
+/* ---- batch 3: the sign-in page ------------------------------------------------------------ */
+.login { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); padding: 0; place-items: stretch; background: var(--surface); }
+.login-brand {
+  display: flex; flex-direction: column; gap: 1.75rem; padding: 3rem clamp(2rem, 5vw, 4.5rem); color: #eef0f3;
+  background: radial-gradient(120% 90% at 0% 0%, #3a1514 0%, #17191e 55%, #101216 100%);
+}
+.login-brand-mark { display: flex; align-items: center; gap: 0.75rem; font-weight: 700; font-size: 1.15rem; letter-spacing: -0.01em; }
+.login-brand-mark img { background: #f4f5f7; border-radius: 14px; padding: 4px; }
+.login-pitch { margin: auto 0 0; font-size: clamp(1.6rem, 2.6vw, 2.3rem); line-height: 1.15; font-weight: 700; letter-spacing: -0.03em; color: #fff; max-width: 32rem; }
+.login-points { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; max-width: 32rem; }
+.login-points li { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 0.75rem; align-items: start; font-size: 0.9rem; color: #c3c8d0; }
+.login-points li .icon { width: 36px; height: 36px; padding: 8px; border-radius: 10px; background: rgba(229, 85, 77, 0.16); color: #ff8a82; }
+.login-points strong { color: #fff; font-weight: 600; }
+.login-foot { margin: auto 0 0; font-size: 0.75rem; color: #8a919c; }
+.login-card { align-self: center; justify-self: center; width: min(400px, calc(100% - 3rem)); display: grid; gap: 0.75rem; padding: 2rem 0; background: none; border: 0; box-shadow: none; }
+.login-card h1 { text-align: left; font-size: 1.5rem; }
+.login-card > p { text-align: left; }
+.login-card .login-logo { margin: 0 0 0.25rem; }
+@media (max-width: 900px) {
+  .login { grid-template-columns: minmax(0, 1fr); }
+  .login-brand { padding: 2rem 1.5rem; gap: 1.25rem; }
+  .login-pitch { margin-top: 0.5rem; }
+  .login-points, .login-foot { display: none; }
+}
+
+/* ---- batch 3: getting started --------------------------------------------------------------- */
+.get-started { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.6rem; width: min(680px, 100%); text-align: left; }
+.get-started li {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 0.9rem; align-items: center;
+  padding: 0.85rem 1rem; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm);
+}
+.gs-icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--brand-subtle); color: var(--brand); }
+.gs-text { display: grid; gap: 0.1rem; min-width: 0; }
+.gs-no { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.gs-text p { margin: 0; font-size: 0.82rem; color: var(--text-2); }
+.card-pad { padding: 1rem 1.25rem 1.25rem; }
+@media (max-width: 600px) { .get-started li { grid-template-columns: 44px minmax(0, 1fr); } .get-started li > :last-child { grid-column: 2; justify-self: start; } }

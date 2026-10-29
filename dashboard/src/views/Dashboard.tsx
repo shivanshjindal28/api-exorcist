@@ -15,6 +15,7 @@ import {
 } from "../common";
 import { IconActivity, IconAlert, IconEndpoint, IconGhost, IconLock, IconProjects, IconScan } from "../icons";
 import type { Portfolio } from "../types";
+import { GetStarted } from "./GetStarted";
 import { when } from "./scan/shared";
 
 /** Every project's latest scan, and what across all of them needs attention first. */
@@ -38,20 +39,10 @@ export function Dashboard() {
           <Empty
             icon={<IconScan size={26} />}
             title="No projects scanned yet"
-            action={
-              <div className="buttons">
-                <a className="btn" href="#scan">
-                  Scan a project
-                </a>
-                <a className="btn secondary" href="#results/demo/overview">
-                  Explore the demo bank
-                </a>
-              </div>
-            }
+            action={<GetStarted />}
           >
-            Scan a repository or upload a project folder. API Exorcist finds every endpoint in
-            the code, checks it against the specification and history, and ranks the ones that
-            look abandoned. Add access logs and it proves which are.
+            API Exorcist finds every endpoint in the code, checks it against the specification
+            and history, and ranks the ones that look abandoned. Three steps to the first answer:
           </Empty>
         </section>
       </Page>

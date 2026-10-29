@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { ApiClient, ApiError } from "../api";
+import { IconGhost, IconGraph, IconShield } from "../icons";
 import type { Principal } from "../types";
 
 interface Props {
@@ -35,8 +36,39 @@ export function Login({ onSignIn, makeClient = (t) => new ApiClient(t) }: Props)
 
   return (
     <main className="login">
-      <form className="card login-card" onSubmit={submit}>
-        <img className="login-logo" src="/logo.png" alt="API Exorcist logo" width={72} height={72} />
+      <section className="login-brand" aria-label="About API Exorcist">
+        <div className="login-brand-mark">
+          <img src="/logo.png" alt="" width={56} height={56} />
+          <span>API Exorcist</span>
+        </div>
+        <h2 className="login-pitch">Find the APIs your bank forgot. Retire them without an outage.</h2>
+        <ul className="login-points">
+          <li>
+            <IconGhost size={20} />
+            <span>
+              <strong>Six sources, correlated.</strong> What the gateway and the specification
+              miss, the code, traffic and DNS still show.
+            </span>
+          </li>
+          <li>
+            <IconGraph size={20} />
+            <span>
+              <strong>Every verdict explained.</strong> Signed reasons, and what could not be
+              checked, for every endpoint.
+            </span>
+          </li>
+          <li>
+            <IconShield size={20} />
+            <span>
+              <strong>Safe Kill.</strong> A shadow window, a named approval, a canary and
+              automatic rollback, all in a hash-chained audit log.
+            </span>
+          </li>
+        </ul>
+        <p className="login-foot">B.Tech CSE (Cyber Security) capstone · MPSTME, NMIMS</p>
+      </section>
+      <form className="login-card" onSubmit={submit}>
+        <img className="login-logo" src="/logo.png" alt="API Exorcist logo" width={64} height={64} />
         <h1>Sign in to API Exorcist</h1>
         <p className="muted">
           Started from VS Code (F5) or with <code>apix serve</code>, API Exorcist opens this

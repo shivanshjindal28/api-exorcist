@@ -12,6 +12,7 @@ import {
   useToast,
 } from "../common";
 import type { KillOutcome, Observation, PendingApproval } from "../types";
+import { CanaryMeter, Pipeline } from "../pipeline";
 import { SafeKillSteps } from "./explain";
 
 export function SafeKill() {
@@ -152,6 +153,10 @@ function PendingCard({
       <h3>
         <code>{p.endpoint_id}</code>
       </h3>
+      <Pipeline
+        state="AWAITING_APPROVAL"
+        notes={{ 0: "cleared", 1: shadow ? `${shadow.days} days, ${shadow.requests} req.` : "", 2: warned ? "cannot be approved" : "your decision" }}
+      />
       <p className="muted small">classified ZOMBIE at {pct(p.confidence)} confidence</p>
       <ul className="reasons">
         {p.reasons.map((r) => (
@@ -229,11 +234,23 @@ export function OutcomeView({ outcome: o }: { outcome: KillOutcome }) {
       <h3>
         <code>{o.endpoint_id}</code> <StateBadge state={o.state} />
       </h3>
-      <ol className="path" aria-label="States passed through">
-        {o.path.map((s, i) => (
-          <li key={`${s}-${i}`}>{s.replace(/_/g, " ").toLowerCase()}</li>
-        ))}
-      </ol>
+      <Pipeline
+        state={o.state}
+        notes={{
+          ...(o.shadow ? { 1: `${o.shadow.days} days` } : {}),
+          ...(o.approver ? { 2: `by ${o.approver}` } : {}),
+          ...(o.canary.length ? { 3: `${o.canary.length} of 3 steps` } : {}),
+        }}
+      />
+      {o.canary.length > 0 && <CanaryMeter canary={o.canary} rolledBack={o.state === "ROLLED_BACK"} />}
+      <details className="path-details">
+        <summary className="small muted">Every state it passed through</summary>
+        <ol className="path" aria-label="States passed through">
+          {o.path.map((s, i) => (
+            <li key={`${s}-${i}`}>{s.replace(/_/g, " ").toLowerCase()}</li>
+          ))}
+        </ol>
+      </details>
       <p>{o.reason}</p>
       <p className="muted small">
         {o.days} simulated days

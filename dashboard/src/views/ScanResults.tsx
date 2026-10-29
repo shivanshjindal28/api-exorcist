@@ -1,5 +1,6 @@
 import { Card, ErrorBox, Loading, Page, PageHead, useLoad, useSession } from "../common";
 import type { ScanJob } from "../types";
+import { GetStarted } from "./GetStarted";
 
 export function when(iso: string | null): string {
   if (!iso) return "";
@@ -37,10 +38,10 @@ export function ScanResults() {
     <Page head={head}>
     <Card title={`Scans (${data.length})`} flush>
       {data.length === 0 && (
-        <p style={{ padding: "0 1.25rem" }}>
-          No scans yet. Start one from <a href="#scan">New scan</a>: upload a project folder
-          or paste a GitHub link.
-        </p>
+        <div className="card-pad">
+          <p className="muted">No scans yet. Start here:</p>
+          <GetStarted />
+        </div>
       )}
       <div className="table-wrap">
         <table>
