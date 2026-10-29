@@ -1,3 +1,4 @@
+import { IconInfo } from "../../icons";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../../api";
 import { Card, ErrorBox, Loading, Menu, Page, PageHead, canApprove, useSession } from "../../common";
@@ -95,8 +96,11 @@ function DemoView({ tab: asked }: { tab: Tab }) {
     >
       <div className="stack">
         <div className="simulated" role="note">
-          Simulated data. It shows lifecycle classification, the removal gate and Safe Kill
-          working end to end. Nothing real is touched, and no figure here describes a real bank.
+          <IconInfo size={17} />
+          <span>
+            Simulated data. It shows lifecycle classification, the removal gate and Safe Kill
+            working end to end. Nothing real is touched, and no figure here describes a real bank.
+          </span>
         </div>
         {body}
       </div>

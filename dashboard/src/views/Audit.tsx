@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Card, ErrorBox, Loading, useLoad, useSession } from "../common";
+import { Card, ErrorBox, Loading, useLoad, useSession, useToast } from "../common";
 import type { ChainCheck } from "../types";
 
 export function Audit() {
@@ -9,11 +9,17 @@ export function Audit() {
   const { data, error, loading } = useLoad(() => api.audit(applied || undefined), [applied]);
   const [check, setCheck] = useState<ChainCheck | null>(null);
   const [checking, setChecking] = useState(false);
+  const notify = useToast();
 
   async function verify() {
     setChecking(true);
     try {
-      setCheck(await api.verifyAudit());
+      const result = await api.verifyAudit();
+      setCheck(result);
+      notify(result.ok ? "Audit chain verified" : "Audit chain is broken", {
+        tone: result.ok ? "ok" : "error",
+        detail: result.ok ? "Every hash recomputed and matched." : undefined,
+      });
     } finally {
       setChecking(false);
     }

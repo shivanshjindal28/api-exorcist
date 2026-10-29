@@ -9,6 +9,7 @@ import {
   pct,
   useLoad,
   useSession,
+  useToast,
 } from "../common";
 import type { KillOutcome, Observation, PendingApproval } from "../types";
 import { SafeKillSteps } from "./explain";
@@ -19,16 +20,18 @@ export function SafeKill() {
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const approver = canApprove(principal);
+  const notify = useToast();
 
   if (error) return <ErrorBox message={error} />;
   if (loading && !data) return <Loading what="Safe Kill state" />;
   if (!data) return null;
 
-  async function act(endpointId: string, run: () => Promise<unknown>) {
+  async function act(endpointId: string, run: () => Promise<unknown>, done: string) {
     setBusy(endpointId);
     setActionError(null);
     try {
       await run();
+      notify(done, { detail: endpointId });
       reload();
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : String(e));
@@ -67,7 +70,11 @@ export function SafeKill() {
               approver={approver}
               busy={busy === p.endpoint_id}
               onDecide={(approve, note) =>
-                act(p.endpoint_id, () => api.decide(p.endpoint_id, approve, note))
+                act(
+                  p.endpoint_id,
+                  () => api.decide(p.endpoint_id, approve, note),
+                  approve ? "Approved: the canary has started" : "Removal declined",
+                )
               }
             />
           ))
@@ -101,7 +108,7 @@ export function SafeKill() {
                         className="small"
                         disabled={busy === c.endpoint_id}
                         aria-label={`Start shadow for ${c.endpoint_id}`}
-                        onClick={() => act(c.endpoint_id, () => api.startShadow(c.endpoint_id))}
+                        onClick={() => act(c.endpoint_id, () => api.startShadow(c.endpoint_id), "Shadow window started")}
                       >
                         Start shadow
                       </button>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ApiError } from "../../api";
-import { ErrorBox, canApprove, useSession } from "../../common";
+import { ErrorBox, canApprove, useSession, useToast } from "../../common";
 import type { Decision, Review, ScanCheck, ScanEndpoint, ScanJob } from "../../types";
 
 export const CHECK_TEXT: Record<ScanCheck["status"], string> = {
@@ -100,6 +100,7 @@ export function ReviewControls({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const notify = useToast();
 
   if (!canApprove(principal)) {
     return (
@@ -116,6 +117,7 @@ export function ReviewControls({
       const r = await api.review(jobId, e.id, decision, note.trim());
       onReviewed(r.reviews);
       setNote("");
+      notify("Decision recorded", { detail: `${e.id}, in the scan's audit log under your name.` });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     } finally {
