@@ -92,10 +92,10 @@ export function Endpoints() {
               <tr>
                 <SortTh label="Endpoint" k="endpoint" sort={sort} onSort={onSort} />
                 <SortTh label="Label" k="label" sort={sort} onSort={onSort} />
-                <SortTh label="Confidence" k="confidence" sort={sort} onSort={onSort} />
+                {!selected && <SortTh label="Confidence" k="confidence" sort={sort} onSort={onSort} />}
                 <SortTh label="Risk" k="risk" sort={sort} onSort={onSort} />
                 <th>Auth</th>
-                <SortTh label="Seen by" k="seen" sort={sort} onSort={onSort} />
+                {!selected && <SortTh label="Seen by" k="seen" sort={sort} onSort={onSort} />}
               </tr>
             </thead>
             <tbody>
@@ -114,7 +114,7 @@ export function Endpoints() {
                   <td>
                     <LabelBadge label={v.label} />
                   </td>
-                  <td>{pct(v.confidence)}</td>
+                  {!selected && <td>{pct(v.confidence)}</td>}
                   <td>
                     <span className={`risk risk-${v.risk_score}`}>{v.risk_score}</span>
                   </td>
@@ -125,7 +125,7 @@ export function Endpoints() {
                       (r?.auth_scheme ?? "?").toLowerCase()
                     )}
                   </td>
-                  <td>{r ? `${r.seen_by.length} / 6` : "?"}</td>
+                  {!selected && <td>{r ? `${r.seen_by.length} / 6` : "?"}</td>}
                 </tr>
               ))}
             </tbody>

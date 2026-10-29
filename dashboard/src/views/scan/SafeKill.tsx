@@ -232,7 +232,7 @@ function RetirementPlans({ job }: { job: ScanJob }) {
             : "No likely zombie in this scan. Plans are drafted for likely zombies, and for every endpoint the imported access logs prove unused."}
         </p>
       ) : (
-        <div className="split">
+        <div className="split split-plan">
           <div className="table-wrap">
             <table>
               <thead>

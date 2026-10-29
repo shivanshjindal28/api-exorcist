@@ -111,8 +111,9 @@ export function ScanEndpointsTab({
                 <SortTh label="Endpoint" k="endpoint" sort={sort} onSort={onSort} />
                 <SortTh label="Handles" k="handles" sort={sort} onSort={onSort} />
                 <SortTh label={usage ? "Usage" : "Candidate"} k="status" sort={sort} onSort={onSort} />
-                <th>Spec</th>
-                <th>Decision</th>
+                {/* With the inspector open, it shows these; the table keeps the width. */}
+                {!e && <th>Spec</th>}
+                {!e && <th>Decision</th>}
               </tr>
             </thead>
             <tbody>
@@ -126,6 +127,7 @@ export function ScanEndpointsTab({
                       aria-label={`Details for ${x.id}`} aria-pressed={x.id === selected}>
                       <MethodPath method={x.method} path={x.path} />
                     </button>
+                    {e && !x.documented && <span className="tag">undocumented</span>}
                   </td>
                   <td>
                     {x.sensitivity && <LevelBadge level={x.sensitivity.level} category={x.sensitivity.category} />}
@@ -139,10 +141,12 @@ export function ScanEndpointsTab({
                       <span className="muted">no</span>
                     )}
                   </td>
-                  <td>{x.documented ? "yes" : <span className="warn-text">no</span>}</td>
-                  <td>
-                    <ReviewBadge review={reviews[x.id]} />
-                  </td>
+                  {!e && <td>{x.documented ? "yes" : <span className="warn-text">no</span>}</td>}
+                  {!e && (
+                    <td>
+                      <ReviewBadge review={reviews[x.id]} />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

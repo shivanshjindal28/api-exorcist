@@ -109,7 +109,7 @@ export function Delta({ now, before, worseWhenUp = true }: { now: number; before
   return (
     <span className={`delta ${bad ? "delta-bad" : "delta-good"}`}>
       <span aria-hidden="true">{up ? "▲" : "▼"}</span> {Math.abs(d)}
-      <span className="visually-hidden">{up ? " more" : " fewer"}</span> since the previous scan
+      <span className="visually-hidden">{up ? " more" : " fewer"}</span> since last scan
     </span>
   );
 }

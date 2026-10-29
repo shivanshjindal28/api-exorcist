@@ -827,3 +827,33 @@ th button.sort:focus-visible { outline: 2px solid var(--focus); outline-offset: 
 .sticky-panel { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; }
 @media (max-width: 1100px) { .sticky-panel { position: static; max-height: none; } }
 .tiles { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+
+/* ---- layout fixes found by measuring every page at five widths ----------------------- */
+/* A grid column sizes to its widest content unless told otherwise; an nginx snippet
+   then pushed the retirement plan, and the whole page, past the window. */
+.plan, .plan-steps { grid-template-columns: minmax(0, 1fr); }
+.plan > *, .plan-steps > li, .plan-steps > li > * { min-width: 0; }
+pre.snippet { max-width: 100%; }
+/* Hashes and ids are one unbroken word. */
+.mono, .facts dd code { overflow-wrap: anywhere; word-break: break-word; }
+/* The change since the last scan stays on one line. */
+.delta { white-space: nowrap; }
+@media (max-width: 760px) {
+  .report { padding: 1.25rem 1rem; }
+  .report table { display: block; overflow-x: auto; }
+}
+/* Paths and file names wrap anywhere rather than widen their container. */
+.plan code, li code, p code { overflow-wrap: anywhere; }
+/* Between the stacked layout and a wide screen, the list gets the room. */
+.split { grid-template-columns: minmax(0, 7fr) minmax(280px, 3fr); }
+@media (max-width: 1400px) {
+  th, td { padding-left: 0.5rem; padding-right: 0.5rem; }
+  .card-flush table th:first-child, .card-flush table td:first-child { padding-left: 1rem; }
+}
+@media (max-width: 1100px) { .split { grid-template-columns: minmax(0, 1fr); } }
+.sources { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+@media (max-width: 1100px) { th { white-space: normal; } }
+.contrib-text, .evidence-list li, .findings li { overflow-wrap: anywhere; }
+/* A short list beside a long plan: the plan gets the width. */
+.split.split-plan { grid-template-columns: minmax(260px, 2fr) minmax(0, 3fr); }
+@media (max-width: 1100px) { .split.split-plan { grid-template-columns: minmax(0, 1fr); } }
