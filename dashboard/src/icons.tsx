@@ -209,3 +209,38 @@ export const IconExternal = icon(
     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
   </>,
 );
+
+export const IconGlobe = icon(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18" />
+    <path d="M12 3a14 14 0 0 1 0 18" />
+    <path d="M12 3a14 14 0 0 0 0 18" />
+  </>,
+);
+
+export const IconWorkflow = icon(
+  <>
+    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    <path d="M6.5 10v3a2 2 0 0 0 2 2H14" />
+  </>,
+);
+
+export const IconGateway = icon(
+  <>
+    <rect x="3" y="4" width="18" height="6" rx="1.5" />
+    <rect x="3" y="14" width="18" height="6" rx="1.5" />
+    <path d="M7 7h.01" />
+    <path d="M7 17h.01" />
+  </>,
+);
+
+export const IconMinus = icon(<path d="M5 12h14" />);
+
+export const IconSort = icon(
+  <>
+    <path d="m8 9 4-4 4 4" />
+    <path d="m16 15-4 4-4-4" />
+  </>,
+);

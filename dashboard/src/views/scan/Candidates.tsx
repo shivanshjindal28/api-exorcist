@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Contributions } from "../../charts";
 import { Card } from "../../common";
 import type { Candidate, ScanJob } from "../../types";
 
@@ -93,7 +94,7 @@ export function CandidatesCard({ job }: { job: ScanJob }) {
               >
                 <CandidateBadge label={c.label} />
                 <code>
-                  <span className="method">{method}</span> {rest.join(" ")}
+                  <span className={`method m-${method}`}>{method}</span> {rest.join(" ")}
                 </code>
                 <span className="cand-score" aria-label={`score ${c.score}`}>
                   <span className="bar-track">
@@ -103,14 +104,9 @@ export function CandidatesCard({ job }: { job: ScanJob }) {
                 </span>
               </button>
               {isOpen && (
-                <ul className="signals">
-                  {c.signals.map((s) => (
-                    <li key={s.text} className={s.weight < 0 ? "sig-against" : undefined}>
-                      <span className="sig-weight">{s.weight > 0 ? `+${s.weight}` : s.weight}</span>
-                      {s.text}
-                    </li>
-                  ))}
-                </ul>
+                <div className="cand-open">
+                  <Contributions items={c.signals} total={c.score} />
+                </div>
               )}
             </li>
           );

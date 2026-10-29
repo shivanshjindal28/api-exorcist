@@ -320,6 +320,16 @@ export interface PortfolioProject {
   reviewed: number;
   traffic: boolean;
   risk: number;
+  /** This project's finished scans, oldest first (at most 12). */
+  history?: ScanCounts[];
+}
+
+export interface ScanCounts {
+  at: string;
+  endpoints: number;
+  undocumented: number;
+  candidates: number;
+  likely: number;
 }
 
 export interface PortfolioRisk {
@@ -346,6 +356,12 @@ export interface Portfolio {
   };
   projects: PortfolioProject[];
   top_risks: PortfolioRisk[];
+  /** Each endpoint counted once, under the worst thing known about it. */
+  composition?: { zombie: number; likely: number; candidate: number; undocumented: number; clean: number };
+  by_category?: { category: string; level: Sensitivity["level"]; endpoints: number; flagged: number }[];
+  /** The same totals at each project's previous scan; null when none was scanned twice. */
+  previous?: { endpoints: number; undocumented: number; candidates: number; likely: number } | null;
+  compared?: number;
 }
 
 export interface CandidateSignal {

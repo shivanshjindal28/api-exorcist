@@ -141,6 +141,20 @@ class ScanJob:
         return d
 
 
+def _scan_counts(job: ScanJob) -> dict[str, Any]:
+    """The headline counts of one finished scan, for a project's history."""
+    report = job.report or {}
+    eps = report.get("endpoints", [])
+    cands = report.get("candidates", [])
+    return {
+        "at": job.finished_at or job.created_at,
+        "endpoints": len(eps),
+        "undocumented": sum(1 for e in eps if not e.get("documented")),
+        "candidates": len(cands),
+        "likely": sum(1 for c in cands if c.get("label") == "Likely zombie"),
+    }
+
+
 class JobManager:
     def __init__(self, store: Path | None = None, workers: int = 2) -> None:
         self.store = store
@@ -205,15 +219,26 @@ class JobManager:
             return copy.deepcopy(best.to_dict())
 
     def portfolio(self) -> dict[str, Any]:
-        """Every project's latest finished scan, and the riskiest endpoints across them."""
+        """Every project's latest finished scan, and the riskiest endpoints across them.
+
+        Alongside the totals: how the estate breaks down (each endpoint counted
+        once, under the worst thing known about it), exposure by data category,
+        and each project's earlier scans, so the console can show what changed.
+        """
         with self._lock:
             latest: dict[str, ScanJob] = {}
+            earlier: dict[str, list[dict[str, Any]]] = {}
             for j in self._jobs.values():
                 if j.status == "done" and j.report is not None:
+                    earlier.setdefault(j.target, []).append(_scan_counts(j))
                     cur = latest.get(j.target)
                     if cur is None or j.created_at > cur.created_at:
                         latest[j.target] = j
             snapshot = [copy.deepcopy(j.to_dict()) for j in latest.values()]
+        composition = {"zombie": 0, "likely": 0, "candidate": 0, "undocumented": 0, "clean": 0}
+        categories: dict[str, dict[str, Any]] = {}
+        previous = {"endpoints": 0, "undocumented": 0, "candidates": 0, "likely": 0}
+        compared = 0
         projects: list[dict[str, Any]] = []
         risks: list[dict[str, Any]] = []
         totals = {"projects": 0, "endpoints": 0, "undocumented": 0, "candidates": 0,
@@ -237,12 +262,29 @@ class JobManager:
                 "traffic": bool(d.get("traffic")),
                 "risk": max((e["priority"] for e in eps), default=0),
             }
+            history = sorted(earlier.get(d["target"], []), key=lambda h: h["at"])[-12:]
+            row["history"] = history
+            before = history[-2] if len(history) > 1 else None
+            if before is not None:
+                compared += 1
+            for k in previous:
+                previous[k] += (before or row)[k]
             projects.append(row)
             for k in totals:
                 if k != "projects":
                     totals[k] += row[k]
             for e in eps:
                 zombie = (usage.get(e["id"]) or {}).get("lifecycle") == "ZOMBIE"
+                cand = e.get("candidate") or {}
+                kind = ("zombie" if zombie else "likely" if cand.get("label") == "Likely zombie"
+                        else "candidate" if cand else "clean" if e.get("documented")
+                        else "undocumented")
+                composition[kind] += 1
+                cat = categories.setdefault(e["sensitivity"]["category"], {
+                    "category": e["sensitivity"]["category"],
+                    "level": e["sensitivity"]["level"], "endpoints": 0, "flagged": 0})
+                cat["endpoints"] += 1
+                cat["flagged"] += kind in ("zombie", "likely", "candidate")
                 if e.get("candidate") or zombie:
                     risks.append({
                         "scan": d["id"], "target": d["target"], "id": e["id"],
@@ -255,7 +297,10 @@ class JobManager:
                     })
         totals["projects"] = len(projects)
         risks.sort(key=lambda r: (-r["priority"], r["target"], r["id"]))
-        return {"totals": totals, "projects": projects, "top_risks": risks[:15]}
+        by_category = sorted(categories.values(), key=lambda c: (-c["endpoints"], c["category"]))
+        return {"totals": totals, "projects": projects, "top_risks": risks[:15],
+                "composition": composition, "by_category": by_category,
+                "previous": previous if compared else None, "compared": compared}
 
     # -- usage evidence from access logs ----------------------------------------
     def import_traffic(self, job_id: str, files: builtins.list[tuple[str, bytes]],

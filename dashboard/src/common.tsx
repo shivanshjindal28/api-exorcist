@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import type { ReactNode } from "react";
 import { ApiError } from "./api";
 import type { ApiClient } from "./api";
-import { IconAlert, IconCheckCircle, IconInfo, IconX } from "./icons";
+import { IconAlert, IconCheckCircle, IconInfo, IconSort, IconX } from "./icons";
 import type { Principal } from "./types";
 
 interface Session {
@@ -177,15 +177,17 @@ export function Card({
   children,
   actions,
   flush = false,
+  className,
 }: {
   title: string;
   children: ReactNode;
   actions?: ReactNode;
   /** Tables run edge to edge. */
   flush?: boolean;
+  className?: string;
 }) {
   return (
-    <section className={flush ? "card card-flush" : "card"}>
+    <section className={["card", flush ? "card-flush" : "", className ?? ""].filter(Boolean).join(" ")}>
       {actions ? (
         <div className="card-head">
           <h2>{title}</h2>
@@ -401,5 +403,53 @@ export function Menu({
         </ul>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sortable tables.
+
+export interface SortState<K extends string> {
+  key: K;
+  dir: "asc" | "desc";
+}
+
+/** Sort state, and a function that clicks a column: first click sorts it, second reverses it. */
+export function useSort<K extends string>(initial: SortState<K>): [SortState<K>, (key: K) => void] {
+  const [sort, setSort] = useState(initial);
+  const toggle = useCallback(
+    (key: K) =>
+      setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === initial.key ? initial.dir : "asc" })),
+    [initial.key, initial.dir],
+  );
+  return [sort, toggle];
+}
+
+/** A column header that sorts its table. */
+export function SortTh<K extends string>({
+  label,
+  k,
+  sort,
+  onSort,
+  className,
+  title,
+}: {
+  label: string;
+  k: K;
+  sort: SortState<K>;
+  onSort: (key: K) => void;
+  className?: string;
+  title?: string;
+}) {
+  const active = sort.key === k;
+  return (
+    <th className={className} title={title} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button className={`sort ${active ? "is-active" : ""}`} onClick={() => onSort(k)}>
+        {label}
+        <span className="sort-mark" aria-hidden="true">
+          {active ? (sort.dir === "asc" ? "▲" : "▼") : <IconSort size={12} />}
+        </span>
+      </button>
+    </th>
   );
 }
