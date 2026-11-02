@@ -166,6 +166,8 @@ ignore = [
 # lookalikes in source strings and that is worth keeping in a security project.
 "docs/build_docx.py" = ["RUF001"]
 "docs/build_pptx.py" = ["RUF001"]
+"docs/build_exec_summary.py" = ["RUF001"]
+"docs/build_poster.py" = ["RUF001"]
 "docs/build_logbook.py" = ["RUF001"]
 
 [tool.ruff.lint.isort]

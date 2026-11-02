@@ -56,6 +56,10 @@ docs/*.pptx
 # PDF exports of the generated reports.
 docs/*.pdf
 
+# The final submission (executive summary, poster). Regenerate with
+# docs/build_exec_summary.py, docs/poster_figures.py and docs/build_poster.py.
+docs/deliverables/
+
 # Repositories cloned for the demo. Fetched by demo/prepare.ps1, never committed.
 demo/repos/
 
