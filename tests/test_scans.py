@@ -130,7 +130,9 @@ def _client() -> Iterator[tuple[TestClient, dict[str, str], dict[str, str], Path
         app = create_app(Workspace(Path(tmp) / "audit.jsonl"), store, jobs=jobs)
         yield (TestClient(app), {"Authorization": f"Bearer {approver}"},
                {"Authorization": f"Bearer {viewer}"}, Path(tmp))
-        jobs.shutdown()
+        # A test may leave a scan running; it must finish before tmp is deleted,
+        # or its report lands in a directory being removed (seen on CI, py3.12).
+        jobs.shutdown(wait=True)
 
 
 def _wait(client: TestClient, h: dict[str, str], job_id: str) -> dict[str, Any]:

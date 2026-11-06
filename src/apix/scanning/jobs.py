@@ -511,5 +511,7 @@ class JobManager:
         finally:
             workdir.cleanup()
 
-    def shutdown(self) -> None:
-        self._pool.shutdown(wait=False, cancel_futures=True)
+    def shutdown(self, *, wait: bool = False) -> None:
+        """Stop taking work. `wait=True` also lets a running scan finish, which
+        matters to anyone about to delete the store it is writing into."""
+        self._pool.shutdown(wait=wait, cancel_futures=True)
